@@ -5,3 +5,5 @@ pnpm-lock.yaml
 docs
 CLAUDE.md
 apps/web/src/components/ui
+apps/web/src/routeTree.gen.ts
+packages/db/drizzle/meta

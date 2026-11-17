@@ -111,6 +111,10 @@
   --sidebar-border: oklch(0.915 0.008 277);
   --sidebar-ring: oklch(0.585 0.233 277.117);
 
+  /* Deep brand gradient for marketing surfaces (sign-in panel). Same in both themes. */
+  --brand-gradient-from: oklch(0.47 0.24 277);
+  --brand-gradient-to: oklch(0.3 0.15 292);
+
   --success: oklch(0.6 0.17 152);
   --grade-hot: oklch(0.6 0.22 27);
   --grade-warm: oklch(0.68 0.16 65);

@@ -28,7 +28,9 @@ Full-stack TypeScript, pnpm 12 monorepo, Node.js 26 LTS, TypeScript 6.0 (don't u
 ## Rules
 - **Package manager is pnpm.** TypeScript stays `strict`. Avoid `any`, and validate unknown data with Zod.
 - **`packages/shared` Zod schemas are the single source of truth** for data shapes (API contracts, JSONB columns, webhook payloads, LLM output).
-- **Tenant isolation:** every tenant table has `tenant_id` + an RLS policy. All tenant queries go through `withTenant()` from `packages/db`. Add a cross-tenant denial test for every new tenant table.
+- **Tenant isolation:** every tenant table has `tenant_id` + an RLS policy (`ENABLE` + `FORCE` + `tenant_isolation` policy, in a custom migration). All tenant queries go through `withTenant()` from `packages/db`. Add a cross-tenant denial test to `packages/db/src/rls.test.ts` for every new tenant table.
+- **DB connections:** `APP_DATABASE_URL` (`qualify_app`) for api/worker, `DATABASE_URL` (owner) only for `pnpm db:migrate`. Apps import drizzle operators (`eq`, `and`, `sql`…) from `@qualify/db`, never from `drizzle-orm` directly.
+- **Schema changes:** edit `packages/db/src/schema/*`, then `pnpm --filter @qualify/db db:generate`, then `pnpm db:migrate`. Better Auth tables are generated: `pnpm --filter @qualify/api auth:schema`.
 - **Secrets** never go in git or chat. Use `.env` (keep `.env.example` updated). Per-tenant Meta tokens are AES-256-GCM encrypted at rest.
 - **Meta webhooks:** verify the signature on the raw body, persist raw, enqueue, return 200 fast. Processing is idempotent (unique `wa_message_id`, `leadgen_id`).
 - **24 h window:** free-form messages only inside the window, templates outside it.
@@ -46,9 +48,12 @@ Full-stack TypeScript, pnpm 12 monorepo, Node.js 26 LTS, TypeScript 6.0 (don't u
 ## Status
 - 2026-11-17: discovery complete, docs written.
 - 2026-11-17: LLM provider switched to OpenAI / OpenRouter (D-021). Backend switched from .NET to full-stack TypeScript (D-022 to D-027).
-- 2026-11-17: **M0 built and verified locally.** Node 26.13.1 + pnpm 12.21.0 installed. Dev infra runs on host ports Postgres 5434, Redis 6380, Seq 5380 (another local project uses 5433/6379). First commit created on `main` (push to GitHub done by the owner). Next: M1.
+- 2026-11-17: **M0 built and verified locally.** Node 26.13.1 + pnpm 12.21.0 installed. Dev infra runs on host ports Postgres 5434, Redis 6380, Seq 5380 (another local project uses 5433/6379). First commit created on `main` (push to GitHub done by the owner).
+- 2026-11-17: **M1 built and verified** (auth, workspaces, RLS, protected app shell; e2e passes). Next: M2 (WhatsApp core). Needs the Meta App ID/secret, test number ID and a system-user token in `.env`.
 
 ## Local dev notes
 - Run commands with Node 26 (`nvm use 26.13.1`). In tool shells, prepend `C:\nvm4w\nodejs` to PATH.
-- `pnpm infra:up` then `pnpm dev`. Web: http://localhost:5173, API: http://localhost:3000/api/health, Seq: http://localhost:5380.
+- `pnpm infra:up`, then `pnpm db:migrate`, then `pnpm dev`. Web: http://localhost:5173, API: http://localhost:3000/api/health, Seq: http://localhost:5380.
+- E2E: `pnpm --filter @qualify/web test:e2e`, with the dev stack running (uses the installed Chrome).
+- Playwright's `getByLabel('Password')` also matches the "Show password" button, so use `{ exact: true }`.
 - The owner's other Docker containers (e.g. `personal-assistant-*`) are separate projects. Stop or change them only when the owner asks. They were stopped on request on 2026-11-17 (restart policy `unless-stopped`, so they stay stopped).

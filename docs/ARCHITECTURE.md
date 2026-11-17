@@ -23,7 +23,7 @@ Related: [PRD.md](PRD.md) · [DECISIONS.md](DECISIONS.md) · [MILESTONES.md](MIL
 | Validation / contracts | Zod schemas in `packages/shared`, used by api, worker and web |
 | Auth | Better Auth: cookie sessions, organization plugin (organization = tenant), CSRF protection |
 | AI | Vercel AI SDK with the OpenRouter provider or the OpenAI provider. Structured output from Zod schemas. Model per task from config. |
-| Frontend | React + Vite + TypeScript, Tailwind CSS, shadcn/ui, Motion, TanStack Query, TanStack Table, React Hook Form + Zod, dnd-kit, Recharts, Lucide, Sonner, socket.io-client |
+| Frontend | React + Vite + TypeScript, TanStack Router (file-based, auto code-splitting), Tailwind CSS, shadcn/ui, Motion, TanStack Query, TanStack Table, React Hook Form + Zod, dnd-kit, Recharts, Lucide, Sonner, socket.io-client, Better Auth React client |
 | Excel / email | ExcelJS (streaming writer) / Nodemailer + transactional provider (TBD) |
 | Logs / monitoring | Pino → Seq, Uptime Kuma |
 | Testing | Vitest, Testcontainers (Postgres, Redis), Playwright (UI end-to-end) |
@@ -93,6 +93,8 @@ Platform
 - Every tenant-owned table has `tenant_id` and an RLS policy:
   `USING (tenant_id = current_setting('app.tenant_id')::uuid)`.
 - The app connects as a **non-owner role**, and RLS uses `FORCE ROW LEVEL SECURITY`, so the table owner can't bypass it by accident.
+  - `APP_DATABASE_URL` → `qualify_app` (api, worker). `DATABASE_URL` → owner (migrations only).
+  - Migration `0001_rls_and_app_role` creates the role if missing (NOLOGIN), grants DML plus default privileges, makes `partners` read-only, and enables the policies. In production, create `qualify_app` WITH LOGIN before migrating. In dev, `deploy/dev/postgres-init.sql` does it.
 - **All tenant queries go through `withTenant(tenantId, async (tx) => …)`** from `packages/db`. It opens a transaction and runs `select set_config('app.tenant_id', $1, true)` before anything else.
   - API: the tenant comes from the active organization in the Better Auth session.
   - Worker: the tenant comes from the job payload.
@@ -318,7 +320,7 @@ Respond job
 
 - **Unit tests (Vitest):** scoring rules, routing, window logic, field and phone normalization, webhook signing, Zod schemas.
 - **Integration tests (Vitest + Testcontainers):** Drizzle repositories under RLS (including cross-tenant denial tests), webhook ingestion, BullMQ job flows.
-- **End-to-end UI tests (Playwright):** critical flows such as sign-up, playbook publish, lead detail and webhook config.
+- **End-to-end UI tests (Playwright, `apps/web/e2e`):** critical flows such as sign-up, playbook publish, lead detail and webhook config. They run locally against the dev stack with the installed Chrome. A CI job comes later (D-032).
 - **AI evals (`tests/ai-evals`):**
   - Scripted and simulated lead personas (an LLM plays the lead).
   - Graders check extracted fields, guardrails, language and handoff behaviour.

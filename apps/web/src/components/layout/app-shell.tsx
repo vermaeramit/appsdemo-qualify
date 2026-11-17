@@ -1,7 +1,10 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import type { MeResponse } from '@qualify/shared';
+import { Link } from '@tanstack/react-router';
 import {
   LayoutDashboard,
   MessageSquareText,
+  Search,
   Settings,
   Users,
   Webhook,
@@ -11,17 +14,21 @@ import {
 import { ApiStatus } from '@/components/api-status';
 import { BrandLogo } from '@/components/brand-logo';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
+import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { initials, roleLabel } from '@/lib/workspace';
+import { CommandPalette } from './command-palette';
+import { UserMenu } from './user-menu';
 
-interface NavItem {
-  label: string;
-  icon: LucideIcon;
-  active?: boolean;
+type Workspace = NonNullable<MeResponse['activeWorkspace']>;
+
+interface AppShellProps {
+  user: MeResponse['user'];
+  workspace: Workspace;
+  children: ReactNode;
 }
 
-const navItems: NavItem[] = [
-  { label: 'Dashboard', icon: LayoutDashboard, active: true },
+const upcoming: { label: string; icon: LucideIcon }[] = [
   { label: 'Leads', icon: Users },
   { label: 'Playbooks', icon: Workflow },
   { label: 'Templates', icon: MessageSquareText },
@@ -29,7 +36,12 @@ const navItems: NavItem[] = [
   { label: 'Settings', icon: Settings },
 ];
 
-export function AppShell({ children }: { children: ReactNode }) {
+const navItemClass =
+  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors';
+
+export function AppShell({ user, workspace, children }: AppShellProps) {
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
   return (
     <div className="flex min-h-svh">
       <aside className="sticky top-0 hidden h-svh w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
@@ -37,13 +49,44 @@ export function AppShell({ children }: { children: ReactNode }) {
           <BrandLogo />
         </div>
         <nav className="flex-1 space-y-0.5 p-2" aria-label="Main">
-          {navItems.map((item) => (
-            <SidebarItem key={item.label} item={item} />
+          <Link
+            to="/"
+            className={navItemClass}
+            activeOptions={{ exact: true }}
+            activeProps={{ className: 'bg-sidebar-accent text-sidebar-accent-foreground' }}
+            inactiveProps={{
+              className:
+                'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+            }}
+          >
+            <LayoutDashboard className="size-4" />
+            Dashboard
+          </Link>
+          {upcoming.map(({ label, icon: Icon }) => (
+            <Tooltip key={label}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={`${navItemClass} text-sidebar-foreground/50 hover:bg-sidebar-accent/40`}
+                >
+                  <Icon className="size-4" />
+                  {label}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Coming in a later milestone</TooltipContent>
+            </Tooltip>
           ))}
         </nav>
-        <div className="m-2 rounded-lg border bg-card p-3 text-xs text-muted-foreground">
-          <div className="font-medium text-foreground">Milestone M0</div>
-          Design system preview
+        <div className="m-2 flex items-center gap-2.5 rounded-lg border bg-card p-2.5">
+          <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
+            {initials(workspace.name)}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium text-foreground">
+              {workspace.name}
+            </span>
+            <span className="block text-xs text-muted-foreground">{roleLabel(workspace.role)}</span>
+          </span>
         </div>
       </aside>
 
@@ -52,41 +95,36 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="md:hidden">
             <BrandLogo />
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="hidden w-64 justify-start gap-2 text-muted-foreground md:inline-flex"
+            onClick={() => setPaletteOpen(true)}
+          >
+            <Search data-icon="inline-start" />
+            Search or jump to…
+            <kbd className="ml-auto rounded border bg-muted px-1.5 font-mono text-[0.65rem]">
+              Ctrl K
+            </kbd>
+          </Button>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              aria-label="Open command palette"
+              onClick={() => setPaletteOpen(true)}
+            >
+              <Search />
+            </Button>
             <ApiStatus />
             <ThemeToggle />
+            <UserMenu user={user} />
           </div>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 p-4 md:p-6">{children}</main>
       </div>
+
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
-  );
-}
-
-function SidebarItem({ item }: { item: NavItem }) {
-  const Icon = item.icon;
-  const content = (
-    <button
-      type="button"
-      aria-current={item.active ? 'page' : undefined}
-      className={cn(
-        'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
-        item.active
-          ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-          : 'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
-      )}
-    >
-      <Icon className="size-4" />
-      {item.label}
-    </button>
-  );
-
-  if (item.active) return content;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{content}</TooltipTrigger>
-      <TooltipContent side="right">Coming in a later milestone</TooltipContent>
-    </Tooltip>
   );
 }

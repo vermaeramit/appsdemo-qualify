@@ -7,13 +7,15 @@
     "node": ">=26.13.0"
   },
   "scripts": {
-    "dev": "pnpm --filter @qualify/shared build && pnpm --parallel --recursive --stream run dev",
+    "dev": "pnpm run build:packages && pnpm --parallel --recursive --stream run dev",
     "build": "pnpm --recursive run build",
-    "typecheck": "pnpm --filter @qualify/shared build && pnpm --recursive run typecheck",
+    "build:packages": "pnpm --filter \"./packages/**\" run build",
+    "typecheck": "pnpm run build:packages && pnpm --recursive run typecheck",
+    "db:migrate": "pnpm --filter @qualify/db db:migrate",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "pnpm --filter @qualify/shared build && pnpm --recursive run test",
+    "test": "pnpm run build:packages && pnpm --recursive run test",
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down"
   },
