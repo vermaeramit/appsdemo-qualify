@@ -33,4 +33,5 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
-      - run: pnpm audit --audit-level high
+      # High-severity gate on what we ship. Dev-tool advisories are handled by Dependabot (D-043).
+      - run: pnpm audit --prod --audit-level high

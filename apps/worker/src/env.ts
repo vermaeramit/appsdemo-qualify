@@ -15,6 +15,14 @@ const envSchema = z.object({
   /** Dev safety switch (D-034): outside production, reply only to these numbers. */
   DEV_ALLOWED_NUMBERS: optional,
   META_GRAPH_VERSION: optional,
+  /** AI (D-039). Without a key the agent stays silent (messages are still stored). */
+  LLM_PROVIDER: z.enum(['openai']).default('openai'),
+  OPENAI_API_KEY: optional,
+  /** Chat model; set from the M3 eval (see docs/DECISIONS.md). */
+  AI_MODEL_CHAT: z.string().min(1).default('gpt-5.4-mini'),
+  AI_REASONING_EFFORT: z.enum(['none', 'minimal', 'low', 'medium', 'high']).default('low'),
+  /** Quiet period before replying, so a burst of messages gets one answer. */
+  AI_DEBOUNCE_MS: z.coerce.number().int().min(0).max(30_000).default(4_000),
 });
 
 export type WorkerEnv = z.infer<typeof envSchema>;

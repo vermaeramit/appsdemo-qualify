@@ -1,0 +1,280 @@
+import { playbookConfigSchema } from '@qualify/shared';
+import { describe, expect, it } from 'vitest';
+import {
+  applyAgentTurn,
+  chooseReplyLanguage,
+  detectLanguage,
+  buildStateNote,
+  buildSystemPrompt,
+  clampSignal,
+  isQualificationComplete,
+  isServiceWindowOpen,
+  mergeExtractedFields,
+  missingRequiredFields,
+  sanitizeQuickReplies,
+  toModelHistory,
+  travelPlaybookTemplate,
+} from './index.ts';
+
+const playbook = travelPlaybookTemplate('Sunrise Holidays');
+const fields = playbook.fields;
+
+describe('travel template', () => {
+  it('is a valid playbook config', () => {
+    expect(playbookConfigSchema.safeParse(playbook).success).toBe(true);
+  });
+});
+
+describe('mergeExtractedFields', () => {
+  it('normalises values by field type and reports what changed', () => {
+    const result = mergeExtractedFields(fields, { destination: 'Dubai' }, [
+      { key: 'travel_month', value: '2026-12' },
+      { key: 'trip_type', value: 'honeymoon' },
+      { key: 'trip_duration', value: '5 nights' },
+      { key: 'passport_status', value: 'ready' },
+      { key: 'destination', value: 'Dubai' },
+    ]);
+    expect(result.fields).toMatchObject({
+      destination: 'Dubai',
+      travel_month: '2026-12',
+      trip_type: 'Honeymoon',
+      trip_duration: '5',
+      passport_status: 'Ready',
+    });
+    expect(result.changed).toEqual([
+      'travel_month',
+      'trip_type',
+      'trip_duration',
+      'passport_status',
+    ]);
+  });
+
+  it('rejects unknown keys, empty values and values that do not fit the type', () => {
+    const result = mergeExtractedFields(fields, {}, [
+      { key: 'favourite_colour', value: 'blue' },
+      { key: 'budget', value: 'unknown' },
+      { key: 'travel_month', value: 'December' },
+      { key: 'trip_type', value: 'Business' },
+    ]);
+    expect(result.fields).toEqual({});
+    expect(result.rejected.map((item) => item.key)).toEqual([
+      'favourite_colour',
+      'budget',
+      'travel_month',
+      'trip_type',
+    ]);
+  });
+
+  it('lets the lead correct a value', () => {
+    const result = mergeExtractedFields(fields, { destination: 'Goa' }, [
+      { key: 'destination', value: 'Kerala' },
+    ]);
+    expect(result.fields.destination).toBe('Kerala');
+    expect(result.changed).toEqual(['destination']);
+  });
+});
+
+describe('qualification progress', () => {
+  it('lists missing required fields in priority order', () => {
+    const missing = missingRequiredFields(fields, { destination: 'Dubai', travelers: '2 adults' });
+    expect(missing.map((field) => field.key)).toEqual(['travel_month', 'departure_city', 'budget']);
+  });
+
+  it('is complete when every required field is present', () => {
+    const complete = {
+      destination: 'Dubai',
+      travel_month: '2026-12',
+      travelers: '2 adults',
+      departure_city: 'Delhi',
+      budget: '70000 INR total',
+    };
+    expect(isQualificationComplete(fields, complete)).toBe(true);
+    expect(isQualificationComplete(fields, { destination: 'Dubai' })).toBe(false);
+  });
+});
+
+describe('policies', () => {
+  it('keeps the 24 h service window with a safety margin', () => {
+    const now = new Date('2026-11-18T12:00:00Z');
+    expect(isServiceWindowOpen(new Date('2026-11-18T00:00:00Z'), now)).toBe(true);
+    expect(isServiceWindowOpen(new Date('2026-11-17T12:02:00Z'), now)).toBe(false);
+    expect(isServiceWindowOpen(null, now)).toBe(false);
+  });
+
+  it('sanitises quick replies to WhatsApp button limits', () => {
+    expect(
+      sanitizeQuickReplies([
+        'Next month',
+        ' next MONTH ',
+        '',
+        'In 2–3 months, please',
+        'Not decided',
+        'Extra',
+      ]),
+    ).toEqual(['Next month', 'In 2–3 months', 'Not decided']);
+  });
+
+  it('clamps signals to 0–10 integers', () => {
+    expect([clampSignal(7.6), clampSignal(-3), clampSignal(42), clampSignal(Number.NaN)]).toEqual([
+      8, 0, 10, 0,
+    ]);
+  });
+});
+
+describe('prompt building', () => {
+  const system = buildSystemPrompt(playbook, {
+    allowedLanguages: ['hinglish', 'en', 'hi'],
+    defaultLanguage: 'hinglish',
+  });
+
+  it('contains persona, fields, rules and knowledge base, and no per-day data', () => {
+    expect(system).toContain('You are Riya, travel advisor at Sunrise Holidays');
+    expect(system).toContain('`destination`: Destination (text, REQUIRED, priority 1)');
+    expect(system).toContain('Never confirm a final price');
+    expect(system).toContain('Dubai 4N/5D');
+    expect(system).not.toMatch(/\b2026-\d{2}-\d{2}\b/); // dates belong in the state note (cache)
+  });
+
+  it('is deterministic (cacheable)', () => {
+    expect(
+      buildSystemPrompt(playbook, {
+        allowedLanguages: ['hinglish', 'en', 'hi'],
+        defaultLanguage: 'hinglish',
+      }),
+    ).toBe(system);
+  });
+
+  it('builds a state note with collected and missing fields', () => {
+    const note = buildStateNote({
+      today: '2026-11-18',
+      fields: { destination: 'Dubai' },
+      definitions: fields,
+      status: 'engaged',
+      leadName: 'Rahul',
+    });
+    expect(note).toContain('Collected fields: destination=Dubai');
+    expect(note).toContain('Missing required fields (ask in this order): travel_month, travelers');
+    expect(note).toContain('Qualification complete: no');
+  });
+});
+
+describe('language detection', () => {
+  it('detects Devanagari Hindi, Hinglish and English', () => {
+    expect(detectLanguage('नमस्ते, कश्मीर टूर के बारे में जानकारी चाहिए')).toBe('hi');
+    expect(detectLanguage('Goa jaana hai dosto ke saath, koi offer hai kya?')).toBe('hinglish');
+    expect(detectLanguage('Dec end me, wife ke saath')).toBe('hinglish');
+    expect(detectLanguage('Hello, we are looking for a Bali holiday for our family.')).toBe('en');
+    expect(detectLanguage('I want a Thailand trip. Can someone call me please?')).toBe('en');
+  });
+
+  it('returns null for short or ambiguous messages', () => {
+    expect(detectLanguage('kerala')).toBeNull();
+    expect(detectLanguage('2 adults')).toBeNull();
+    expect(detectLanguage('₹25k-35k')).toBeNull();
+  });
+
+  it('chooses the reply language from detection, history and allowed languages', () => {
+    const allowed = ['hinglish', 'en', 'hi'] as const;
+    expect(
+      chooseReplyLanguage({
+        latestLeadText: 'chennai',
+        previous: 'en',
+        allowed,
+        fallback: 'hinglish',
+      }),
+    ).toBe('en');
+    expect(
+      chooseReplyLanguage({
+        latestLeadText: 'chennai',
+        previous: null,
+        allowed,
+        fallback: 'hinglish',
+      }),
+    ).toBe('hinglish');
+    expect(
+      chooseReplyLanguage({
+        latestLeadText: 'नमस्ते जी कैसे हैं',
+        previous: 'en',
+        allowed: ['hinglish', 'en'],
+        fallback: 'hinglish',
+      }),
+    ).toBe('hinglish');
+  });
+
+  it('puts the reply language in the state note', () => {
+    const note = buildStateNote({
+      today: '2026-11-18',
+      fields: {},
+      definitions: fields,
+      status: 'engaged',
+      leadName: null,
+      replyLanguage: 'en',
+    });
+    expect(note).toContain('Reply language: English.');
+  });
+});
+
+describe('applyAgentTurn', () => {
+  const baseTurn = {
+    language: 'en' as const,
+    reply: 'You are welcome!',
+    quickReplies: ['Ok'],
+    extracted: [],
+    signals: { urgency: 1, seriousness: 1, buyingSignals: 0, note: 'said thanks' },
+    handoff: { requested: false, reason: null },
+    disqualified: { value: false, reason: null },
+  };
+  const complete = {
+    destination: 'Dubai',
+    travel_month: '2026-12',
+    travelers: '2 adults',
+    departure_city: 'Delhi',
+    budget: '70000 INR total',
+  };
+
+  it('keeps qualifying-time signals after the lead is qualified', () => {
+    const signals = { urgency: 8, seriousness: 9, buyingSignals: 7, note: 'Honeymoon, ready' };
+    const applied = applyAgentTurn(
+      fields,
+      { fields: complete, status: 'qualified', signals },
+      baseTurn,
+    );
+    expect(applied.signals).toEqual(signals);
+    expect(applied.becameQualified).toBe(false);
+    expect(applied.quickReplies).toEqual([]);
+  });
+
+  it('updates signals while still qualifying', () => {
+    const applied = applyAgentTurn(
+      fields,
+      {
+        fields: {},
+        status: 'engaged',
+        signals: { urgency: 8, seriousness: 9, buyingSignals: 7, note: 'x' },
+      },
+      baseTurn,
+    );
+    expect(applied.signals).toMatchObject({ urgency: 1, note: 'said thanks' });
+  });
+});
+
+describe('toModelHistory', () => {
+  it('maps directions to roles and merges consecutive messages', () => {
+    const history = toModelHistory([
+      { direction: 'inbound', sender: 'lead', type: 'text', body: 'Hi' },
+      { direction: 'inbound', sender: 'lead', type: 'text', body: 'Dubai package?' },
+      { direction: 'outbound', sender: 'ai', type: 'text', body: 'Sure! When?' },
+      { direction: 'inbound', sender: 'lead', type: 'audio', body: null },
+      { direction: 'outbound', sender: 'human_app', type: 'text', body: 'Calling you now' },
+    ]);
+    expect(history).toEqual([
+      { role: 'user', content: 'Hi\nDubai package?' },
+      { role: 'assistant', content: 'Sure! When?' },
+      {
+        role: 'user',
+        content: '[The lead sent a audio message. You can only read text, so ask them to type it.]',
+      },
+      { role: 'assistant', content: '[Sent by a human team member] Calling you now' },
+    ]);
+  });
+});

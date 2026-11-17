@@ -86,14 +86,22 @@
 
 **Follow-ups:** quick-tunnel URLs change on every restart (re-run `set-dev-webhook`). A stable staging URL comes with M8. Add a sweeper that re-enqueues `inbound_meta_events` with `processed_at IS NULL` (Redis outage safety).
 
-## M3 — AI agent
-- LLM client: Vercel AI SDK with the OpenAI provider (OpenRouter optional) from config, cache-friendly prompt builder, structured output from Zod schemas
-- Hybrid playbook engine: fields, rules, KB-in-prompt, language detection, buttons and lists
-- Debounce (BullMQ deduplication) + per-lead Redis lock, 24 h window logic, human-takeover pause
-- Travel – Domestic and Travel – International playbook templates (seeded)
-- **AI eval harness** with 50–100 travel scenarios. Run it on a shortlist of OpenAI models, then **choose the model per task** (record it as a new decision)
+## M3 — AI agent ✅ built and live-verified 2026-11-18
+- LLM client (Vercel AI SDK v7, OpenAI provider; `store: false`, prompt cache key per playbook version), structured output from Zod schemas, usage metering per reply
+- Hybrid playbook engine (`packages/core`): stable cacheable system prompt plus a per-turn state note, field normalisation and merging, completion, handoff, disqualification (`applyAgentTurn`, shared with the eval), quick-reply buttons (WhatsApp limits), 24 h window, reply-language detection
+- `playbooks` and `playbook_versions` (RLS). The travel template is installed for every new workspace and by the `install-playbook` script for existing ones.
+- Respond engine (worker): debounced BullMQ job (4 s, `keepLastIfActive`), per-lead Redis lock, typing indicator, superseded check, send text or buttons, store the reply with token usage, update fields, status, signals and the pinned playbook version
+- API: thread includes lead fields, status and AI state; pause/resume endpoints (audited). Web: status badge, Pause/Resume AI, fields panel with progress.
+- Eval harness (12 scenarios) and model choice: **gpt-5.4-mini, low** (D-040)
 
-**Acceptance:** a full natural qualifying chat with the travel agent on the test number. The eval report is reviewed and the model is chosen.
+**Acceptance ✅**
+- The owner's live WhatsApp chat was qualified end to end (all 5 required fields, 2–4 s replies, about 90% of input tokens served from the prompt cache).
+- Eval after fixes: 100% outcomes, 96% fields, 100% no false promises, tone 4.8.
+- Tests: core 19, worker 18 (Testcontainers), plus all earlier suites.
+
+**Fixed from live test and eval:** emoji reactions triggered a reply (now ignored); signals were overwritten by post-qualification chit-chat; inclusions borrowed from other packages; hints of discounts; language drift; a question asked during handoff; message order used Meta timestamps (now our receipt time).
+
+**Follow-ups (M5 prompt tuning with the playbook builder):** always split travelers into adults and children; apply destination corrections reliably; send the closing message in the lead's language; occasional re-confirmation of a given field.
 
 ## M4 — Leads & scoring
 - Page connect + `leadgen` webhook + lead fetch + field mapping (tested with the Lead Ads Testing Tool)

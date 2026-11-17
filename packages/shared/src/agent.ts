@@ -1,0 +1,45 @@
+import { z } from 'zod';
+
+/**
+ * Structured output of ONE agent turn (D-007 / ARCHITECTURE §7.3).
+ * Kept compatible with OpenAI strict JSON schema: every property required, nullable instead of
+ * optional, no length/range keywords. Code validates and clamps after parsing.
+ */
+export const agentTurnSchema = z.object({
+  /** Language the lead is writing in. */
+  language: z.enum(['hinglish', 'en', 'hi', 'other']),
+  /** The WhatsApp message to send (short, one question at most). */
+  reply: z.string(),
+  /** Up to 3 tap-to-answer options (≤20 chars each); empty when free text is better. */
+  quickReplies: z.array(z.string()),
+  /** Field values learnt from the lead's latest messages, normalised to English. */
+  extracted: z.array(z.object({ key: z.string(), value: z.string() })),
+  /** 0–10 each. */
+  signals: z.object({
+    urgency: z.number(),
+    seriousness: z.number(),
+    buyingSignals: z.number(),
+    note: z.string(),
+  }),
+  handoff: z.object({ requested: z.boolean(), reason: z.string().nullable() }),
+  disqualified: z.object({ value: z.boolean(), reason: z.string().nullable() }),
+});
+export type AgentTurn = z.infer<typeof agentTurnSchema>;
+
+export const leadStatusSchema = z.enum([
+  'new',
+  'engaged',
+  'qualified',
+  'disqualified',
+  'handoff',
+  'unresponsive',
+]);
+export type LeadStatus = z.infer<typeof leadStatusSchema>;
+
+export const leadSignalsSchema = z.object({
+  urgency: z.number().int().min(0).max(10),
+  seriousness: z.number().int().min(0).max(10),
+  buyingSignals: z.number().int().min(0).max(10),
+  note: z.string(),
+});
+export type LeadSignals = z.infer<typeof leadSignalsSchema>;

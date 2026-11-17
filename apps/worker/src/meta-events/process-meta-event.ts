@@ -4,27 +4,21 @@ import {
   inboundMetaEvents,
   leads,
   messages,
-  phoneNumbers,
   resolveTenantByPhoneNumberId,
   sql,
-  whatsappAccounts,
   withTenant,
 } from '@qualify/db';
 import {
-  decryptSecret,
   extractMessageChanges,
   inboundText,
   isAllowedRecipient,
-  MetaApiError,
   toE164,
   type WaInboundMessage,
   type WaStatus,
   type WaValue,
-  type WhatsAppClient,
 } from '@qualify/integrations';
+import type { RespondJob } from '@qualify/shared';
 import type { Logger } from '../logger.ts';
-
-export type MessagingClient = Pick<WhatsAppClient, 'sendText' | 'markRead'>;
 
 export interface ProcessorDeps {
   db: Database;
@@ -32,12 +26,16 @@ export interface ProcessorDeps {
   /** Dev safety switch (D-034). */
   allowlist: readonly string[];
   isProduction: boolean;
-  /** Null when ENCRYPTION_MASTER_KEY is missing: messages are stored, replies are skipped. */
-  masterKey: Buffer | null;
-  createClient: (accessToken: string) => MessagingClient;
+  /** Debounced: several quick messages from a lead produce one AI reply. */
+  enqueueRespond: (job: RespondJob) => Promise<void>;
 }
 
 const STATUS_RANK: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3 };
+
+/** Emoji reactions are not messages: never stored as chat turns, never answered. */
+const IGNORED_TYPES = new Set(['reaction']);
+/** Stored for the record, but they don't warrant an AI reply (e.g. "customer changed number"). */
+const NO_REPLY_TYPES = new Set(['system', 'unsupported', 'request_welcome']);
 
 /**
  * Processes one stored Meta webhook delivery. Safe to run more than once for the same event:
@@ -97,10 +95,10 @@ async function handleInboundMessage(
   message: WaInboundMessage,
 ): Promise<void> {
   const { db, logger } = deps;
+  if (IGNORED_TYPES.has(message.type)) return;
   const sentAt = new Date(Number(message.timestamp) * 1000);
   const profileName = value.contacts?.find((contact) => contact.wa_id === message.from)?.profile
     ?.name;
-  const text = inboundText(message);
 
   const stored = await withTenant(db, tenantId, async (tx) => {
     const [lead] = await tx
@@ -111,12 +109,17 @@ async function handleInboundMessage(
         name: profileName ?? null,
         source: message.referral ? 'ctwa' : 'whatsapp_inbound',
         lastMessageAt: sentAt,
+        lastInboundAt: sentAt,
       })
       .onConflictDoUpdate({
         target: [leads.tenantId, leads.phoneE164],
-        set: { lastMessageAt: sentAt, name: sql`coalesce(${leads.name}, excluded.name)` },
+        set: {
+          lastMessageAt: sentAt,
+          lastInboundAt: sentAt,
+          name: sql`coalesce(${leads.name}, excluded.name)`,
+        },
       })
-      .returning({ id: leads.id, name: leads.name });
+      .returning({ id: leads.id });
 
     const inserted = await tx
       .insert(messages)
@@ -127,95 +130,31 @@ async function handleInboundMessage(
         direction: 'inbound',
         sender: 'lead',
         type: message.type,
-        body: text,
+        body: inboundText(message),
         payload: message,
         waMessageId: message.id,
         status: 'received',
-        createdAt: sentAt,
+        // created_at = our receipt time (DB clock), so in/out messages order consistently.
+        // Meta's own timestamp (1 s resolution, Meta's clock) stays in payload and drives
+        // last_inbound_at, i.e. the 24 h window.
       })
       .onConflictDoNothing({ target: messages.waMessageId })
       .returning({ id: messages.id });
 
-    return { lead: lead!, isNew: inserted.length > 0 };
+    return { leadId: lead!.id, isNew: inserted.length > 0 };
   });
 
-  // Meta retries deliveries: a message we already stored must never get a second reply.
-  if (!stored.isNew) return;
+  // Meta retries deliveries: a message we already stored must not trigger another reply.
+  if (!stored.isNew || NO_REPLY_TYPES.has(message.type)) return;
 
   if (!isAllowedRecipient(message.from, deps.allowlist, deps.isProduction)) {
     logger.info(
-      { tenantId, leadId: stored.lead.id },
+      { tenantId, leadId: stored.leadId },
       'Dev safety switch: sender not in DEV_ALLOWED_NUMBERS, not replying',
     );
     return;
   }
-
-  // M2 placeholder reply. M3 replaces this with the AI agent (debounced respond job).
-  const reply = text
-    ? `✅ AppsDemo Qualify (dev) received: “${text.slice(0, 200)}”\nThe AI agent arrives in M3.`
-    : `✅ AppsDemo Qualify (dev) received a ${message.type} message. The AI agent arrives in M3.`;
-  await sendReply(deps, tenantId, phoneNumberId, stored.lead.id, message, reply);
-}
-
-async function sendReply(
-  deps: ProcessorDeps,
-  tenantId: string,
-  phoneNumberId: string,
-  leadId: string,
-  inbound: WaInboundMessage,
-  body: string,
-): Promise<void> {
-  const { db, logger } = deps;
-  if (!deps.masterKey) {
-    logger.warn({ tenantId }, 'ENCRYPTION_MASTER_KEY missing: cannot decrypt token, not replying');
-    return;
-  }
-
-  const [account] = await withTenant(db, tenantId, (tx) =>
-    tx
-      .select({ accessTokenEnc: whatsappAccounts.accessTokenEnc })
-      .from(phoneNumbers)
-      .innerJoin(whatsappAccounts, eq(phoneNumbers.whatsappAccountId, whatsappAccounts.id))
-      .where(eq(phoneNumbers.phoneNumberId, phoneNumberId))
-      .limit(1),
-  );
-  if (!account) {
-    logger.warn({ tenantId, phoneNumberId }, 'No WhatsApp account for phone number, not replying');
-    return;
-  }
-
-  const client = deps.createClient(decryptSecret(account.accessTokenEnc, deps.masterKey));
-  await client.markRead(phoneNumberId, inbound.id).catch((error: unknown) => {
-    logger.warn({ err: error }, 'Could not mark message as read');
-  });
-
-  let waMessageId: string | null = null;
-  let error: Record<string, unknown> | null = null;
-  try {
-    waMessageId = (await client.sendText({ phoneNumberId, to: inbound.from, body })).messageId;
-  } catch (caught) {
-    error =
-      caught instanceof MetaApiError
-        ? { message: caught.message, status: caught.status, code: caught.code ?? null }
-        : { message: caught instanceof Error ? caught.message : String(caught) };
-    logger.error({ tenantId, leadId, error }, 'Failed to send WhatsApp reply');
-  }
-
-  await withTenant(db, tenantId, async (tx) => {
-    await tx.insert(messages).values({
-      tenantId,
-      leadId,
-      phoneNumberId,
-      direction: 'outbound',
-      sender: 'system',
-      type: 'text',
-      body,
-      waMessageId,
-      status: waMessageId ? 'sent' : 'failed',
-      error,
-    });
-    await tx.update(leads).set({ lastMessageAt: new Date() }).where(eq(leads.id, leadId));
-  });
+  await deps.enqueueRespond({ tenantId, leadId: stored.leadId });
 }
 
 async function handleStatus(db: Database, tenantId: string, status: WaStatus): Promise<void> {

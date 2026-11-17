@@ -1,9 +1,15 @@
 import { useEffect, useRef } from 'react';
 import type { ConversationMessage, ConversationThread } from '@qualify/shared';
-import { Check, CheckCheck, CircleAlert, Clock, Bot } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Bot, Check, CheckCheck, CircleAlert, Clock, Loader2, Pause, Play } from 'lucide-react';
 import { motion } from 'motion/react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { apiPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { clockTime } from '@/lib/time';
+import { LeadPanel } from './lead-panel';
+import { LeadStatusBadge } from './lead-status';
 
 export function MessageThread({ thread }: { thread: ConversationThread }) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -15,20 +21,64 @@ export function MessageThread({ thread }: { thread: ConversationThread }) {
   }, [lastId]);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b px-4 py-3">
-        <div className="text-sm font-semibold">{thread.lead.name ?? thread.lead.phone}</div>
-        <div className="text-xs text-muted-foreground">
-          {thread.lead.name ? `${thread.lead.phone} · ` : ''}WhatsApp
+    <div className="flex h-full">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center gap-3 border-b px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-sm font-semibold">
+                {thread.lead.name ?? thread.lead.phone}
+              </span>
+              <LeadStatusBadge status={thread.lead.status} />
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {thread.lead.name ? `${thread.lead.phone} · ` : ''}WhatsApp
+            </div>
+          </div>
+          <AiToggle leadId={thread.lead.id} paused={thread.lead.aiPaused} />
+        </div>
+        <div className="flex-1 space-y-2 overflow-y-auto bg-muted/30 px-4 py-4">
+          {thread.messages.map((message) => (
+            <MessageBubble key={message.id} message={message} />
+          ))}
+          <div ref={bottomRef} />
         </div>
       </div>
-      <div className="flex-1 space-y-2 overflow-y-auto bg-muted/30 px-4 py-4">
-        {thread.messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
-        ))}
-        <div ref={bottomRef} />
-      </div>
+      <aside className="hidden w-64 shrink-0 overflow-y-auto border-l xl:block">
+        <LeadPanel lead={thread.lead} />
+      </aside>
     </div>
+  );
+}
+
+/** Pause = a human takes over; Resume = the AI answers the lead's next message. */
+function AiToggle({ leadId, paused }: { leadId: string; paused: boolean }) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => apiPost(`/api/conversations/${leadId}/${paused ? 'resume' : 'pause'}`),
+    onSuccess: async () => {
+      toast.success(paused ? 'AI resumed for this lead' : 'AI paused. You are in control.');
+      await queryClient.invalidateQueries({ queryKey: ['conversations', leadId] });
+    },
+    onError: () => toast.error('Could not change the AI status. Please try again.'),
+  });
+
+  return (
+    <Button
+      variant={paused ? 'default' : 'outline'}
+      size="sm"
+      onClick={() => mutation.mutate()}
+      disabled={mutation.isPending}
+    >
+      {mutation.isPending ? (
+        <Loader2 className="animate-spin" data-icon="inline-start" />
+      ) : paused ? (
+        <Play data-icon="inline-start" />
+      ) : (
+        <Pause data-icon="inline-start" />
+      )}
+      {paused ? 'Resume AI' : 'Pause AI'}
+    </Button>
   );
 }
 

@@ -72,12 +72,53 @@ export class WhatsAppClient {
     return { messageId };
   }
 
-  /** Marks an inbound message as read (blue ticks). */
-  async markRead(phoneNumberId: string, messageId: string): Promise<void> {
+  /**
+   * Sends a message with up to 3 reply buttons (WhatsApp interactive "button" message).
+   * Button ids are `qr_1`…; the lead's tap arrives as an interactive button_reply.
+   */
+  async sendButtons(params: {
+    phoneNumberId: string;
+    to: string;
+    body: string;
+    buttons: readonly string[];
+  }): Promise<{ messageId: string }> {
+    const result = await this.request<{ messages?: { id: string }[] }>(
+      'POST',
+      `/${params.phoneNumberId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: params.to,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text: params.body },
+          action: {
+            buttons: params.buttons.slice(0, 3).map((title, index) => ({
+              type: 'reply',
+              reply: { id: `qr_${index + 1}`, title: title.slice(0, 20) },
+            })),
+          },
+        },
+      },
+    );
+    const messageId = result.messages?.[0]?.id;
+    if (!messageId)
+      throw new MetaApiError(500, 'Cloud API returned no message id', undefined, result);
+    return { messageId };
+  }
+
+  /** Marks an inbound message as read (blue ticks); optionally shows "typing…" to the lead. */
+  async markRead(
+    phoneNumberId: string,
+    messageId: string,
+    options: { typing?: boolean } = {},
+  ): Promise<void> {
     await this.request('POST', `/${phoneNumberId}/messages`, {
       messaging_product: 'whatsapp',
       status: 'read',
       message_id: messageId,
+      ...(options.typing ? { typing_indicator: { type: 'text' } } : {}),
     });
   }
 

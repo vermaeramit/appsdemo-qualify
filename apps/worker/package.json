@@ -11,7 +11,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "connect-dev-number": "node --env-file-if-exists=../../.env src/scripts/connect-dev-number.ts",
-    "set-dev-webhook": "node --env-file-if-exists=../../.env src/scripts/set-dev-webhook.ts"
+    "set-dev-webhook": "node --env-file-if-exists=../../.env src/scripts/set-dev-webhook.ts",
+    "install-playbook": "node src/scripts/install-playbook.ts",
+    "eval": "node src/evals/run-eval.ts"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^12.2.1",
@@ -23,6 +25,7 @@
     "vitest": "^5.1.0"
   },
   "dependencies": {
+    "@qualify/core": "workspace:*",
     "@qualify/db": "workspace:*",
     "@qualify/integrations": "workspace:*",
     "@qualify/shared": "workspace:*",

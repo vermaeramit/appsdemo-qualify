@@ -1,57 +1,28 @@
-// Integration test: real Postgres (Testcontainers) + migrations, connected as qualify_app,
-// with a fake WhatsApp client. Covers the webhook → lead/message → reply pipeline.
+// Integration test: webhook event → lead + message → debounced respond job.
 import { randomBytes } from 'node:crypto';
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import {
-  createDb,
-  type DbHandle,
-  eq,
-  inboundMetaEvents,
-  leads,
-  messages,
-  organization,
-  phoneNumbers,
-  runMigrations,
-  tenants,
-  whatsappAccounts,
-  withTenant,
-} from '@qualify/db';
-import { encryptSecret, MetaApiError } from '@qualify/integrations';
-import pg from 'pg';
+import { eq, inboundMetaEvents, leads, messages, withTenant } from '@qualify/db';
+import type { RespondJob } from '@qualify/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  type MessagingClient,
-  processMetaEvent,
-  type ProcessorDeps,
-} from './process-meta-event.ts';
+  ALLOWED,
+  PHONE_NUMBER_ID,
+  STRANGER,
+  startTestDb,
+  TENANT,
+  type TestDb,
+} from '../test/test-db.ts';
+import { processMetaEvent, type ProcessorDeps } from './process-meta-event.ts';
 
-const TENANT = 'org_travel';
-const PHONE_NUMBER_ID = 'PN_DEV';
-const ALLOWED = '919812345678';
-const STRANGER = '919800000099';
-const masterKey = randomBytes(32);
+let testDb: TestDb;
+let enqueueRespond: ReturnType<typeof vi.fn<(job: RespondJob) => Promise<void>>>;
 
-let container: StartedPostgreSqlContainer;
-let app: DbHandle;
-let sendText: ReturnType<typeof vi.fn>;
-let tokensSeen: string[];
-
-function deps(overrides: Partial<ProcessorDeps> = {}): ProcessorDeps {
+function deps(): ProcessorDeps {
   return {
-    db: app.db,
+    db: testDb.app.db,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     allowlist: [ALLOWED],
     isProduction: false,
-    masterKey,
-    createClient: (token) => {
-      tokensSeen.push(token);
-      const client: MessagingClient = {
-        sendText: sendText as unknown as MessagingClient['sendText'],
-        markRead: vi.fn(async () => undefined),
-      };
-      return client;
-    },
-    ...overrides,
+    enqueueRespond,
   };
 }
 
@@ -111,160 +82,132 @@ function statusPayload(waMessageId: string, status: string, timestamp: string) {
 }
 
 async function storeEvent(payload: Record<string, unknown>): Promise<string> {
-  const [event] = await app.db
+  const [event] = await testDb.app.db
     .insert(inboundMetaEvents)
     .values({ object: 'whatsapp_business_account', payload })
     .returning({ id: inboundMetaEvents.id });
   return event!.id;
 }
 
-const tenantMessages = () => withTenant(app.db, TENANT, (tx) => tx.select().from(messages));
+const tenantMessages = () => withTenant(testDb.app.db, TENANT, (tx) => tx.select().from(messages));
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer('postgres:17-alpine').start();
-  const ownerUrl = container.getConnectionUri();
-  const owner = new pg.Client({ connectionString: ownerUrl });
-  await owner.connect();
-  await owner.query(`CREATE ROLE qualify_app LOGIN PASSWORD 'app_pw'`);
-  await owner.end();
-  await runMigrations(ownerUrl);
-
-  const seed = createDb(ownerUrl, { max: 1 });
-  await seed.db
-    .insert(organization)
-    .values({ id: TENANT, name: 'Travel', slug: 'travel', createdAt: new Date() });
-  await seed.db.insert(tenants).values({ id: TENANT });
-  const [account] = await seed.db
-    .insert(whatsappAccounts)
-    .values({
-      tenantId: TENANT,
-      wabaId: 'WABA_DEV',
-      onboardingType: 'dev',
-      accessTokenEnc: encryptSecret('EAAG-dev-token', masterKey),
-    })
-    .returning();
-  await seed.db.insert(phoneNumbers).values({
-    tenantId: TENANT,
-    whatsappAccountId: account!.id,
-    phoneNumberId: PHONE_NUMBER_ID,
-    displayPhone: '+91 93509 83656',
-  });
-  await seed.pool.end();
-
-  const appUrl = new URL(ownerUrl);
-  appUrl.username = 'qualify_app';
-  appUrl.password = 'app_pw';
-  app = createDb(appUrl.toString(), { max: 3 });
+  testDb = await startTestDb(randomBytes(32));
 }, 180_000);
 
 afterAll(async () => {
-  await app?.pool.end();
-  await container?.stop();
+  await testDb?.stop();
 });
 
 beforeEach(() => {
-  sendText = vi.fn(async () => ({ messageId: `wamid.out.${Math.random()}` }));
-  tokensSeen = [];
+  enqueueRespond = vi.fn(async () => undefined);
 });
 
 describe('processMetaEvent', () => {
-  it('stores the lead and message, and replies once to an allow-listed number', async () => {
+  it('stores the lead and message and schedules one AI reply', async () => {
     const eventId = await storeEvent(inboundPayload(ALLOWED, 'wamid.in.1', 'Dubai package price?'));
-
     await processMetaEvent(eventId, deps());
 
-    const [lead] = await withTenant(app.db, TENANT, (tx) => tx.select().from(leads));
+    const [lead] = await withTenant(testDb.app.db, TENANT, (tx) => tx.select().from(leads));
     expect(lead).toMatchObject({
       phoneE164: `+${ALLOWED}`,
       name: 'Rahul Sharma',
       source: 'whatsapp_inbound',
     });
+    expect(lead?.lastInboundAt).toEqual(new Date(1763400000 * 1000));
 
     const stored = await tenantMessages();
-    const inbound = stored.find((row) => row.waMessageId === 'wamid.in.1');
-    const outbound = stored.find((row) => row.direction === 'outbound');
-    expect(inbound).toMatchObject({
+    expect(stored.find((row) => row.waMessageId === 'wamid.in.1')).toMatchObject({
       direction: 'inbound',
       sender: 'lead',
       body: 'Dubai package price?',
     });
-    expect(outbound).toMatchObject({ status: 'sent', sender: 'system' });
+    expect(enqueueRespond).toHaveBeenCalledExactlyOnceWith({ tenantId: TENANT, leadId: lead!.id });
 
-    expect(sendText).toHaveBeenCalledTimes(1);
-    expect(sendText.mock.calls[0]?.[0]).toMatchObject({
-      phoneNumberId: PHONE_NUMBER_ID,
-      to: ALLOWED,
-    });
-    expect(tokensSeen).toEqual(['EAAG-dev-token']); // decrypted per tenant
-
-    const [event] = await app.db
+    const [event] = await testDb.app.db
       .select()
       .from(inboundMetaEvents)
       .where(eq(inboundMetaEvents.id, eventId));
     expect(event?.processedAt).not.toBeNull();
   });
 
-  it('never replies twice: re-processing or a Meta retry of the same message is a no-op', async () => {
+  it('does not schedule again when the same event or a Meta retry is processed', async () => {
     const before = (await tenantMessages()).length;
-
-    const firstEventId = (await app.db.select().from(inboundMetaEvents).limit(1))[0]!.id;
-    await processMetaEvent(firstEventId, deps()); // same event again
-    const retryEventId = await storeEvent(
-      inboundPayload(ALLOWED, 'wamid.in.1', 'Dubai package price?'),
+    const firstEventId = (await testDb.app.db.select().from(inboundMetaEvents).limit(1))[0]!.id;
+    await processMetaEvent(firstEventId, deps());
+    await processMetaEvent(
+      await storeEvent(inboundPayload(ALLOWED, 'wamid.in.1', 'Dubai package price?')),
+      deps(),
     );
-    await processMetaEvent(retryEventId, deps()); // Meta re-delivered the same message
 
-    expect(sendText).not.toHaveBeenCalled();
+    expect(enqueueRespond).not.toHaveBeenCalled();
     expect((await tenantMessages()).length).toBe(before);
   });
 
-  it('stores but does not answer numbers outside DEV_ALLOWED_NUMBERS', async () => {
-    const eventId = await storeEvent(inboundPayload(STRANGER, 'wamid.in.2', 'hello'));
-    await processMetaEvent(eventId, deps());
-
-    expect(sendText).not.toHaveBeenCalled();
-    const stored = await tenantMessages();
-    expect(stored.some((row) => row.waMessageId === 'wamid.in.2')).toBe(true);
+  it('stores but does not schedule replies for numbers outside DEV_ALLOWED_NUMBERS', async () => {
+    await processMetaEvent(
+      await storeEvent(inboundPayload(STRANGER, 'wamid.in.2', 'hello')),
+      deps(),
+    );
+    expect(enqueueRespond).not.toHaveBeenCalled();
+    expect((await tenantMessages()).some((row) => row.waMessageId === 'wamid.in.2')).toBe(true);
   });
 
   it('applies delivery statuses in order and ignores late, older statuses', async () => {
-    const outbound = (await tenantMessages()).find((row) => row.direction === 'outbound')!;
+    const [lead] = await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx.select().from(leads).limit(1),
+    );
+    await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx.insert(messages).values({
+        tenantId: TENANT,
+        leadId: lead!.id,
+        phoneNumberId: PHONE_NUMBER_ID,
+        direction: 'outbound',
+        sender: 'ai',
+        type: 'text',
+        body: 'Hi!',
+        waMessageId: 'wamid.out.1',
+        status: 'sent',
+      }),
+    );
     for (const [status, ts] of [
       ['delivered', '1763400010'],
       ['read', '1763400020'],
-      ['sent', '1763400005'], // arrives late
+      ['sent', '1763400005'],
     ] as const) {
-      await processMetaEvent(
-        await storeEvent(statusPayload(outbound.waMessageId!, status, ts)),
-        deps(),
-      );
+      await processMetaEvent(await storeEvent(statusPayload('wamid.out.1', status, ts)), deps());
     }
-    const [updated] = await withTenant(app.db, TENANT, (tx) =>
-      tx.select().from(messages).where(eq(messages.id, outbound.id)),
+    const [updated] = await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx.select().from(messages).where(eq(messages.waMessageId, 'wamid.out.1')),
     );
     expect(updated?.status).toBe('read');
   });
 
-  it('records a failed reply when the Cloud API rejects it', async () => {
-    sendText = vi.fn(async () => {
-      throw new MetaApiError(400, 'Re-engagement message', 131047, {});
-    });
-    await processMetaEvent(
-      await storeEvent(inboundPayload(ALLOWED, 'wamid.in.3', 'still there?')),
-      deps(),
-    );
-
-    const failed = (await tenantMessages()).find(
-      (row) => row.direction === 'outbound' && row.status === 'failed',
-    );
-    expect(failed?.error).toMatchObject({ code: 131047, status: 400 });
+  it('ignores emoji reactions completely', async () => {
+    const before = (await tenantMessages()).length;
+    const payload = inboundPayload(ALLOWED, 'wamid.reaction.1', 'unused');
+    const value = payload.entry[0]!.changes[0]!.value as { messages: Record<string, unknown>[] };
+    value.messages = [
+      {
+        id: 'wamid.reaction.1',
+        from: ALLOWED,
+        timestamp: '1763400100',
+        type: 'reaction',
+        reaction: { message_id: 'wamid.out.1', emoji: '👍' },
+      },
+    ];
+    await processMetaEvent(await storeEvent(payload), deps());
+    expect((await tenantMessages()).length).toBe(before);
+    expect(enqueueRespond).not.toHaveBeenCalled();
   });
 
   it('ignores webhooks for phone numbers that belong to no tenant', async () => {
     const before = (await tenantMessages()).length;
-    const eventId = await storeEvent(inboundPayload(ALLOWED, 'wamid.in.4', 'hi', 'PN_UNKNOWN'));
-    await processMetaEvent(eventId, deps());
+    await processMetaEvent(
+      await storeEvent(inboundPayload(ALLOWED, 'wamid.in.4', 'hi', 'PN_UNKNOWN')),
+      deps(),
+    );
     expect((await tenantMessages()).length).toBe(before);
-    expect(sendText).not.toHaveBeenCalled();
+    expect(enqueueRespond).not.toHaveBeenCalled();
   });
 });

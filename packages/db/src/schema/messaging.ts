@@ -8,7 +8,9 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import type { LeadSignals } from '@qualify/shared';
 import { tenants } from './platform.ts';
+import { playbookVersions } from './playbooks.ts';
 
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 const updatedAt = () =>
@@ -69,8 +71,22 @@ export const leads = pgTable(
     phoneE164: text('phone_e164').notNull(),
     name: text('name'),
     source: text('source', { enum: ['whatsapp_inbound', 'meta_form', 'ctwa', 'api'] }).notNull(),
+    /** new | engaged | qualified | disqualified | handoff | unresponsive (leadStatusSchema). */
     status: text('status').notNull().default('new'),
+    /** Playbook version this conversation follows (pinned at first AI reply). */
+    playbookVersionId: uuid('playbook_version_id').references(() => playbookVersions.id, {
+      onDelete: 'set null',
+    }),
+    /** Collected qualification fields, normalised (key → value). */
+    fields: jsonb('fields').$type<Record<string, string>>().notNull().default({}),
+    language: text('language'),
+    /** True when a human took over or the AI must stay silent for this lead. */
+    aiPaused: boolean('ai_paused').notNull().default(false),
+    signals: jsonb('signals').$type<LeadSignals>(),
+    lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+    qualifiedAt: timestamp('qualified_at', { withTimezone: true }),
+    handoffAt: timestamp('handoff_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

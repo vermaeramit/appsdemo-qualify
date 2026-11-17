@@ -29,6 +29,20 @@
       "when": 1794936962972,
       "tag": "0003_messaging_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794940447543,
+      "tag": "0004_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794940448794,
+      "tag": "0005_agent_rls",
+      "breakpoints": true
     }
   ]
 }

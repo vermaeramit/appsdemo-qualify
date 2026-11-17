@@ -26,3 +26,6 @@ test-results/
 !.vscode/extensions.json
 .DS_Store
 Thumbs.db
+
+# AI eval raw outputs (reports go to docs/evals)
+.eval-results/

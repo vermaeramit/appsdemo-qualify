@@ -13,6 +13,19 @@ export class ApiError extends Error {
   }
 }
 
+/** POST to our same-origin API (the browser adds the Origin header our CSRF guard checks). */
+export async function apiPost(url: string, body?: unknown): Promise<void> {
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+    body: body === undefined ? null : JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, `${response.status} ${response.statusText}`);
+  }
+}
+
 /** Fetch JSON from our same-origin API and validate it against a shared schema. */
 export async function fetchJson<T>(url: string, schema: Parser<T>, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {

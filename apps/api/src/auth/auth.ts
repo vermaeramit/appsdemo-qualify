@@ -1,9 +1,11 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { organization } from 'better-auth/plugins';
+import { TRAVEL_TEMPLATE_KEY, travelPlaybookTemplate } from '@qualify/core';
 import {
   account,
   auditLogs,
+  createPublishedPlaybook,
   eq,
   invitation,
   member,
@@ -82,6 +84,15 @@ export function createAuth(db: Database, env: Env) {
           afterCreateOrganization: async ({ organization: org, user: creator }) => {
             await withTenant(db, org.id, async (tx) => {
               await tx.insert(tenants).values({ id: org.id });
+              // Every workspace starts with a ready agent (travel template for now; the
+              // template picker arrives with the playbook builder in M5).
+              await createPublishedPlaybook(tx, {
+                tenantId: org.id,
+                name: 'Travel packages',
+                templateKey: TRAVEL_TEMPLATE_KEY,
+                config: travelPlaybookTemplate(org.name),
+                isDefault: true,
+              });
               await tx.insert(auditLogs).values({
                 tenantId: org.id,
                 actorUserId: creator.id,

@@ -225,6 +225,13 @@ Respond job
 - The SDK validates the output against the schema. On failure, retry once. If it fails again, send a safe holding reply and flag the lead.
 - Check the finish reason (length, content filter) before using the output.
 
+### 7.3a Implementation notes (M3)
+- **Reply language** is detected in code from the lead's latest message (`detectLanguage`) and written into the state note. Short or ambiguous messages keep the conversation's language (D-041).
+- **Message order** uses our receipt time (`messages.created_at`, DB clock). Meta's timestamp drives only `leads.last_inbound_at`, i.e. the 24 h window.
+- **Ignored inbound types:** emoji reactions are dropped. `system`, `unsupported` and `request_welcome` are stored without triggering a reply.
+- **Signals** describe overall intent. After a lead reaches an end state, follow-up chit-chat never overwrites them.
+- **Model:** `gpt-5.4-mini`, reasoning `low` (D-040). Every reply stores its token usage, including cached tokens, in `messages.payload.usage`.
+
 ### 7.4 Follow-ups
 - One BullMQ delayed job per lead and step, defined by the playbook (for example, +2 h, +1 day). The job ID is deterministic, so it can be removed.
 - Removed when the lead replies.

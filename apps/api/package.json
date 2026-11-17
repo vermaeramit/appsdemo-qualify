@@ -17,6 +17,7 @@
     "@nestjs/common": "^12.5.0",
     "@nestjs/core": "^12.5.0",
     "@nestjs/platform-fastify": "^12.5.0",
+    "@qualify/core": "workspace:*",
     "@qualify/db": "workspace:*",
     "@qualify/integrations": "workspace:*",
     "@qualify/shared": "workspace:*",
