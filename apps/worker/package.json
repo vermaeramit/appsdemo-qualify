@@ -10,7 +10,8 @@
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
-    "connect-dev-number": "node --env-file-if-exists=../../.env src/scripts/connect-dev-number.ts"
+    "connect-dev-number": "node --env-file-if-exists=../../.env src/scripts/connect-dev-number.ts",
+    "set-dev-webhook": "node --env-file-if-exists=../../.env src/scripts/set-dev-webhook.ts"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^12.2.1",

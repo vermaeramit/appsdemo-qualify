@@ -69,7 +69,7 @@
 - E2E in CI needs the full stack in the workflow (later). Seq log shipping (M8).
 - `pnpm audit`: 3 moderate advisories, all in dev-only tooling (drizzle-kit's esbuild, Testcontainers' glob, ESLint's minimatch). None are in the production runtime.
 
-## M2 — WhatsApp core 🔨 code done 2026-11-17, live Meta test pending
+## M2 — WhatsApp core ✅ live-verified 2026-11-17
 - `/api/webhooks/meta`: verify-token handshake, raw-body HMAC signature check, persist to `inbound_meta_events`, enqueue (BullMQ `meta-events`), fast 200
 - Worker: resolve tenant by phone number (D-036), upsert lead, store the message (idempotent on `wa_message_id`), apply delivery statuses in order, and send a placeholder dev reply only to `DEV_ALLOWED_NUMBERS` (D-034). A failed send is stored as `failed` with the Meta error.
 - `packages/integrations`: Cloud API client, webhook Zod schemas, signature, AES-256-GCM token encryption
@@ -80,12 +80,11 @@
 
 **Verified so far:** 6 worker pipeline integration tests (store, reply once, Meta retry → no second reply, allowlist, status order, failed send), 4 more RLS tests (routing function, messaging isolation, dedupe), and a local signed-webhook simulation (handshake, valid and forged signatures, processing, inbox API).
 
-**Remaining (needs the owner's Meta values):**
-1. Fill `WHATSAPP_DEV_PHONE_NUMBER_ID`, `WHATSAPP_DEV_WABA_ID`, `WHATSAPP_SYSTEM_USER_TOKEN`, `DEV_ALLOWED_NUMBERS` in `.env`.
-2. `pnpm --filter @qualify/worker connect-dev-number`
-3. Cloudflare quick tunnel → set the webhook in the Meta app to `https://<tunnel>/api/webhooks/meta` and subscribe to `messages`.
+**Live setup (done):** Meta app **appsdemo_api** (App ID, secret and system-user token all from it, verified consistent). The number is connected to the owner's "Appsdemo" workspace; only our app is subscribed to the WABA. Cloudflare quick tunnel + `set-dev-webhook`; Meta's own handshake succeeded.
 
-**Acceptance:** message +91 93509 83656 from an allow-listed phone → it appears in Conversations → the dev reply arrives on WhatsApp.
+**Acceptance ✅:** the owner messaged +91 93509 83656 from their allow-listed phone. Both messages appeared (lead name taken from the WhatsApp profile), both dev replies arrived and reached `read`, and 8/8 webhook events were processed with 0 errors. Reply latency was about 4–8 s.
+
+**Follow-ups:** quick-tunnel URLs change on every restart (re-run `set-dev-webhook`). A stable staging URL comes with M8. Add a sweeper that re-enqueues `inbound_meta_events` with `processed_at IS NULL` (Redis outage safety).
 
 ## M3 — AI agent
 - LLM client: Vercel AI SDK with the OpenRouter / OpenAI provider from config, cache-friendly prompt builder, structured output from Zod schemas
