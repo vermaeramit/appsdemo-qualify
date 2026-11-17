@@ -1,0 +1,48 @@
+# Local development infrastructure only. Production compose lives in deploy/ (M8).
+name: qualify-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: qualify
+      POSTGRES_PASSWORD: qualify_dev_password
+      POSTGRES_DB: qualify
+    ports:
+      - '127.0.0.1:5434:5432' # host 5432/5433 are taken by other local Postgres instances
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U qualify -d qualify']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '127.0.0.1:6380:6379' # host 6379 is taken by another project's Redis
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  seq:
+    image: datalust/seq:latest
+    environment:
+      ACCEPT_EULA: 'Y'
+      SEQ_FIRSTRUN_NOAUTHENTICATION: 'true' # local dev only
+    ports:
+      - '127.0.0.1:5380:80' # Seq UI: http://localhost:5380
+      - '127.0.0.1:5341:5341' # log ingestion
+    volumes:
+      - seqdata:/data
+
+volumes:
+  pgdata:
+  redisdata:
+  seqdata:
