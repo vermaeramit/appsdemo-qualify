@@ -6,7 +6,17 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type DbHandle } from './client.ts';
 import { runMigrations } from './migrate.ts';
-import { auditLogs, organization, partners, tenants } from './schema/index.ts';
+import { resolveTenantByPhoneNumberId } from './routing.ts';
+import {
+  auditLogs,
+  leads,
+  messages,
+  organization,
+  partners,
+  phoneNumbers,
+  tenants,
+  whatsappAccounts,
+} from './schema/index.ts';
 import { withTenant } from './tenant.ts';
 
 const APP_PASSWORD = 'test_app_password';
@@ -39,6 +49,27 @@ beforeAll(async () => {
     { id: 'org_b', name: 'Workspace B', slug: 'b', createdAt: now },
   ]);
   await seed.db.insert(tenants).values([{ id: 'org_a' }, { id: 'org_b' }]); // superuser bypasses RLS
+  const [accountA, accountB] = await seed.db
+    .insert(whatsappAccounts)
+    .values([
+      { tenantId: 'org_a', wabaId: 'waba_a', onboardingType: 'dev', accessTokenEnc: 'enc_a' },
+      { tenantId: 'org_b', wabaId: 'waba_b', onboardingType: 'dev', accessTokenEnc: 'enc_b' },
+    ])
+    .returning();
+  await seed.db.insert(phoneNumbers).values([
+    {
+      tenantId: 'org_a',
+      whatsappAccountId: accountA!.id,
+      phoneNumberId: 'pn_a',
+      displayPhone: '+91 1',
+    },
+    {
+      tenantId: 'org_b',
+      whatsappAccountId: accountB!.id,
+      phoneNumberId: 'pn_b',
+      displayPhone: '+91 2',
+    },
+  ]);
   await seed.pool.end();
 
   const appUrl = new URL(ownerUrl);
@@ -98,5 +129,81 @@ describe('RLS tenant isolation (connected as qualify_app)', () => {
   it('cannot modify partners (platform-managed)', async () => {
     const attempt = app.db.insert(partners).values({ id: 'evil', name: 'Evil' });
     await expect(attempt).rejects.toSatisfy((error) => /permission denied/.test(errorText(error)));
+  });
+});
+
+describe('Messaging tables and webhook routing (connected as qualify_app)', () => {
+  it('resolves the tenant of a phone number without tenant context', async () => {
+    expect(await resolveTenantByPhoneNumberId(app.db, 'pn_a')).toBe('org_a');
+    expect(await resolveTenantByPhoneNumberId(app.db, 'pn_b')).toBe('org_b');
+    expect(await resolveTenantByPhoneNumberId(app.db, 'pn_unknown')).toBeNull();
+  });
+
+  it('still cannot read phone numbers or WhatsApp accounts of another tenant', async () => {
+    expect(await app.db.select().from(phoneNumbers)).toEqual([]);
+    const seenByB = await withTenant(app.db, 'org_b', (tx) => tx.select().from(phoneNumbers));
+    expect(seenByB.map((row) => row.phoneNumberId)).toEqual(['pn_b']);
+    const accountsSeenByB = await withTenant(app.db, 'org_b', (tx) =>
+      tx.select().from(whatsappAccounts),
+    );
+    expect(accountsSeenByB.map((row) => row.wabaId)).toEqual(['waba_b']);
+  });
+
+  it('isolates leads and messages, and rejects spoofed tenant ids', async () => {
+    const lead = await withTenant(app.db, 'org_a', async (tx) => {
+      const [created] = await tx
+        .insert(leads)
+        .values({ tenantId: 'org_a', phoneE164: '+919800000001', source: 'whatsapp_inbound' })
+        .returning();
+      await tx.insert(messages).values({
+        tenantId: 'org_a',
+        leadId: created!.id,
+        phoneNumberId: 'pn_a',
+        direction: 'inbound',
+        sender: 'lead',
+        type: 'text',
+        body: 'Hi, Dubai package?',
+        waMessageId: 'wamid.a1',
+        status: 'received',
+      });
+      return created!;
+    });
+
+    const leadsSeenByB = await withTenant(app.db, 'org_b', (tx) => tx.select().from(leads));
+    const messagesSeenByB = await withTenant(app.db, 'org_b', (tx) => tx.select().from(messages));
+    expect(leadsSeenByB).toEqual([]);
+    expect(messagesSeenByB).toEqual([]);
+
+    const spoof = withTenant(app.db, 'org_b', (tx) =>
+      tx.insert(messages).values({
+        tenantId: 'org_a',
+        leadId: lead.id,
+        phoneNumberId: 'pn_b',
+        direction: 'outbound',
+        sender: 'ai',
+        type: 'text',
+        body: 'spoofed',
+        status: 'pending',
+      }),
+    );
+    await expect(spoof).rejects.toSatisfy((error) => /row-level security/.test(errorText(error)));
+  });
+
+  it('dedupes webhook retries on wa_message_id', async () => {
+    const duplicate = withTenant(app.db, 'org_a', async (tx) => {
+      const [lead] = await tx.select().from(leads).limit(1);
+      await tx.insert(messages).values({
+        tenantId: 'org_a',
+        leadId: lead!.id,
+        phoneNumberId: 'pn_a',
+        direction: 'inbound',
+        sender: 'lead',
+        type: 'text',
+        body: 'retry',
+        waMessageId: 'wamid.a1',
+        status: 'received',
+      });
+    });
+    await expect(duplicate).rejects.toSatisfy((error) => /duplicate key/.test(errorText(error)));
   });
 });

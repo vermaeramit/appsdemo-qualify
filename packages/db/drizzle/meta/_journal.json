@@ -15,6 +15,20 @@
       "when": 1794934555872,
       "tag": "0001_rls_and_app_role",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794936961536,
+      "tag": "0002_messaging",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794936962972,
+      "tag": "0003_messaging_rls",
+      "breakpoints": true
     }
   ]
 }

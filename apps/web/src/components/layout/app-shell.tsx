@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router';
 import {
   LayoutDashboard,
   MessageSquareText,
+  MessagesSquare,
   Search,
   Settings,
   Users,
@@ -39,6 +40,11 @@ const upcoming: { label: string; icon: LucideIcon }[] = [
 const navItemClass =
   'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors';
 
+const navLinks = [
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/conversations', label: 'Conversations', icon: MessagesSquare, exact: false },
+] as const;
+
 export function AppShell({ user, workspace, children }: AppShellProps) {
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -49,19 +55,22 @@ export function AppShell({ user, workspace, children }: AppShellProps) {
           <BrandLogo />
         </div>
         <nav className="flex-1 space-y-0.5 p-2" aria-label="Main">
-          <Link
-            to="/"
-            className={navItemClass}
-            activeOptions={{ exact: true }}
-            activeProps={{ className: 'bg-sidebar-accent text-sidebar-accent-foreground' }}
-            inactiveProps={{
-              className:
-                'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
-            }}
-          >
-            <LayoutDashboard className="size-4" />
-            Dashboard
-          </Link>
+          {navLinks.map(({ to, label, icon: Icon, exact }) => (
+            <Link
+              key={to}
+              to={to}
+              className={navItemClass}
+              activeOptions={{ exact }}
+              activeProps={{ className: 'bg-sidebar-accent text-sidebar-accent-foreground' }}
+              inactiveProps={{
+                className:
+                  'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+              }}
+            >
+              <Icon className="size-4" />
+              {label}
+            </Link>
+          ))}
           {upcoming.map(({ label, icon: Icon }) => (
             <Tooltip key={label}>
               <TooltipTrigger asChild>

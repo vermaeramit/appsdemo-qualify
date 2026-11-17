@@ -3,5 +3,6 @@
 export { and, asc, count, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 export * from './client.ts';
 export * from './migrate.ts';
+export * from './routing.ts';
 export * from './schema/index.ts';
 export * from './tenant.ts';

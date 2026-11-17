@@ -18,6 +18,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Dev only: lets a Cloudflare quick tunnel reach the dev server (Meta webhooks via /api).
+    allowedHosts: ['.trycloudflare.com'],
     proxy: {
       // Same-origin in dev too: the browser calls /api, Vite forwards to the NestJS api.
       '/api': 'http://localhost:3000',

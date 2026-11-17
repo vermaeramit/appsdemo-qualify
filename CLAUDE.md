@@ -49,11 +49,16 @@ Full-stack TypeScript, pnpm 12 monorepo, Node.js 26 LTS, TypeScript 6.0 (don't u
 - 2026-11-17: discovery complete, docs written.
 - 2026-11-17: LLM provider switched to OpenAI / OpenRouter (D-021). Backend switched from .NET to full-stack TypeScript (D-022 to D-027).
 - 2026-11-17: **M0 built and verified locally.** Node 26.13.1 + pnpm 12.21.0 installed. Dev infra runs on host ports Postgres 5434, Redis 6380, Seq 5380 (another local project uses 5433/6379). First commit created on `main` (push to GitHub done by the owner).
-- 2026-11-17: **M1 built and verified** (auth, workspaces, RLS, protected app shell; e2e passes). Next: M2 (WhatsApp core). Needs the Meta App ID/secret, test number ID and a system-user token in `.env`.
+- 2026-11-17: **M1 built and verified** (auth, workspaces, RLS, protected app shell; e2e passes).
+- 2026-11-17: **M2 code done** (webhooks → queue → worker → leads/messages → inbox, dev reply behind the allowlist). Verified with tests and a local signed-webhook simulation. Live Meta test is pending the owner's `.env` values (see MILESTONES M2 "Remaining"). The owner's own workspace "Appsdemo" exists in the dev DB, so don't delete it.
 
 ## Local dev notes
 - Run commands with Node 26 (`nvm use 26.13.1`). In tool shells, prepend `C:\nvm4w\nodejs` to PATH.
 - `pnpm infra:up`, then `pnpm db:migrate`, then `pnpm dev`. Web: http://localhost:5173, API: http://localhost:3000/api/health, Seq: http://localhost:5380.
 - E2E: `pnpm --filter @qualify/web test:e2e`, with the dev stack running (uses the installed Chrome).
 - Playwright's `getByLabel('Password')` also matches the "Show password" button, so use `{ exact: true }`.
+- Drizzle gotcha: in single-table selects `${table.column}` renders as a bare `"column"`. In correlated subqueries, reference the outer table explicitly in raw SQL (e.g. `m.lead_id = leads.id`).
+- Webhook routing: `resolveTenantByPhoneNumberId()` from `@qualify/db`. Never query `phone_numbers` outside `withTenant()`.
+- Connect our dev number: `pnpm --filter @qualify/worker connect-dev-number [workspace-slug]`.
+- Clean test data only by exact criteria. The owner uses the dev DB too (their workspace "Appsdemo").
 - The owner's other Docker containers (e.g. `personal-assistant-*`) are separate projects. Stop or change them only when the owner asks. They were stopped on request on 2026-11-17 (restart policy `unless-stopped`, so they stay stopped).

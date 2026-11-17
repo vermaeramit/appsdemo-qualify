@@ -40,7 +40,7 @@ Related: [PRD.md](PRD.md) · [DECISIONS.md](DECISIONS.md) · [MILESTONES.md](MIL
 │  /               → web: React static build                        │              │
 │  /api/*          → api: NestJS (dashboard APIs, auth, inbound lead API)          │
 │  /socket.io/*    → api: Socket.IO gateway (live chat, live scores)│              │
-│  /webhooks/meta  → api: verify signature → persist raw → enqueue → 200           │
+│  /api/webhooks/meta → api: verify signature → persist raw → enqueue → 200        │
 └──────────────────────────┬────────────────────────────────────────┼──────────────┘
                            │ BullMQ jobs (Redis)                    │
                            ▼                                        │
@@ -101,8 +101,8 @@ Platform
 - Platform-level operations (Super Admin, webhook routing lookups) use a separate, narrowly scoped DB role and module.
 
 ### 4.3 Tenant resolution for Meta webhooks
-- All Meta webhooks hit one endpoint, `/webhooks/meta`, because there is one app-level subscription.
-- WhatsApp events resolve the tenant by `metadata.phone_number_id` (or `waba_id`).
+- All Meta webhooks hit one endpoint, `/api/webhooks/meta`, because there is one app-level subscription.
+- WhatsApp events resolve the tenant by `metadata.phone_number_id`, through `resolve_tenant_by_phone_number_id()`. This SECURITY DEFINER function is owned by the NOLOGIN role `qualify_router`, which can only read `(phone_number_id, tenant_id, status)` of `phone_numbers`. The worker needs no tenant context for the lookup, and `qualify_app` still cannot read other tenants' rows (D-036).
 - Lead-form events resolve it by `page_id`.
 
 ### 4.4 Secrets

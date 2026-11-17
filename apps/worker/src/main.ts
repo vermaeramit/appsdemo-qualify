@@ -1,22 +1,67 @@
-// M0 placeholder: the worker process boots and shuts down cleanly.
-// BullMQ processors (ingestion, conversation, scoring, follow-ups, webhooks) arrive from M2.
-// In dev, Node runs this TypeScript file directly (type stripping); `pnpm build` compiles it to dist/.
+import { createDb } from '@qualify/db';
+import { parseAllowlist, parseMasterKey, WhatsAppClient } from '@qualify/integrations';
+import { metaEventJobSchema, QUEUES } from '@qualify/shared';
+import { Worker } from 'bullmq';
+import { Redis } from 'ioredis';
+import { loadWorkerEnv } from './env.ts';
+import { createLogger } from './logger.ts';
+import { processMetaEvent } from './meta-events/process-meta-event.ts';
 
-function log(msg: string): void {
-  console.log(
-    JSON.stringify({ level: 'info', service: 'worker', time: new Date().toISOString(), msg }),
+const env = loadWorkerEnv();
+const logger = createLogger(env.LOG_LEVEL, env.NODE_ENV === 'development');
+const { db, pool } = createDb(env.APP_DATABASE_URL);
+const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
+
+const allowlist = parseAllowlist(env.DEV_ALLOWED_NUMBERS);
+const isProduction = env.NODE_ENV === 'production';
+const masterKey = env.ENCRYPTION_MASTER_KEY ? parseMasterKey(env.ENCRYPTION_MASTER_KEY) : null;
+
+if (!isProduction) {
+  logger.info(
+    { allowedNumbers: allowlist.length },
+    allowlist.length
+      ? 'Dev safety switch ON: replying only to DEV_ALLOWED_NUMBERS'
+      : 'Dev safety switch ON: DEV_ALLOWED_NUMBERS is empty, the bot will not reply to anyone',
   );
 }
+if (!masterKey) logger.warn('ENCRYPTION_MASTER_KEY not set: messages are stored but not answered');
 
-const keepAlive = setInterval(() => undefined, 60_000);
+const metaEventsWorker = new Worker(
+  QUEUES.metaEvents,
+  async (job) => {
+    const { eventId } = metaEventJobSchema.parse(job.data);
+    await processMetaEvent(eventId, {
+      db,
+      logger,
+      allowlist,
+      isProduction,
+      masterKey,
+      createClient: (accessToken) =>
+        new WhatsAppClient({
+          accessToken,
+          ...(env.META_GRAPH_VERSION ? { graphVersion: env.META_GRAPH_VERSION } : {}),
+        }),
+    });
+  },
+  { connection, concurrency: 10 },
+);
 
-function shutdown(signal: string): void {
-  log(`received ${signal}, shutting down`);
-  clearInterval(keepAlive);
+metaEventsWorker.on('failed', (job, error) => {
+  logger.error(
+    { jobId: job?.id, attempts: job?.attemptsMade, err: error },
+    'Meta event job failed',
+  );
+});
+
+logger.info({ queues: [QUEUES.metaEvents] }, 'Worker started');
+
+async function shutdown(signal: string): Promise<void> {
+  logger.info(`Received ${signal}, shutting down`);
+  await metaEventsWorker.close();
+  await pool.end();
+  connection.disconnect();
   process.exit(0);
 }
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-
-log('worker started (no processors yet)');
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
