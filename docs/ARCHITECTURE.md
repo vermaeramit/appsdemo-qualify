@@ -262,14 +262,14 @@ Respond job
 
 ## 10. AI model strategy & cost
 
-- **Vercel AI SDK** with the OpenRouter provider (development and M3 eval) and the OpenAI provider (an option in production). Switching providers is a config change.
+- **Vercel AI SDK**, starting with the **OpenAI provider** (D-039). The OpenRouter provider is an option for cross-provider comparisons. Switching providers is a config change (`LLM_PROVIDER`).
 - **Per-task model configuration:** chat reply, field extraction, final scoring, summary.
   - Platform defaults live in config.
   - Per-tenant overrides are possible later.
 - **The final model choice is made from the M3 eval, not assumed.**
   - The eval runs 50–100 travel scenarios.
   - It grades field accuracy, guardrail compliance, language mirroring, tone and cost per conversation.
-  - Candidates: a shortlist of models across providers, compared through OpenRouter with one API key.
+  - Candidates: a shortlist of OpenAI models available on the account (listed via the API), plus other providers through OpenRouter if needed.
 - **Production endpoint:** after M3, either keep OpenRouter (flexibility, provider fallbacks) or call the chosen provider directly (lower latency, no platform fee).
 - **Data policy:** on OpenRouter, allow only providers that don't train on prompts (account privacy settings), because chats contain lead PII.
 - **Prompt caching** on the stable system prefix. Verify it with the cached-tokens figure in the usage data.

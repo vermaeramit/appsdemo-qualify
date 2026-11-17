@@ -1,3 +1,4 @@
+import './load-env.ts';
 import { createDb } from '@qualify/db';
 import { parseAllowlist, parseMasterKey, WhatsAppClient } from '@qualify/integrations';
 import { metaEventJobSchema, QUEUES } from '@qualify/shared';

@@ -17,7 +17,7 @@
 - (.NET SDK is no longer needed. See D-022.)
 
 **Accounts & credentials** (store in local `.env`; never paste in chat, never commit)
-- [ ] LLM API key: OpenRouter (recommended for the M3 model comparison) and/or OpenAI, with a monthly spend limit or credit cap
+- [ ] **OpenAI API key** in `OPENAI_API_KEY` (D-039), with a project budget / usage limit. OpenRouter optional later.
 - [ ] Meta App ID and App Secret
 - [ ] Test number Phone Number ID and WABA ID
 - [ ] System User access token (for development)
@@ -87,11 +87,11 @@
 **Follow-ups:** quick-tunnel URLs change on every restart (re-run `set-dev-webhook`). A stable staging URL comes with M8. Add a sweeper that re-enqueues `inbound_meta_events` with `processed_at IS NULL` (Redis outage safety).
 
 ## M3 — AI agent
-- LLM client: Vercel AI SDK with the OpenRouter / OpenAI provider from config, cache-friendly prompt builder, structured output from Zod schemas
+- LLM client: Vercel AI SDK with the OpenAI provider (OpenRouter optional) from config, cache-friendly prompt builder, structured output from Zod schemas
 - Hybrid playbook engine: fields, rules, KB-in-prompt, language detection, buttons and lists
 - Debounce (BullMQ deduplication) + per-lead Redis lock, 24 h window logic, human-takeover pause
 - Travel – Domestic and Travel – International playbook templates (seeded)
-- **AI eval harness** with 50–100 travel scenarios. Run it on a shortlist of models through OpenRouter, then **choose the model per task** (record it as a new decision)
+- **AI eval harness** with 50–100 travel scenarios. Run it on a shortlist of OpenAI models, then **choose the model per task** (record it as a new decision)
 
 **Acceptance:** a full natural qualifying chat with the travel agent on the test number. The eval report is reviewed and the model is chosen.
 
