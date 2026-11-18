@@ -21,6 +21,11 @@ const envSchema = z.object({
   /** Decrypts per-tenant Meta tokens (opening template submit/status). Same key as the worker. */
   ENCRYPTION_MASTER_KEY: optionalSecret,
   META_GRAPH_VERSION: optionalSecret,
+  /** AI for the test chat on the AI agent page (same settings as the worker). */
+  LLM_PROVIDER: z.enum(['openai']).default('openai'),
+  OPENAI_API_KEY: optionalSecret,
+  AI_MODEL_CHAT: z.string().min(1).default('gpt-5.4-mini'),
+  AI_REASONING_EFFORT: z.enum(['none', 'minimal', 'low', 'medium', 'high']).default('low'),
 });
 
 export type Env = z.infer<typeof envSchema>;

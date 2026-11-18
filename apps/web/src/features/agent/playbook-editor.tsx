@@ -18,6 +18,7 @@ import { OpeningEditor } from './opening-editor';
 import { playbookQueryOptions } from './queries';
 import { QuestionsEditor } from './questions-editor';
 import { TemplatePicker } from './template-picker';
+import { TestChat } from './test-chat';
 
 const TABS = [
   { value: 'questions', label: 'Questions' },
@@ -124,6 +125,7 @@ export function PlaybookEditor({
               version.
             </p>
           </div>
+          {canEdit && <TestChat getConfig={() => form.getValues()} />}
           {canEdit && (
             <TemplatePicker
               onPick={(template) => {

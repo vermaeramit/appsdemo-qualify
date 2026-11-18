@@ -13,6 +13,7 @@ import { LeadListService } from './leads/lead-list.service';
 import { LeadsController } from './leads/leads.controller';
 import { MeController } from './me/me.controller';
 import { FormMappingService } from './meta-leads/form-mapping.service';
+import { SimulatorService } from './playbook/simulator.service';
 import { MetaLeadsController } from './meta-leads/meta-leads.controller';
 import { WebhooksOutController } from './webhooks-out/webhooks-out.controller';
 import { WebhooksOutService } from './webhooks-out/webhooks-out.service';
@@ -84,6 +85,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
     WhatsAppAccessService,
     MessageTemplateService,
     FormMappingService,
+    SimulatorService,
     WebhooksOutService,
   ],
 })

@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Inject,
   Param,
   Post,
@@ -13,12 +14,15 @@ import {
   type OpeningTemplateStatus,
   playbookConfigSchema,
   type PlaybookResponse,
+  type SimulateResponse,
+  simulateRequestSchema,
 } from '@qualify/shared';
 import { requireManager } from '../auth/roles';
 import { CurrentWorkspace, type WorkspaceContext, WorkspaceGuard } from '../auth/workspace.guard';
 import { parseBody } from '../common/zod-body';
 import { MessageTemplateService, type TemplateKind } from './message-template.service';
 import { PlaybookService } from './playbook.service';
+import { SimulatorService } from './simulator.service';
 
 function parseKind(value: string): TemplateKind {
   if (value === 'opening' || value === 'followup') return value;
@@ -32,7 +36,19 @@ export class PlaybookController {
   constructor(
     @Inject(PlaybookService) private readonly playbooks: PlaybookService,
     @Inject(MessageTemplateService) private readonly templates: MessageTemplateService,
+    @Inject(SimulatorService) private readonly simulator: SimulatorService,
   ) {}
+
+  /** Test chat: one agent turn on the draft configuration (nothing sent or stored). */
+  @Post('simulate')
+  @HttpCode(200)
+  simulate(
+    @CurrentWorkspace() workspace: WorkspaceContext,
+    @Body() body: unknown,
+  ): Promise<SimulateResponse> {
+    requireManager(workspace);
+    return this.simulator.simulate(workspace, parseBody(simulateRequestSchema, body));
+  }
 
   @Get()
   get(@CurrentWorkspace() workspace: WorkspaceContext): Promise<PlaybookResponse> {
