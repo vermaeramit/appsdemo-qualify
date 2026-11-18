@@ -10,7 +10,12 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { LeadAttribution, LeadScoreDetails, LeadSignals } from '@qualify/shared';
+import type {
+  LeadAttribution,
+  LeadScoreDetails,
+  LeadSignals,
+  StoredLeadOutcome,
+} from '@qualify/shared';
 import { tenants } from './platform.ts';
 import { playbookVersions } from './playbooks.ts';
 
@@ -95,6 +100,8 @@ export const leads = pgTable(
     score: integer('score'),
     grade: text('grade', { enum: ['hot', 'warm', 'cold', 'disqualified'] }),
     scoreDetails: jsonb('score_details').$type<LeadScoreDetails>(),
+    /** What happened after the hand-off, reported by the client (POST /v1/leads/:id/outcome). */
+    outcome: jsonb('outcome').$type<StoredLeadOutcome>(),
     /** 2–3 line conversation summary for the sales team (written at the final score). */
     summary: text('summary'),
     scoredAt: timestamp('scored_at', { withTimezone: true }),

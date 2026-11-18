@@ -109,6 +109,7 @@ export function postmanCollection(baseUrl: string, config: PlaybookConfig | unde
       { key: 'baseUrl', value: baseUrl },
       { key: 'apiKey', value: '' },
       { key: 'myPhone', value: '+91XXXXXXXXXX' },
+      { key: 'leadId', value: '' },
     ],
     item: [
       {
@@ -123,6 +124,15 @@ export function postmanCollection(baseUrl: string, config: PlaybookConfig | unde
       {
         name: 'Create lead (minimal)',
         request: request('POST', 'v1/leads', { phone: '{{myPhone}}', name: 'Rahul Sharma' }),
+      },
+      {
+        name: 'Report outcome (won / lost)',
+        request: request(
+          'POST',
+          'v1/leads/{{leadId}}/outcome',
+          { outcome: 'won', value: 50000, currency: 'INR', note: 'Booked' },
+          'Tell us what happened after the hand-off. leadId comes from the create response or a webhook.',
+        ),
       },
       { name: 'Get agent configuration', request: request('GET', 'v1/playbook') },
       ...(config

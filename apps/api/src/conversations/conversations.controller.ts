@@ -31,6 +31,7 @@ import {
   cursorSchema,
   leadAttributionSchema,
   pageLimitSchema,
+  storedLeadOutcomeSchema,
 } from '@qualify/shared';
 import { z } from 'zod';
 import { decodeCursor, encodeCursor } from '../common/cursor';
@@ -174,6 +175,7 @@ export class ConversationsController {
         summary: lead.summary,
         source: lead.source,
         attribution: leadAttributionSchema.safeParse(lead.attribution).data ?? null,
+        outcome: storedLeadOutcomeSchema.safeParse(lead.outcome).data ?? null,
       },
       messages: [...page].reverse().map((row) => ({
         id: row.id,

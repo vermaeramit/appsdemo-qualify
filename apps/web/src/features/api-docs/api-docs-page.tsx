@@ -33,6 +33,8 @@ const SECTIONS = [
   { id: 'create-lead', label: 'Create a lead' },
   { id: 'questions', label: 'Your question keys' },
   { id: 'what-happens', label: 'What happens next' },
+  { id: 'outcome', label: 'Report the outcome' },
+  { id: 'webhooks', label: 'Webhooks' },
   { id: 'playbook', label: 'Agent configuration' },
   { id: 'errors', label: 'Errors and limits' },
 ] as const;
@@ -339,6 +341,38 @@ export function ApiDocsPage() {
               messages (“*” = every lead).
             </P>
           )}
+        </Section>
+
+        <Section id="outcome" title="Report the outcome">
+          <Endpoint
+            method="POST"
+            path="/v1/leads/{leadId}/outcome"
+            summary="What happened after the hand-off"
+          />
+          <P>
+            Send{' '}
+            <code className="font-mono text-xs">
+              {
+                '{ "outcome": "won" | "lost" | "in_progress" | "no_answer", "value"?: 50000, "currency"?: "INR", "note"?: "…" }'
+              }
+            </code>
+            . The outcome shows on the lead and in the Excel export, and helps tune scoring later.
+            The lead id comes from the create response or a webhook.
+          </P>
+        </Section>
+
+        <Section id="webhooks" title="Webhooks">
+          <P>
+            Get leads pushed to your system as they happen: add an endpoint on the Integrations page
+            and pick the events (new lead, qualified, handed off, not a fit, no reply, not
+            reachable). Each POST carries the lead with its answers, score, reason, summary and
+            source, and is signed with{' '}
+            <code className="font-mono text-xs">X-Qualify-Signature: t=…,v1=…</code> (HMAC-SHA256 of{' '}
+            <code className="font-mono text-xs">{'"<t>.<raw body>"'}</code>). Reply with a 2xx
+            within 10 seconds; failures are retried for about 2 hours, and the event{' '}
+            <code className="font-mono text-xs">id</code> stays the same so you can ignore
+            duplicates.
+          </P>
         </Section>
 
         <Section id="playbook" title="Agent configuration">

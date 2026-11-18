@@ -1,4 +1,4 @@
-import type { ConversationThread } from '@qualify/shared';
+import { type ConversationThread, LEAD_OUTCOME_LABELS } from '@qualify/shared';
 import { Link } from '@tanstack/react-router';
 import { CircleCheck, CircleDashed, ExternalLink } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -61,6 +61,20 @@ export function LeadPanel({ lead }: { lead: ConversationThread['lead'] }) {
           );
         })}
       </dl>
+
+      {lead.outcome && (
+        <div className="space-y-1 border-t pt-4 text-sm">
+          <span className="text-xs font-medium text-muted-foreground">Outcome (from your CRM)</span>
+          <p className="font-medium">
+            {LEAD_OUTCOME_LABELS[lead.outcome.outcome]}
+            {lead.outcome.value !== undefined &&
+              ` · ${lead.outcome.value.toLocaleString()}${lead.outcome.currency ? ` ${lead.outcome.currency}` : ''}`}
+          </p>
+          {lead.outcome.note && (
+            <p className="text-xs break-words text-muted-foreground">{lead.outcome.note}</p>
+          )}
+        </div>
+      )}
 
       <LeadSource lead={lead} />
 

@@ -58,6 +58,20 @@ The same phone number is the same lead: new answers are merged into it.
 3. In development, only numbers in `DEV_ALLOWED_NUMBERS` receive messages (safety switch).
 4. A second submission for the same lead within 10 minutes doesn't send another opening.
 
+## POST /v1/leads/{leadId}/outcome — report what happened
+
+Tell us the result after the hand-off (from your CRM). `leadId` comes from the create response or a webhook.
+
+```json
+{ "outcome": "won", "value": 50000, "currency": "INR", "note": "Booked" }
+```
+
+`outcome` is one of `won`, `lost`, `in_progress`, `no_answer`; the rest is optional. Returns 200 with the stored outcome, 404 for an unknown lead. It shows on the lead and in the Excel export.
+
+## Webhooks
+
+Add endpoints on the Integrations page. Each event is a signed POST: `X-Qualify-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">`. Reply 2xx within 10 s; failures are retried for about 2 hours. The body's `id` is the same on every retry and resend. Payload shape: `webhookPayloadSchema` in `packages/shared/src/webhooks.ts`.
+
 ## GET /v1/playbook — read the agent configuration
 
 Returns `{ playbookId, versionId, versionNo, config }`.

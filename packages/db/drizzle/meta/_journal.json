@@ -141,6 +141,13 @@
       "when": 1795001989083,
       "tag": "0019_webhooks_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795002822669,
+      "tag": "0020_lead_outcome",
+      "breakpoints": true
     }
   ]
 }

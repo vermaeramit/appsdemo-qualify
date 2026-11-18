@@ -33,3 +33,26 @@ export const createLeadResponseSchema = z.object({
   ignoredFields: z.array(z.string()),
 });
 export type CreateLeadResponse = z.infer<typeof createLeadResponseSchema>;
+
+/**
+ * POST /api/v1/leads/:id/outcome — what happened after the hand-off (from the client's CRM).
+ * Kept on the lead for reports and, later, to calibrate scoring against real results.
+ */
+export const leadOutcomeSchema = z.object({
+  outcome: z.enum(['won', 'lost', 'in_progress', 'no_answer']),
+  /** Deal value in the client's currency (optional). */
+  value: z.number().nonnegative().max(1e12).optional(),
+  currency: z.string().length(3).toUpperCase().optional(),
+  note: z.string().trim().max(500).optional(),
+});
+export type LeadOutcomeRequest = z.infer<typeof leadOutcomeSchema>;
+
+export const storedLeadOutcomeSchema = leadOutcomeSchema.extend({ at: z.iso.datetime() });
+export type StoredLeadOutcome = z.infer<typeof storedLeadOutcomeSchema>;
+
+export const LEAD_OUTCOME_LABELS: Record<LeadOutcomeRequest['outcome'], string> = {
+  won: 'Won',
+  lost: 'Lost',
+  in_progress: 'In progress',
+  no_answer: 'No answer',
+};

@@ -9,6 +9,7 @@ import {
   withTenant,
 } from '@qualify/db';
 import {
+  LEAD_OUTCOME_LABELS,
   LEAD_SOURCE_LABELS,
   LEAD_STATUS_LABELS,
   type LeadAttribution,
@@ -187,6 +188,8 @@ export class LeadListService {
         width: 20,
       })),
       { header: 'Other answers', key: 'other', width: 30 },
+      { header: 'Outcome', key: 'outcome', width: 14 },
+      { header: 'Deal value', key: 'dealValue', width: 14 },
       { header: 'Last message', key: 'lastMessage', width: 18 },
       { header: 'Qualified at', key: 'qualifiedAt', width: 18 },
       { header: 'Handed off at', key: 'handoffAt', width: 18 },
@@ -230,6 +233,11 @@ export class LeadListService {
         definitions.map((field) => [`field:${field.key}`, row.fields[field.key] ?? null]),
       ),
       other: other || null,
+      outcome: row.outcome ? LEAD_OUTCOME_LABELS[row.outcome.outcome] : null,
+      dealValue:
+        row.outcome?.value !== undefined
+          ? `${row.outcome.value}${row.outcome.currency ? ` ${row.outcome.currency}` : ''}`
+          : null,
       lastMessage: local(row.lastMessageAt),
       qualifiedAt: local(row.qualifiedAt),
       handoffAt: local(row.handoffAt),
