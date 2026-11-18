@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
-import { MessageCircle, RotateCcw, SquarePen } from 'lucide-react';
+import type { DashboardResponse } from '@qualify/shared';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { ArrowRight, MessageCircleDashed } from 'lucide-react';
 import { motion } from 'motion/react';
-import { GradeBadge } from '@/components/leads/grade-badge';
-import { gradeStyles } from '@/components/leads/grade';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -12,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
   TableBody,
@@ -21,124 +19,131 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { sampleLeads, type SampleLead } from './sample-data';
+import { LeadStatusBadge } from '@/features/conversations/lead-status';
+import { timeAgo } from '@/lib/time';
+import { SOURCE_LABELS } from './queries';
 
 const MotionTableRow = motion.create(TableRow);
 
-const SIMULATED_LOAD_MS = 1400;
-
-export function RecentLeads() {
-  const [loading, setLoading] = useState(true);
-  const [run, setRun] = useState(0);
-
-  // Simulates an API round-trip so the skeleton → content transition can be reviewed.
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), SIMULATED_LOAD_MS);
-    return () => clearTimeout(timer);
-  }, [run]);
-
-  const replay = () => {
-    setLoading(true);
-    setRun((n) => n + 1);
-  };
+/** Leads with activity in the period: who they are, what they answered, where they stand. */
+export function RecentLeads({ data }: { data: DashboardResponse }) {
+  const navigate = useNavigate();
+  const leads = data.recentLeads;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Recent leads</CardTitle>
-        <CardDescription>Scored by the AI agent in the last hour</CardDescription>
+        <CardDescription>
+          Latest activity in this period. Open one to read the chat.
+        </CardDescription>
         <CardAction>
-          <Button variant="ghost" size="sm" onClick={replay} disabled={loading}>
-            <RotateCcw data-icon="inline-start" />
-            Replay loading
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/conversations" search={{}}>
+              All conversations
+              <ArrowRight data-icon="inline-end" />
+            </Link>
           </Button>
         </CardAction>
       </CardHeader>
       <CardContent className="px-0">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="pl-4">Lead</TableHead>
-              <TableHead className="hidden sm:table-cell">Source</TableHead>
-              <TableHead>Score</TableHead>
-              <TableHead>Grade</TableHead>
-              <TableHead className="hidden pr-4 text-right md:table-cell">Received</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading
-              ? sampleLeads.map((lead) => <SkeletonRow key={lead.id} />)
-              : sampleLeads.map((lead, index) => (
-                  <LeadRow key={`${run}-${lead.id}`} lead={lead} index={index} />
-                ))}
-          </TableBody>
-        </Table>
+        {leads.length === 0 ? (
+          <div className="grid place-items-center gap-2 px-6 py-10 text-center">
+            <MessageCircleDashed className="size-8 text-muted-foreground" />
+            <p className="text-sm font-medium">No lead activity in this period</p>
+            <p className="max-w-sm text-xs text-muted-foreground">
+              Leads appear here when someone messages your WhatsApp number, submits a form, or
+              arrives through the API.
+            </p>
+            <Button variant="outline" size="sm" className="mt-1" asChild>
+              <Link to="/conversations" search={{}}>
+                Add a test lead
+              </Link>
+            </Button>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="pl-6">Lead</TableHead>
+                <TableHead className="hidden md:table-cell">Answers so far</TableHead>
+                <TableHead>Required</TableHead>
+                <TableHead className="pr-6 sm:pr-2">Status</TableHead>
+                <TableHead className="hidden pr-6 text-right sm:table-cell">
+                  Last activity
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {leads.map((lead, index) => (
+                <MotionTableRow
+                  key={lead.id}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: index * 0.04 }}
+                  className="cursor-pointer"
+                  onClick={() => void navigate({ to: '/conversations', search: { lead: lead.id } })}
+                >
+                  <TableCell className="pl-6">
+                    <Link
+                      to="/conversations"
+                      search={{ lead: lead.id }}
+                      className="block font-medium hover:underline"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {lead.name ?? lead.phone}
+                    </Link>
+                    <span className="block text-xs text-muted-foreground">
+                      {lead.name ? `${lead.phone} · ` : ''}
+                      {SOURCE_LABELS[lead.source] ?? lead.source}
+                    </span>
+                  </TableCell>
+                  <TableCell className="hidden max-w-64 md:table-cell">
+                    {lead.highlights.length === 0 ? (
+                      <span className="text-xs text-muted-foreground">Nothing yet</span>
+                    ) : (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {lead.highlights.map((item, i) => (
+                          <span key={item.label}>
+                            {i > 0 && ' · '}
+                            <span className="text-foreground">{item.value}</span>
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <RequiredProgress done={lead.requiredAnswered} total={lead.requiredTotal} />
+                  </TableCell>
+                  <TableCell className="pr-6 sm:pr-2">
+                    <LeadStatusBadge status={lead.status} />
+                  </TableCell>
+                  <TableCell className="hidden pr-6 text-right text-xs text-muted-foreground sm:table-cell">
+                    {timeAgo(lead.lastActivityAt)}
+                  </TableCell>
+                </MotionTableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function LeadRow({ lead, index }: { lead: SampleLead; index: number }) {
-  const SourceIcon = lead.source === 'Meta form' ? SquarePen : MessageCircle;
+function RequiredProgress({ done, total }: { done: number; total: number }) {
+  if (total === 0) return <span className="text-xs text-muted-foreground">—</span>;
   return (
-    <MotionTableRow
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: index * 0.05, ease: 'easeOut' }}
-    >
-      <TableCell className="pl-4">
-        <div className="font-medium">{lead.name}</div>
-        <div className="text-xs text-muted-foreground">{lead.trip}</div>
-      </TableCell>
-      <TableCell className="hidden text-muted-foreground sm:table-cell">
-        <span className="inline-flex items-center gap-1.5 text-xs">
-          <SourceIcon className="size-3.5" />
-          {lead.source}
-        </span>
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <span className="w-6 text-right font-medium tabular-nums">{lead.score}</span>
-          <div className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-muted sm:block">
-            <motion.div
-              className="h-full rounded-full"
-              style={{ backgroundColor: gradeStyles[lead.grade].colorVar }}
-              initial={{ width: 0 }}
-              animate={{ width: `${lead.score}%` }}
-              transition={{ duration: 0.8, delay: 0.15 + index * 0.05, ease: [0.16, 1, 0.3, 1] }}
-            />
-          </div>
-        </div>
-      </TableCell>
-      <TableCell>
-        <GradeBadge grade={lead.grade} />
-      </TableCell>
-      <TableCell className="hidden pr-4 text-right text-xs text-muted-foreground md:table-cell">
-        {lead.receivedAgo}
-      </TableCell>
-    </MotionTableRow>
-  );
-}
-
-function SkeletonRow() {
-  return (
-    <TableRow className="hover:bg-transparent">
-      <TableCell className="pl-4">
-        <Skeleton className="h-4 w-28" />
-        <Skeleton className="mt-1.5 h-3 w-36" />
-      </TableCell>
-      <TableCell className="hidden sm:table-cell">
-        <Skeleton className="h-3.5 w-24" />
-      </TableCell>
-      <TableCell>
-        <Skeleton className="h-3.5 w-20" />
-      </TableCell>
-      <TableCell>
-        <Skeleton className="h-5 w-14 rounded-full" />
-      </TableCell>
-      <TableCell className="hidden pr-4 md:table-cell">
-        <Skeleton className="ml-auto h-3 w-16" />
-      </TableCell>
-    </TableRow>
+    <span className="flex items-center gap-2" title={`${done} of ${total} required answers`}>
+      <span className="h-1.5 w-12 overflow-hidden rounded-full bg-primary/12">
+        <span
+          className="block h-full rounded-full bg-primary"
+          style={{ width: `${(done / total) * 100}%` }}
+        />
+      </span>
+      <span className="text-xs tabular-nums">
+        {done}/{total}
+      </span>
+    </span>
   );
 }

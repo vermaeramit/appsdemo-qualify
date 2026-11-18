@@ -111,6 +111,7 @@
 - Agent configuration API `GET/PUT /api/v1/playbook` (D-047), `install-playbook --upgrade`
 - Dashboard (D-049 to D-051): **AI agent** page (questions with options / yes-no / plain, drag to reorder, WhatsApp preview, opening editor with variables and Meta template submit/status/activate, persona, rules, handoff, closing, knowledge base, publish), **Add lead** in Conversations, **Settings → API keys**. E2E: `agent-config.spec.ts`.
 - **API docs** page with generated Postman collection (D-054). Opening template `qualify_opening_f65bb9d1` approved by Meta and active in "Appsdemo" (2026-11-18). Fixes: repeat enquiries use the current playbook (D-052), `allowOther` answers are stored (D-053).
+- **Dashboard with real data** (D-055): period filter, KPIs, leads per hour/day, pipeline, sources, recent leads, WhatsApp health. Sample data removed.
 
 **Remaining:**
 - Page connect + `leadgen` webhook + lead fetch + field mapping (tested with the Lead Ads Testing Tool)

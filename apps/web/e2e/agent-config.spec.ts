@@ -72,6 +72,11 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await expect(page).toHaveURL(/\/conversations\?lead=/);
   await expect(page.getByText('Form Lead').first()).toBeVisible();
 
+  // The dashboard shows the real lead (no sample data).
+  await page.getByRole('link', { name: 'Dashboard' }).click();
+  await expect(page.getByRole('link', { name: 'Form Lead' })).toBeVisible();
+  await expect(page.getByText('Sample data')).toHaveCount(0);
+
   // API docs list this workspace's question keys, including the new one.
   await page.getByRole('link', { name: 'API docs' }).click();
   await expect(page.getByRole('heading', { name: 'API docs' })).toBeVisible();
