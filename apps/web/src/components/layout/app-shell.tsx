@@ -33,7 +33,6 @@ interface AppShellProps {
 }
 
 const upcoming: { label: string; icon: LucideIcon }[] = [
-  { label: 'Leads', icon: Users },
   { label: 'Templates', icon: MessageSquareText },
   { label: 'Integrations', icon: Webhook },
 ];
@@ -43,6 +42,7 @@ const navItemClass =
 
 const navLinks = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/leads', label: 'Leads', icon: Users, exact: false },
   { to: '/conversations', label: 'Conversations', icon: MessagesSquare, exact: false },
   { to: '/meta-leads', label: 'Meta leads', icon: FileInput, exact: false },
   { to: '/agent', label: 'AI agent', icon: Bot, exact: false },

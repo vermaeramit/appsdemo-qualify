@@ -132,6 +132,7 @@
 **Acceptance:** a test form lead → template within 60 s → reply → chat → score + reason. A lead that doesn't reply → follow-ups → `unresponsive`.
 
 ## M5 — Dashboard UI
+**Done:** Leads list with filters, sorting, keyset paging and Excel export (D-069).
 **Done early in M4:** AI agent page (questions, opening, persona, rules, KB, publish; D-049), dashboard with real data and charts (D-055), Costs page (D-058), API docs (D-054). **Still open:** drafts and version history, test chat simulator, KB file upload, leads list and lead detail, live updates, scoring builder, mobile navigation.
 
 - Leads list (TanStack Table, filters, badges), lead detail (live chat over Socket.IO, fields, animated score gauge, breakdown)

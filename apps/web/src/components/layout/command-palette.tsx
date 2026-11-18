@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
+  Users,
   FileInput,
   BookOpen,
   Bot,
@@ -63,6 +64,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <CommandItem onSelect={() => run(() => navigate({ to: '/' }))}>
               <LayoutDashboard />
               Dashboard
+            </CommandItem>
+            <CommandItem onSelect={() => run(() => navigate({ to: '/leads' }))}>
+              <Users />
+              Leads (filters, Excel export)
             </CommandItem>
             <CommandItem onSelect={() => run(() => navigate({ to: '/conversations' }))}>
               <MessagesSquare />

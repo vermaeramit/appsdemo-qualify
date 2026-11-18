@@ -105,7 +105,7 @@ export const leads = pgTable(
     uniqueIndex('leads_tenant_phone_uq').on(table.tenantId, table.phoneE164),
     index('leads_tenant_last_message_idx').on(table.tenantId, table.lastMessageAt),
     // Period filters (dashboard, costs) and newest-first lists.
-    index('leads_tenant_created_idx').on(table.tenantId, table.createdAt),
+    index('leads_tenant_created_idx').on(table.tenantId, table.createdAt, table.id),
     // Activity order (conversations), keyset on (activity, id). Ascending on purpose: a backward
     // scan gives `order by activity desc, id desc` exactly (drizzle's .desc() is NULLS LAST,
     // which doesn't match ORDER BY ... DESC).
@@ -115,6 +115,8 @@ export const leads = pgTable(
       table.id,
     ),
     index('leads_tenant_scored_idx').on(table.tenantId, table.scoredAt),
+    // Leads list sorted by score (unscored last), keyset on (score, id).
+    index('leads_tenant_score_idx').on(table.tenantId, sql`coalesce(${table.score}, -1)`, table.id),
   ],
 );
 

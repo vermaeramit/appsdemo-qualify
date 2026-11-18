@@ -9,6 +9,7 @@ import { CostsController } from './costs/costs.controller';
 import { DashboardController } from './dashboard/dashboard.controller';
 import { HealthController } from './health/health.controller';
 import { LeadIntakeService } from './leads/lead-intake.service';
+import { LeadListService } from './leads/lead-list.service';
 import { LeadsController } from './leads/leads.controller';
 import { MeController } from './me/me.controller';
 import { FormMappingService } from './meta-leads/form-mapping.service';
@@ -75,6 +76,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
   providers: [
     { provide: APP_GUARD, useClass: OriginGuard },
     LeadIntakeService,
+    LeadListService,
     PlaybookService,
     WhatsAppAccessService,
     MessageTemplateService,

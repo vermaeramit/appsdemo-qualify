@@ -18,6 +18,7 @@ export {
 export * from './api-keys.ts';
 export * from './client.ts';
 export * from './lead-form-submissions.ts';
+export * from './lead-list.ts';
 export * from './leads.ts';
 export * from './migrate.ts';
 export * from './playbooks.ts';

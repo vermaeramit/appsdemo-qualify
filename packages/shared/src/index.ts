@@ -7,6 +7,7 @@ export * from './dashboard.js';
 export * from './health.js';
 export * from './lead.js';
 export * from './leads-api.js';
+export * from './leads-list.js';
 export * from './meta-leads.js';
 export * from './playbook.js';
 export * from './queues.js';

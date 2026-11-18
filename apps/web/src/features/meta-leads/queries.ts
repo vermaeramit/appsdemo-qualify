@@ -28,10 +28,4 @@ export const metaLeadsQueryOptions = (params: MetaLeadsParams) =>
     refetchInterval: 30_000,
   });
 
-/** Today and N-1 days back as YYYY-MM-DD, in the viewer's time zone. */
-export function lastDays(days: number): { from: string; to: string } {
-  const format = (date: Date) =>
-    new Intl.DateTimeFormat('en-CA', { timeZone, dateStyle: 'short' }).format(date);
-  const now = new Date();
-  return { from: format(new Date(now.getTime() - (days - 1) * 86_400_000)), to: format(now) };
-}
+export { lastDays } from '@/lib/date-range';

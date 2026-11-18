@@ -120,6 +120,13 @@
       "when": 1795000447174,
       "tag": "0016_lead_attribution",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795001410265,
+      "tag": "0017_leads_list_indexes",
+      "breakpoints": true
     }
   ]
 }

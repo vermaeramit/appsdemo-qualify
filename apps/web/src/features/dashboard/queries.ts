@@ -1,5 +1,5 @@
 import { keepPreviousData, queryOptions } from '@tanstack/react-query';
-import { type DashboardPeriod, dashboardResponseSchema } from '@qualify/shared';
+import { type DashboardPeriod, dashboardResponseSchema, LEAD_SOURCE_LABELS } from '@qualify/shared';
 import { fetchJson } from '@/lib/api';
 
 /** The viewer's time zone decides where "today" starts. */
@@ -18,9 +18,4 @@ export const dashboardQueryOptions = (period: DashboardPeriod) =>
     refetchInterval: 30_000,
   });
 
-export const SOURCE_LABELS: Record<string, string> = {
-  whatsapp_inbound: 'WhatsApp chat',
-  meta_form: 'Meta lead form',
-  ctwa: 'Click-to-WhatsApp',
-  api: 'Website / API',
-};
+export const SOURCE_LABELS: Record<string, string> = LEAD_SOURCE_LABELS;

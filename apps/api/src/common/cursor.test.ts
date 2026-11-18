@@ -21,4 +21,11 @@ describe('keyset cursor', () => {
     );
     expect(() => decodeCursor(injected)).toThrow('Invalid cursor');
   });
+
+  it('checks the sort key kind', () => {
+    const id = '1aeb37d0-eb7a-4be1-b06b-662b7a11e863';
+    expect(decodeCursor(encodeCursor('-1', id), 'integer')).toEqual({ sortKey: '-1', id });
+    expect(() => decodeCursor(encodeCursor('60', id))).toThrow('Invalid cursor');
+    expect(() => decodeCursor(encodeCursor('2026-11-18', id), 'integer')).toThrow('Invalid cursor');
+  });
 });

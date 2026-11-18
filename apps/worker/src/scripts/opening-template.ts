@@ -1,12 +1,19 @@
-// Opening template for form/API leads (business-initiated messages need an approved template).
-//   pnpm --filter @qualify/worker opening-template create [workspace-slug]   → submit to Meta
-//   pnpm --filter @qualify/worker opening-template status [workspace-slug]   → check; when APPROVED,
-//                                                                             activate it in the playbook
-// The template body and buttons come from the playbook's `opening` section; the template name
-// is derived from that text (openingTemplateName), so a changed text gets its own approval.
-// The same actions are available in the dashboard (AI agent → Opening).
+// Templates for business-initiated messages: the opening (form/API leads) and the follow-up.
+//   pnpm --filter @qualify/worker opening-template create [workspace-slug] [--kind=followup]
+//       → submit to Meta
+//   pnpm --filter @qualify/worker opening-template status [workspace-slug] [--kind=followup]
+//       → check; when APPROVED, activate it in the playbook
+// The body and buttons come from the playbook (`opening`, or `followUps.template`); the name is
+// derived from that text, so a changed text gets its own approval. The same actions are in the
+// dashboard (AI agent → Opening / Follow-ups).
 import '../load-env.ts';
-import { openingExampleParams, openingTemplateName, resolveOpening } from '@qualify/core';
+import {
+  followUpTemplateName,
+  openingExampleParams,
+  openingTemplateName,
+  resolveFollowUps,
+  resolveOpening,
+} from '@qualify/core';
 import {
   createDb,
   getDefaultPublishedPlaybook,
@@ -15,6 +22,26 @@ import {
   withTenant,
 } from '@qualify/db';
 import { WhatsAppClient } from '@qualify/integrations';
+import type { PlaybookConfig, PlaybookOpening } from '@qualify/shared';
+
+const KINDS = {
+  opening: {
+    read: resolveOpening,
+    name: openingTemplateName,
+    write: (config: PlaybookConfig, message: PlaybookOpening): PlaybookConfig => ({
+      ...config,
+      opening: message,
+    }),
+  },
+  followup: {
+    read: (config: PlaybookConfig) => resolveFollowUps(config).template,
+    name: followUpTemplateName,
+    write: (config: PlaybookConfig, message: PlaybookOpening): PlaybookConfig => ({
+      ...config,
+      followUps: { ...resolveFollowUps(config), template: message },
+    }),
+  },
+};
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -25,11 +52,16 @@ function required(name: string): string {
   return value;
 }
 
-const [command, slug] = process.argv.slice(2);
-if (command !== 'create' && command !== 'status') {
-  console.error('✗ Usage: opening-template <create|status> [workspace-slug]');
+const args = process.argv.slice(2);
+const kindArg = args.find((arg) => arg.startsWith('--kind='))?.slice('--kind='.length) ?? 'opening';
+const [command, slug] = args.filter((arg) => !arg.startsWith('--'));
+if ((command !== 'create' && command !== 'status') || !(kindArg in KINDS)) {
+  console.error(
+    '✗ Usage: opening-template <create|status> [workspace-slug] [--kind=opening|followup]',
+  );
   process.exit(1);
 }
+const kind = KINDS[kindArg as keyof typeof KINDS];
 
 const { db, pool } = createDb(required('APP_DATABASE_URL'), { max: 1 });
 const wabaId = required('WHATSAPP_DEV_WABA_ID');
@@ -55,8 +87,11 @@ try {
     console.error('✗ The workspace has no playbook. Run install-playbook first.');
     process.exit(1);
   }
-  const opening = resolveOpening(playbook.config);
-  const templateName = opening.templateName ?? openingTemplateName(opening);
+  const opening = kind.read(playbook.config);
+  const templateName = opening.templateName ?? kind.name(opening);
+  console.log(`• ${kindArg} template "${templateName}" (${opening.templateLanguage}):`);
+  console.log(`  ${opening.bodyText.replace(/\n/g, '\n  ')}`);
+  if (opening.buttons.length) console.log(`  Buttons: ${opening.buttons.join(' | ')}`);
 
   if (command === 'create') {
     const created = await client.createTemplate({
@@ -72,7 +107,9 @@ try {
     console.log(
       `✓ Submitted "${templateName}" (${opening.templateLanguage}) for review: ${created.status}, category ${created.category}`,
     );
-    console.log('  Check approval with: pnpm --filter @qualify/worker opening-template status');
+    console.log(
+      `  Check approval with: pnpm --filter @qualify/worker opening-template status ${workspace.slug} --kind=${kindArg}`,
+    );
   } else {
     const found = await client.findTemplates(wabaId, templateName);
     const template =
@@ -92,14 +129,11 @@ try {
         publishPlaybookVersion(tx, {
           tenantId: workspace.id,
           playbookId: playbook.playbookId,
-          config: {
-            ...playbook.config,
-            opening: {
-              ...opening,
-              templateName: template.name,
-              templateLanguage: template.language,
-            },
-          },
+          config: kind.write(playbook.config, {
+            ...opening,
+            templateName: template.name,
+            templateLanguage: template.language,
+          }),
         }),
       );
       console.log(
