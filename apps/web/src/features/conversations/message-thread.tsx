@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { ConversationMessage, ConversationThread } from '@qualify/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bot, Check, CheckCheck, CircleAlert, Clock, Loader2, Pause, Play } from 'lucide-react';
@@ -11,14 +11,50 @@ import { clockTime } from '@/lib/time';
 import { LeadPanel } from './lead-panel';
 import { LeadStatusBadge } from './lead-status';
 
-export function MessageThread({ thread }: { thread: ConversationThread }) {
+/** The latest page first, then older ones. Shows them oldest first. */
+export function MessageThread({
+  pages,
+  hasOlder,
+  loadingOlder,
+  onLoadOlder,
+}: {
+  pages: ConversationThread[];
+  hasOlder: boolean;
+  loadingOlder: boolean;
+  onLoadOlder: () => void;
+}) {
+  const thread = pages[0]!;
+  const messages = useMemo(() => {
+    const seen = new Set<string>();
+    return pages
+      .toReversed()
+      .flatMap((page) => page.messages)
+      .filter((message) => !seen.has(message.id) && Boolean(seen.add(message.id)));
+  }, [pages]);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const lastId = thread.messages.at(-1)?.id;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const heightBefore = useRef<number | null>(null);
+  const lastId = messages.at(-1)?.id;
+  const firstId = messages[0]?.id;
 
   // Keep the newest message in view when one arrives.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [lastId]);
+
+  // Older messages are added above: keep what the reader was looking at in place.
+  useLayoutEffect(() => {
+    const box = scrollRef.current;
+    if (box && heightBefore.current !== null) {
+      box.scrollTop += box.scrollHeight - heightBefore.current;
+      heightBefore.current = null;
+    }
+  }, [firstId]);
+
+  const loadOlder = () => {
+    heightBefore.current = scrollRef.current?.scrollHeight ?? null;
+    onLoadOlder();
+  };
 
   return (
     <div className="flex h-full">
@@ -37,8 +73,19 @@ export function MessageThread({ thread }: { thread: ConversationThread }) {
           </div>
           <AiToggle leadId={thread.lead.id} paused={thread.lead.aiPaused} />
         </div>
-        <div className="flex-1 space-y-2 overflow-y-auto bg-muted/30 px-4 py-4">
-          {thread.messages.map((message) => (
+        <div
+          ref={scrollRef}
+          className="flex-1 space-y-2 overflow-y-auto bg-muted/30 px-4 py-4 [overflow-anchor:none]"
+        >
+          {hasOlder && (
+            <div className="text-center">
+              <Button variant="outline" size="xs" disabled={loadingOlder} onClick={loadOlder}>
+                {loadingOlder && <Loader2 className="animate-spin" data-icon="inline-start" />}
+                Load older messages
+              </Button>
+            </div>
+          )}
+          {messages.map((message) => (
             <MessageBubble key={message.id} message={message} />
           ))}
           <div ref={bottomRef} />

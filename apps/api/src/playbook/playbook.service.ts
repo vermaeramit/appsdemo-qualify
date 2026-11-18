@@ -1,22 +1,20 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { resolveScoring, scoreLead } from '@qualify/core';
 import {
   auditLogs,
   type DbHandle,
-  eq,
   getDefaultPublishedPlaybook,
-  leads,
   publishPlaybookVersion,
-  tenants,
-  type Transaction,
   withTenant,
 } from '@qualify/db';
 import {
   type PlaybookConfig,
   type PlaybookResponse,
   playbookResponseSchema,
+  type RescoreJob,
 } from '@qualify/shared';
+import type { Queue } from 'bullmq';
 import type { WorkspaceContext } from '../auth/workspace.guard';
+import { RESCORE_QUEUE_TOKEN } from '../queue/queue.module';
 import { DB } from '../tokens';
 
 /**
@@ -25,7 +23,10 @@ import { DB } from '../tokens';
  */
 @Injectable()
 export class PlaybookService {
-  constructor(@Inject(DB) private readonly handle: DbHandle) {}
+  constructor(
+    @Inject(DB) private readonly handle: DbHandle,
+    @Inject(RESCORE_QUEUE_TOKEN) private readonly rescoreQueue: Queue<RescoreJob>,
+  ) {}
 
   async get(tenantId: string): Promise<PlaybookResponse> {
     const playbook = await withTenant(this.handle.db, tenantId, (tx) =>
@@ -44,7 +45,6 @@ export class PlaybookService {
         playbookId: current.playbookId,
         config,
       });
-      await this.rescoreLeads(tx, config);
       await tx.insert(auditLogs).values({
         tenantId: workspace.tenantId,
         actorUserId: workspace.userId,
@@ -55,52 +55,23 @@ export class PlaybookService {
       return next;
     });
     if (!published) throw new NotFoundException('No playbook yet');
+    // Scoring may have changed: the worker rescores every lead in batches.
+    await this.rescoreQueue.add(
+      'rescore',
+      { tenantId: workspace.tenantId },
+      {
+        delay: 1_000,
+        deduplication: {
+          id: `rescore:${workspace.tenantId}`,
+          ttl: 1_000,
+          extend: true,
+          replace: true,
+          keepLastIfActive: true,
+        },
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      },
+    );
     return playbookResponseSchema.parse(published);
-  }
-
-  /**
-   * Re-applies the (possibly changed) scoring to every lead, so grades stay comparable. Keeps
-   * whether a score is final and the summary's usage.
-   */
-  private async rescoreLeads(tx: Transaction, config: PlaybookConfig): Promise<void> {
-    const [tenant] = await tx.select({ timezone: tenants.timezone }).from(tenants).limit(1);
-    const today = new Intl.DateTimeFormat('en-CA', {
-      timeZone: tenant?.timezone ?? 'Asia/Kolkata',
-      dateStyle: 'short',
-    }).format(new Date());
-    const scoring = resolveScoring(config);
-    const rows = await tx
-      .select({
-        id: leads.id,
-        fields: leads.fields,
-        signals: leads.signals,
-        status: leads.status,
-        scoreDetails: leads.scoreDetails,
-      })
-      .from(leads);
-    for (const row of rows) {
-      const result = scoreLead({
-        definitions: config.fields,
-        scoring,
-        fields: row.fields,
-        signals: row.signals,
-        status: row.status,
-        today,
-      });
-      await tx
-        .update(leads)
-        .set({
-          score: result.score,
-          grade: result.grade,
-          scoreDetails: {
-            ...result.details,
-            final: row.scoreDetails?.final ?? false,
-            ...(row.scoreDetails?.summaryUsage
-              ? { summaryUsage: row.scoreDetails.summaryUsage }
-              : {}),
-          },
-        })
-        .where(eq(leads.id, row.id));
-    }
   }
 }

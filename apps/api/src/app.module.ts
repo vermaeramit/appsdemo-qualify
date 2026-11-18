@@ -11,6 +11,7 @@ import { HealthController } from './health/health.controller';
 import { LeadIntakeService } from './leads/lead-intake.service';
 import { LeadsController } from './leads/leads.controller';
 import { MeController } from './me/me.controller';
+import { MetaLeadsController } from './meta-leads/meta-leads.controller';
 import { MessageTemplateService } from './playbook/message-template.service';
 import { PlaybookController } from './playbook/playbook.controller';
 import { PlaybookService } from './playbook/playbook.service';
@@ -68,6 +69,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
     ApiKeysController,
     DashboardController,
     CostsController,
+    MetaLeadsController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: OriginGuard },

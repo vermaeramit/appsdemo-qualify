@@ -16,6 +16,8 @@ import {
   followUpJobSchema,
   metaEventJobSchema,
   QUEUES,
+  RESCORE_QUEUE,
+  rescoreJobSchema,
   RESPOND_QUEUE,
   type RespondJob,
   respondJobSchema,
@@ -30,6 +32,7 @@ import {
   followUpJobId,
   processFollowUp,
 } from './agent/follow-up.ts';
+import { rescoreTenantLeads } from './agent/rescore.ts';
 import { LeadBusyError, processRespond } from './agent/respond.ts';
 import { loadWorkerEnv } from './env.ts';
 import { createRedisLock } from './lock.ts';
@@ -212,11 +215,22 @@ const followUpWorker = new Worker(
   { connection, concurrency: 10 },
 );
 
+const rescoreWorker = new Worker(
+  RESCORE_QUEUE,
+  async (job) => {
+    const { tenantId } = rescoreJobSchema.parse(job.data);
+    const result = await rescoreTenantLeads(db, tenantId);
+    logger.info({ tenantId, ...result }, 'Leads rescored');
+  },
+  { connection, concurrency: 2 },
+);
+
 for (const [name, worker] of [
   ['meta-events', metaEventsWorker],
   ['respond', respondWorker],
   ['contact', contactWorker],
   ['follow-up', followUpWorker],
+  ['rescore', rescoreWorker],
 ] as const) {
   worker.on('failed', (job, error) => {
     const busy =
@@ -232,7 +246,7 @@ for (const [name, worker] of [
 }
 
 logger.info(
-  { queues: [QUEUES.metaEvents, RESPOND_QUEUE, CONTACT_QUEUE, FOLLOW_UP_QUEUE] },
+  { queues: [QUEUES.metaEvents, RESPOND_QUEUE, CONTACT_QUEUE, FOLLOW_UP_QUEUE, RESCORE_QUEUE] },
   'Worker started',
 );
 
@@ -243,6 +257,7 @@ async function shutdown(signal: string): Promise<void> {
     respondWorker.close(),
     contactWorker.close(),
     followUpWorker.close(),
+    rescoreWorker.close(),
   ]);
   await Promise.all([respondQueue.close(), followUpQueue.close(), contactQueue.close()]);
   await pool.end();

@@ -117,6 +117,8 @@
 - **Meta lead forms** (D-062): leadgen webhook, Page routing, AI form mapping per form, shared lead intake, opening queued; dedupe on leadgen_id. **Live-verified 2026-11-18** with the "AppsDemo Technologies" Page: test lead → AI mapped "Which city do you want to travel to?" → Destination → lead updated and scored → opening delivered and read on WhatsApp.
 - **Generic product** (D-061): business-neutral engine and UI; templates for any business, travel, real estate, education and clinics; template picker at onboarding and on the AI agent page.
 - **Scoring** (D-060): configurable rules + AI intent, Hot/Warm/Cold, live and final scores, reason, AI summary, rescoring on publish; shown in the lead panel and dashboard.
+- **Meta leads page** (D-063): every lead form submission as received, date presets and custom range, form filter, raw JSON. E2E: `meta-leads.spec.ts`.
+- **Pagination and indexing** (D-064): keyset pagination for Meta leads, Conversations ("Load more") and threads ("Load older messages"); keyset indexes verified with EXPLAIN; rescoring on publish runs as a background job in batches.
 
 **Remaining:**
 - Lead form mapping editor UI; `pages_manage_ads` on the Page token (to read form questions and list forms)

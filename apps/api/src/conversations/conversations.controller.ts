@@ -7,11 +7,13 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
-  asc,
+  and,
   auditLogs,
+  desc,
   type DbHandle,
   eq,
   getDefaultPublishedPlaybook,
@@ -26,12 +28,23 @@ import {
   conversationListSchema,
   type ConversationThread,
   conversationThreadSchema,
+  cursorSchema,
+  pageLimitSchema,
 } from '@qualify/shared';
 import { z } from 'zod';
+import { decodeCursor, encodeCursor } from '../common/cursor';
+import { parseQuery } from '../common/zod-body';
 import { CurrentWorkspace, type WorkspaceContext, WorkspaceGuard } from '../auth/workspace.guard';
 import { DB } from '../tokens';
 
 const leadIdSchema = z.uuid();
+const listQuerySchema = z.object({
+  cursor: cursorSchema.optional(),
+  limit: pageLimitSchema.default(30),
+});
+const threadQuerySchema = z.object({ before: cursorSchema.optional() });
+/** Messages per thread page (newest first, shown oldest first). */
+const THREAD_PAGE = 100;
 
 function parseLeadId(value: string): string {
   const parsed = leadIdSchema.safeParse(value);
@@ -45,51 +58,92 @@ function parseLeadId(value: string): string {
 export class ConversationsController {
   constructor(@Inject(DB) private readonly handle: DbHandle) {}
 
+  /** Leads by latest activity, newest first; keyset pagination on (activity, id). */
   @Get()
-  async list(@CurrentWorkspace() workspace: WorkspaceContext): Promise<ConversationList> {
-    const rows = await withTenant(this.handle.db, workspace.tenantId, (tx) =>
-      tx
-        .select({
-          leadId: leads.id,
-          phone: leads.phoneE164,
-          name: leads.name,
-          lastMessageAt: leads.lastMessageAt,
-          // Correlated subqueries must reference the outer table explicitly: in single-table
-          // selects Drizzle renders ${leads.id} as a bare "id", which would bind to m.id.
-          lastMessage: sql<string | null>`(
-            select m.body from messages m where m.lead_id = leads.id
-            order by m.created_at desc limit 1)`,
-          messageCount: sql<number>`(select count(*)::int from messages m where m.lead_id = leads.id)`,
-        })
-        .from(leads)
-        .orderBy(sql`${leads.lastMessageAt} desc nulls last`)
-        .limit(50),
+  async list(
+    @CurrentWorkspace() workspace: WorkspaceContext,
+    @Query() query: unknown,
+  ): Promise<ConversationList> {
+    const input = parseQuery(listQuerySchema, query);
+    const cursor = decodeCursor(input.cursor);
+    const activity = sql`coalesce(l.last_message_at, l.created_at)`;
+    const rows = await withTenant(
+      this.handle.db,
+      workspace.tenantId,
+      async (tx) =>
+        (
+          await tx.execute<{
+            lead_id: string;
+            phone: string;
+            name: string | null;
+            last_message_at: string | null;
+            activity: string;
+            last_message: string | null;
+            message_count: number;
+          }>(sql`
+          select l.id as lead_id, l.phone_e164 as phone, l.name,
+                 l.last_message_at::text as last_message_at, ${activity}::text as activity,
+                 (select m.body from messages m where m.lead_id = l.id
+                  order by m.created_at desc limit 1) as last_message,
+                 (select count(*)::int from messages m where m.lead_id = l.id) as message_count
+          from leads l
+          where ${cursor ? sql`(${activity}, l.id) < (${cursor.sortKey}::timestamptz, ${cursor.id}::uuid)` : sql`true`}
+          order by ${activity} desc, l.id desc
+          limit ${input.limit + 1}`)
+        ).rows,
     );
-
+    const page = rows.slice(0, input.limit);
+    const last = page.at(-1);
     return conversationListSchema.parse({
-      conversations: rows.map((row) => ({
-        ...row,
-        lastMessageAt: row.lastMessageAt?.toISOString() ?? null,
+      conversations: page.map((row) => ({
+        leadId: row.lead_id,
+        phone: row.phone,
+        name: row.name,
+        lastMessageAt: row.last_message_at ? new Date(row.last_message_at).toISOString() : null,
+        lastMessage: row.last_message,
+        messageCount: row.message_count,
       })),
+      nextCursor:
+        rows.length > input.limit && last ? encodeCursor(last.activity, last.lead_id) : null,
     });
   }
 
+  /** The lead and its latest messages (oldest first); ?before=<cursor> loads older ones. */
   @Get(':leadId')
   async thread(
     @CurrentWorkspace() workspace: WorkspaceContext,
     @Param('leadId') leadIdParam: string,
+    @Query() query: unknown,
   ): Promise<ConversationThread> {
     const leadId = parseLeadId(leadIdParam);
+    const before = decodeCursor(parseQuery(threadQuerySchema, query).before);
 
     const result = await withTenant(this.handle.db, workspace.tenantId, async (tx) => {
       const [lead] = await tx.select().from(leads).where(eq(leads.id, leadId)).limit(1);
       if (!lead) return null;
       const rows = await tx
-        .select()
+        .select({
+          id: messages.id,
+          direction: messages.direction,
+          sender: messages.sender,
+          type: messages.type,
+          body: messages.body,
+          status: messages.status,
+          error: messages.error,
+          createdAt: messages.createdAt,
+          createdAtText: sql<string>`${messages.createdAt}::text`,
+        })
         .from(messages)
-        .where(eq(messages.leadId, leadId))
-        .orderBy(asc(messages.createdAt))
-        .limit(200);
+        .where(
+          before
+            ? and(
+                eq(messages.leadId, leadId),
+                sql`(${messages.createdAt}, ${messages.id}) < (${before.sortKey}::timestamptz, ${before.id}::uuid)`,
+              )
+            : eq(messages.leadId, leadId),
+        )
+        .orderBy(desc(messages.createdAt), desc(messages.id))
+        .limit(THREAD_PAGE + 1);
       const playbook = lead.playbookVersionId
         ? await getPlaybookVersion(tx, lead.playbookVersionId)
         : await getDefaultPublishedPlaybook(tx);
@@ -97,6 +151,8 @@ export class ConversationsController {
     });
     if (!result) throw new NotFoundException('Conversation not found');
     const { lead, rows, playbook } = result;
+    const page = rows.slice(0, THREAD_PAGE);
+    const oldest = page.at(-1);
 
     return conversationThreadSchema.parse({
       lead: {
@@ -115,7 +171,7 @@ export class ConversationsController {
         scoreDetails: lead.scoreDetails,
         summary: lead.summary,
       },
-      messages: rows.map((row) => ({
+      messages: [...page].reverse().map((row) => ({
         id: row.id,
         direction: row.direction,
         sender: row.sender,
@@ -130,6 +186,8 @@ export class ConversationsController {
             : null,
         createdAt: row.createdAt.toISOString(),
       })),
+      olderCursor:
+        rows.length > THREAD_PAGE && oldest ? encodeCursor(oldest.createdAtText, oldest.id) : null,
     });
   }
 

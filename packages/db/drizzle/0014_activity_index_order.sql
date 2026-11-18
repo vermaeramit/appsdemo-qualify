@@ -1,0 +1,2 @@
+DROP INDEX "leads_tenant_activity_idx";--> statement-breakpoint
+CREATE INDEX "leads_tenant_activity_idx" ON "leads" USING btree ("tenant_id",coalesce("last_message_at", "created_at") desc,"id" DESC NULLS LAST);

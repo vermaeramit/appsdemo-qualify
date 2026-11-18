@@ -48,7 +48,11 @@ export const leadFormSubmissions = pgTable(
     fieldData: jsonb('field_data').$type<{ name: string; values: string[] }[]>().notNull(),
     createdAt: createdAt(),
   },
-  (table) => [index('lead_form_submissions_tenant_form_idx').on(table.tenantId, table.formId)],
+  (table) => [
+    index('lead_form_submissions_tenant_form_idx').on(table.tenantId, table.formId),
+    // Newest-first keyset pagination on (created_at, id), read by a backward scan.
+    index('lead_form_submissions_tenant_created_idx').on(table.tenantId, table.createdAt, table.id),
+  ],
 );
 
 /**

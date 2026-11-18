@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
+  FileInput,
   BookOpen,
   Bot,
   LayoutDashboard,
@@ -66,6 +67,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <CommandItem onSelect={() => run(() => navigate({ to: '/conversations' }))}>
               <MessagesSquare />
               Conversations
+            </CommandItem>
+            <CommandItem onSelect={() => run(() => navigate({ to: '/meta-leads' }))}>
+              <FileInput />
+              Meta leads (lead form submissions)
             </CommandItem>
             <CommandItem onSelect={() => run(() => navigate({ to: '/agent' }))}>
               <Bot />

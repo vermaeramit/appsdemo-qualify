@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { ArrowLeft, MessageCircleDashed } from 'lucide-react';
+import { ArrowLeft, Loader2, MessageCircleDashed } from 'lucide-react';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,11 +21,18 @@ export const Route = createFileRoute('/_app/conversations')({
 function ConversationsPage() {
   const { lead: selectedId } = Route.useSearch();
   const workspace = useActiveWorkspace();
-  const list = useQuery(conversationsQueryOptions);
-  const thread = useQuery({
+  const list = useInfiniteQuery(conversationsQueryOptions);
+  const thread = useInfiniteQuery({
     ...threadQueryOptions(selectedId ?? ''),
     enabled: Boolean(selectedId),
   });
+  // A lead whose activity changed between two page loads can show up twice: keep the first.
+  const conversations = useMemo(() => {
+    const seen = new Set<string>();
+    return (list.data?.pages ?? [])
+      .flatMap((page) => page.conversations)
+      .filter((item) => !seen.has(item.leadId) && Boolean(seen.add(item.leadId)));
+  }, [list.data]);
 
   return (
     <div className="space-y-4">
@@ -44,10 +52,27 @@ function ConversationsPage() {
             <ListSkeleton />
           ) : list.isError ? (
             <p className="p-4 text-sm text-destructive">Could not load conversations.</p>
-          ) : list.data.conversations.length === 0 ? (
+          ) : conversations.length === 0 ? (
             <EmptyInbox />
           ) : (
-            <ConversationList conversations={list.data.conversations} selectedId={selectedId} />
+            <>
+              <ConversationList conversations={conversations} selectedId={selectedId} />
+              {list.hasNextPage && (
+                <div className="border-t p-3 text-center">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={list.isFetchingNextPage}
+                    onClick={() => void list.fetchNextPage()}
+                  >
+                    {list.isFetchingNextPage && (
+                      <Loader2 className="animate-spin" data-icon="inline-start" />
+                    )}
+                    Load more
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </aside>
 
@@ -75,7 +100,12 @@ function ConversationsPage() {
                 </Button>
               </div>
               <div className="min-h-0 flex-1">
-                <MessageThread thread={thread.data} />
+                <MessageThread
+                  pages={thread.data.pages}
+                  hasOlder={thread.hasNextPage}
+                  loadingOlder={thread.isFetchingNextPage}
+                  onLoadOlder={() => void thread.fetchNextPage()}
+                />
               </div>
             </div>
           )}

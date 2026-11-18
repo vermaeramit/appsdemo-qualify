@@ -43,3 +43,9 @@ export const metaEventJobSchema = z.object({
   eventId: z.uuid(),
 });
 export type MetaEventJob = z.infer<typeof metaEventJobSchema>;
+
+/** Recomputes every lead's score after the scoring config changes (batched in the worker). */
+export const RESCORE_QUEUE = 'lead-rescore';
+
+export const rescoreJobSchema = z.object({ tenantId: z.string().min(1) });
+export type RescoreJob = z.infer<typeof rescoreJobSchema>;

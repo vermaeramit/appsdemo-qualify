@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import type { LeadScoreDetails, LeadSignals } from '@qualify/shared';
 import { tenants } from './platform.ts';
 import { playbookVersions } from './playbooks.ts';
@@ -101,6 +102,17 @@ export const leads = pgTable(
   (table) => [
     uniqueIndex('leads_tenant_phone_uq').on(table.tenantId, table.phoneE164),
     index('leads_tenant_last_message_idx').on(table.tenantId, table.lastMessageAt),
+    // Period filters (dashboard, costs) and newest-first lists.
+    index('leads_tenant_created_idx').on(table.tenantId, table.createdAt),
+    // Activity order (conversations), keyset on (activity, id). Ascending on purpose: a backward
+    // scan gives `order by activity desc, id desc` exactly (drizzle's .desc() is NULLS LAST,
+    // which doesn't match ORDER BY ... DESC).
+    index('leads_tenant_activity_idx').on(
+      table.tenantId,
+      sql`coalesce(${table.lastMessageAt}, ${table.createdAt})`,
+      table.id,
+    ),
+    index('leads_tenant_scored_idx').on(table.tenantId, table.scoredAt),
   ],
 );
 
@@ -132,7 +144,15 @@ export const messages = pgTable(
     statusUpdatedAt: timestamp('status_updated_at', { withTimezone: true }),
   },
   (table) => [
-    index('messages_tenant_lead_created_idx').on(table.tenantId, table.leadId, table.createdAt),
+    // A lead's thread, keyset on (created_at, id), and its latest message.
+    index('messages_tenant_lead_created_idx').on(
+      table.tenantId,
+      table.leadId,
+      table.createdAt,
+      table.id,
+    ),
+    // Period queries across leads (reply times, AI cost, paid messages).
+    index('messages_tenant_created_idx').on(table.tenantId, table.createdAt),
   ],
 );
 

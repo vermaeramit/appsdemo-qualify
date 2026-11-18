@@ -24,6 +24,8 @@ export type ConversationSummary = z.infer<typeof conversationSummarySchema>;
 
 export const conversationListSchema = z.object({
   conversations: z.array(conversationSummarySchema),
+  /** Cursor for the next page (older activity), or null on the last page. */
+  nextCursor: z.string().nullable(),
 });
 export type ConversationList = z.infer<typeof conversationListSchema>;
 
@@ -60,6 +62,9 @@ export const conversationThreadSchema = z.object({
     scoreDetails: leadScoreDetailsSchema.nullable(),
     summary: z.string().nullable(),
   }),
+  /** The latest messages, oldest first. */
   messages: z.array(conversationMessageSchema),
+  /** Cursor for older messages (?before=…), or null when this is the start of the chat. */
+  olderCursor: z.string().nullable(),
 });
 export type ConversationThread = z.infer<typeof conversationThreadSchema>;

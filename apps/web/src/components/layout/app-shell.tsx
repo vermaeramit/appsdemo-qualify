@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { MeResponse } from '@qualify/shared';
 import { Link } from '@tanstack/react-router';
 import {
+  FileInput,
   BookOpen,
   Bot,
   LayoutDashboard,
@@ -43,6 +44,7 @@ const navItemClass =
 const navLinks = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/conversations', label: 'Conversations', icon: MessagesSquare, exact: false },
+  { to: '/meta-leads', label: 'Meta leads', icon: FileInput, exact: false },
   { to: '/agent', label: 'AI agent', icon: Bot, exact: false },
   { to: '/costs', label: 'Costs', icon: Wallet, exact: false, managerOnly: true },
   { to: '/api-docs', label: 'API docs', icon: BookOpen, exact: false },
