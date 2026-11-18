@@ -29,3 +29,6 @@ Thumbs.db
 
 # AI eval raw outputs (reports go to docs/evals)
 .eval-results/
+
+# production backups (deploy/prod/backup.sh)
+deploy/prod/backups/

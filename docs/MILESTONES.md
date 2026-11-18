@@ -168,6 +168,7 @@
 **Acceptance:** a qualified lead arrives at webhook.site with a valid signature, and the Excel export matches the UI.
 
 ## M8 — Production & pilot
+**Done:** Docker images, production compose with Caddy, backups and restore drill, release workflow (GHCR + optional SSH deploy), runbook [docs/DEPLOY.md](DEPLOY.md); verified locally (D-074). **Owner:** VPS, DNS, GHCR token, first deploy, App Review.
 - Provision the VPS, harden it, deploy with Docker Compose + Caddy at `qualify.appsdemo.in` (+ staging)
 - Backups + restore drill, Uptime Kuma alerts, Seq logs
 - Final AI eval run on the travel client's real playbook

@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/.turbo
+**/test-results
+**/playwright-report
+.git
+.github
+.env
+.env.*
+!.env.example
+.eval-results
+deploy/prod/.env
+deploy/prod/backups
+*.log

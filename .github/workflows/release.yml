@@ -1,0 +1,86 @@
+name: Release
+
+# Builds the api, worker and web images and pushes them to GHCR. Optionally deploys to a server
+# over SSH. Runs on version tags (v*) or by hand (Actions → Release → Run workflow).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to the server after pushing (needs the DEPLOY_* secrets)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  images:
+    name: Build and push images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: meta
+        run: |
+          echo "prefix=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: api
+          push: true
+          tags: ${{ steps.meta.outputs.prefix }}/api:${{ steps.meta.outputs.tag }},${{ steps.meta.outputs.prefix }}/api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: worker
+          push: true
+          tags: ${{ steps.meta.outputs.prefix }}/worker:${{ steps.meta.outputs.tag }},${{ steps.meta.outputs.prefix }}/worker:latest
+          cache-from: type=gha
+      - name: web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: web
+          push: true
+          tags: ${{ steps.meta.outputs.prefix }}/web:${{ steps.meta.outputs.tag }},${{ steps.meta.outputs.prefix }}/web:latest
+          cache-from: type=gha
+
+  deploy:
+    name: Deploy over SSH
+    needs: images
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Pull, migrate, restart
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          TAG: ${{ needs.images.outputs.tag }}
+        run: |
+          install -m 600 /dev/null key && printf '%s\n' "$KEY" > key
+          ssh -i key -o StrictHostKeyChecking=accept-new "$USER@$HOST" \
+            "cd /opt/qualify/deploy/prod && sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=$TAG/' .env \
+             && docker compose pull && docker compose run --rm migrate && docker compose up -d \
+             && docker image prune -f"
