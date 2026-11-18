@@ -103,6 +103,18 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await page.getByRole('button', { name: 'Discard' }).click();
   await expect(page.getByText('You have unpublished changes.')).toHaveCount(0);
 
+  // Knowledge base: text files are appended as titled sections.
+  await page.getByRole('tab', { name: 'Knowledge base' }).click();
+  await page.getByLabel('Add text from a file').setInputFiles({
+    name: 'faq.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Q: Do you offer EMI?\r\nA: Yes, on all projects.'),
+  });
+  await expect(page.getByRole('textbox', { name: 'Knowledge base' })).toHaveValue(
+    /## faq\n\nQ: Do you offer EMI\?\nA: Yes, on all projects\.$/,
+  );
+  await page.getByRole('button', { name: 'Discard' }).click();
+
   // Add a lead like a lead form would; it opens in Conversations.
   await page.getByRole('link', { name: 'Conversations' }).click();
   await page.getByRole('button', { name: 'Add lead' }).click();

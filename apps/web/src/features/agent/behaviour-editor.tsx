@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
+import { FileUp } from 'lucide-react';
 import { Controller, type FieldError, useFormContext, useWatch } from 'react-hook-form';
 import { FormField } from '@/components/form/form-field';
 import { StringListInput } from '@/components/form/string-list-input';
@@ -221,9 +222,33 @@ export function BehaviourEditor({ readOnly }: { readOnly: boolean }) {
 const KB_MAX = 40_000;
 
 /** Packages, prices ("starting from"), FAQs and policies the agent may use. */
+const KB_FILE_TYPES = '.txt,.md,.markdown,.csv';
+
+/** Reads a text file and returns it as a titled section ready to append to the knowledge base. */
+async function readKnowledgeFile(file: File): Promise<string> {
+  const text = (await file.text()).replace(/\r\n/g, '\n').trim();
+  return `## ${file.name.replace(/\.[^.]+$/, '')}\n\n${text}`;
+}
+
 export function KnowledgeEditor({ readOnly }: { readOnly: boolean }) {
-  const { register, formState, control } = useFormContext<EditorConfig>();
+  const { register, formState, control, getValues, setValue } = useFormContext<EditorConfig>();
   const length = useWatch({ control, name: 'knowledgeBase' }).length;
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  const addFiles = async (files: FileList | null) => {
+    setFileError(null);
+    if (!files?.length) return;
+    const sections = await Promise.all([...files].map(readKnowledgeFile));
+    const current = getValues('knowledgeBase').trimEnd();
+    const next = [current, ...sections].filter(Boolean).join('\n\n');
+    if (next.length > KB_MAX) {
+      setFileError(
+        `That would make the knowledge base ${next.length.toLocaleString()} characters (limit ${KB_MAX.toLocaleString()}). Shorten the file or remove old text first.`,
+      );
+      return;
+    }
+    setValue('knowledgeBase', next, { shouldDirty: true, shouldValidate: true });
+  };
   return (
     <Card>
       <CardHeader>
@@ -242,9 +267,31 @@ export function KnowledgeEditor({ readOnly }: { readOnly: boolean }) {
           className="font-mono text-xs leading-relaxed"
           {...register('knowledgeBase')}
         />
-        <p className="text-right text-xs text-muted-foreground">
-          {length.toLocaleString()} / {KB_MAX.toLocaleString()} characters
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {!readOnly ? (
+            <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+              <FileUp className="size-3.5" />
+              Add text from a file (.txt, .md, .csv)
+              <input
+                type="file"
+                accept={KB_FILE_TYPES}
+                multiple
+                className="sr-only"
+                aria-label="Add text from a file"
+                onChange={(event) => {
+                  void addFiles(event.target.files);
+                  event.target.value = '';
+                }}
+              />
+            </label>
+          ) : (
+            <span />
+          )}
+          <p className="text-xs text-muted-foreground">
+            {length.toLocaleString()} / {KB_MAX.toLocaleString()} characters
+          </p>
+        </div>
+        {fileError && <p className="text-xs font-medium text-destructive">{fileError}</p>}
         {formState.errors.knowledgeBase && (
           <p className="text-xs font-medium text-destructive">
             {friendlyError(formState.errors.knowledgeBase.message)}
