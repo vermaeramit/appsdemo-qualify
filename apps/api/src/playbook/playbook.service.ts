@@ -3,9 +3,11 @@ import {
   auditLogs,
   type DbHandle,
   getDefaultPublishedPlaybook,
+  getLatestPublishedVersion,
   getPlaybookVersion,
   publishPlaybookVersion,
   sql,
+  type Transaction,
   withTenant,
 } from '@qualify/db';
 import {
@@ -32,18 +34,16 @@ export class PlaybookService {
     @Inject(RESCORE_QUEUE_TOKEN) private readonly rescoreQueue: Queue<RescoreJob>,
   ) {}
 
-  async get(tenantId: string): Promise<PlaybookResponse> {
-    const playbook = await withTenant(this.handle.db, tenantId, (tx) =>
-      getDefaultPublishedPlaybook(tx),
-    );
+  async get(tenantId: string, agentId?: string): Promise<PlaybookResponse> {
+    const playbook = await withTenant(this.handle.db, tenantId, (tx) => this.load(tx, agentId));
     if (!playbook) throw new NotFoundException('No playbook yet');
     return playbookResponseSchema.parse(playbook);
   }
 
   /** Published versions of the default playbook with who published them, newest first. */
-  async versions(tenantId: string): Promise<PlaybookVersionList> {
+  async versions(tenantId: string, agentId?: string): Promise<PlaybookVersionList> {
     const rows = await withTenant(this.handle.db, tenantId, async (tx) => {
-      const current = await getDefaultPublishedPlaybook(tx);
+      const current = await this.load(tx, agentId);
       if (!current) return [];
       return (
         await tx.execute<{
@@ -77,6 +77,11 @@ export class PlaybookService {
     });
   }
 
+  /** One agent's latest published version, or the default agent's (D-086). */
+  private load(tx: Transaction, agentId: string | undefined) {
+    return agentId ? getLatestPublishedVersion(tx, agentId) : getDefaultPublishedPlaybook(tx);
+  }
+
   /** One version's configuration (to load it into the editor and publish it again). */
   async version(tenantId: string, versionId: string): Promise<PlaybookResponse> {
     const found = await withTenant(this.handle.db, tenantId, (tx) =>
@@ -86,9 +91,13 @@ export class PlaybookService {
     return playbookResponseSchema.parse(found);
   }
 
-  async publish(workspace: WorkspaceContext, config: PlaybookConfig): Promise<PlaybookResponse> {
+  async publish(
+    workspace: WorkspaceContext,
+    config: PlaybookConfig,
+    agentId?: string,
+  ): Promise<PlaybookResponse> {
     const published = await withTenant(this.handle.db, workspace.tenantId, async (tx) => {
-      const current = await getDefaultPublishedPlaybook(tx);
+      const current = await this.load(tx, agentId);
       if (!current) return null;
       const next = await publishPlaybookVersion(tx, {
         tenantId: workspace.tenantId,

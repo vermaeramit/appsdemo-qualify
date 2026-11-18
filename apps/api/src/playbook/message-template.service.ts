@@ -79,8 +79,12 @@ export class MessageTemplateService {
     @Inject(TemplateMediaService) private readonly media: TemplateMediaService,
   ) {}
 
-  async status(tenantId: string, kind: TemplateKind): Promise<OpeningTemplateStatus> {
-    const { message } = await this.current(tenantId, kind);
+  async status(
+    tenantId: string,
+    kind: TemplateKind,
+    agentId?: string,
+  ): Promise<OpeningTemplateStatus> {
+    const { message } = await this.current(tenantId, kind, agentId);
     const name = message.templateName ?? KINDS[kind].name(message);
     const base = {
       name,
@@ -105,9 +109,13 @@ export class MessageTemplateService {
   }
 
   /** Submits the published text to Meta for review. Safe to call twice. */
-  async submit(workspace: WorkspaceContext, kind: TemplateKind): Promise<OpeningTemplateStatus> {
-    const { config, message } = await this.current(workspace.tenantId, kind);
-    if (message.templateName) return this.status(workspace.tenantId, kind);
+  async submit(
+    workspace: WorkspaceContext,
+    kind: TemplateKind,
+    agentId?: string,
+  ): Promise<OpeningTemplateStatus> {
+    const { config, message } = await this.current(workspace.tenantId, kind, agentId);
+    if (message.templateName) return this.status(workspace.tenantId, kind, agentId);
     const access = await this.requireAccess(workspace.tenantId);
     const name = KINDS[kind].name(message);
 
@@ -135,13 +143,17 @@ export class MessageTemplateService {
       );
       await this.audit(workspace, `${kind}_template.submitted`, name);
     }
-    return this.status(workspace.tenantId, kind);
+    return this.status(workspace.tenantId, kind, agentId);
   }
 
   /** Uses the approved template (publishes a new playbook version). */
-  async activate(workspace: WorkspaceContext, kind: TemplateKind): Promise<OpeningTemplateStatus> {
-    const { config, message } = await this.current(workspace.tenantId, kind);
-    const status = await this.status(workspace.tenantId, kind);
+  async activate(
+    workspace: WorkspaceContext,
+    kind: TemplateKind,
+    agentId?: string,
+  ): Promise<OpeningTemplateStatus> {
+    const { config, message } = await this.current(workspace.tenantId, kind, agentId);
+    const status = await this.status(workspace.tenantId, kind, agentId);
     if (status.active) return status;
     if (status.state !== 'approved') {
       throw new BadRequestException('The template is not approved yet.');
@@ -153,13 +165,14 @@ export class MessageTemplateService {
         templateName: status.name,
         templateLanguage: status.language,
       }),
+      agentId,
     );
     await this.audit(workspace, `${kind}_template.activated`, status.name);
-    return this.status(workspace.tenantId, kind);
+    return this.status(workspace.tenantId, kind, agentId);
   }
 
-  private async current(tenantId: string, kind: TemplateKind) {
-    const playbook = await this.playbooks.get(tenantId);
+  private async current(tenantId: string, kind: TemplateKind, agentId?: string) {
+    const playbook = await this.playbooks.get(tenantId, agentId);
     return { config: playbook.config, message: KINDS[kind].read(playbook.config) };
   }
 

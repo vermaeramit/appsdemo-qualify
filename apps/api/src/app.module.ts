@@ -25,6 +25,8 @@ import { OnboardingService } from './whatsapp/onboarding.service';
 import { TemplatesController } from './templates/templates.controller';
 import { TemplatesService } from './templates/templates.service';
 import { MediaController } from './media/media.controller';
+import { AgentsController } from './agents/agents.controller';
+import { AgentsService } from './agents/agents.service';
 import { TemplateMediaService } from './media/template-media.service';
 import { WebhooksOutService } from './webhooks-out/webhooks-out.service';
 import { MessageTemplateService } from './playbook/message-template.service';
@@ -92,6 +94,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
     OnboardingController,
     TemplatesController,
     MediaController,
+    AgentsController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: OriginGuard },
@@ -106,6 +109,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
     OnboardingService,
     TemplatesService,
     TemplateMediaService,
+    AgentsService,
     WebhooksOutService,
   ],
 })

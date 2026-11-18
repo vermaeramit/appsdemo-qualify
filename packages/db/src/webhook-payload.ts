@@ -6,7 +6,7 @@ import {
   type WebhookPayload,
   webhookPayloadSchema,
 } from '@qualify/shared';
-import { getDefaultPublishedPlaybook } from './playbooks.ts';
+import { getDefaultPublishedPlaybook, getPlaybookVersion } from './playbooks.ts';
 import { leads, organization } from './schema/index.ts';
 import type { Transaction } from './tenant.ts';
 
@@ -34,7 +34,9 @@ export async function buildWebhookPayload(
     .from(organization)
     .where(eq(organization.id, input.tenantId))
     .limit(1);
-  const playbook = await getDefaultPublishedPlaybook(tx);
+  const playbook =
+    (lead.playbookVersionId ? await getPlaybookVersion(tx, lead.playbookVersionId) : null) ??
+    (await getDefaultPublishedPlaybook(tx));
   const definitions = [...(playbook?.config.fields ?? [])].sort((a, b) => a.priority - b.priority);
   const known = new Set(definitions.map((field) => field.key));
 

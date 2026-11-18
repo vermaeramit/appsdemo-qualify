@@ -20,6 +20,7 @@ import {
   getPlaybookVersion,
   leads,
   messages,
+  playbooks,
   sql,
   withTenant,
 } from '@qualify/db';
@@ -150,10 +151,17 @@ export class ConversationsController {
       const playbook = lead.playbookVersionId
         ? await getPlaybookVersion(tx, lead.playbookVersionId)
         : await getDefaultPublishedPlaybook(tx);
-      return { lead, rows, playbook };
+      const [agent] = playbook
+        ? await tx
+            .select({ name: playbooks.name })
+            .from(playbooks)
+            .where(eq(playbooks.id, playbook.playbookId))
+            .limit(1)
+        : [];
+      return { lead, rows, playbook, agentName: agent?.name ?? null };
     });
     if (!result) throw new NotFoundException('Conversation not found');
-    const { lead, rows, playbook } = result;
+    const { lead, rows, playbook, agentName } = result;
     const page = rows.slice(0, THREAD_PAGE);
     const oldest = page.at(-1);
 
@@ -174,6 +182,7 @@ export class ConversationsController {
         scoreDetails: lead.scoreDetails,
         summary: lead.summary,
         source: lead.source,
+        agentName,
         attribution: leadAttributionSchema.safeParse(lead.attribution).data ?? null,
         outcome: storedLeadOutcomeSchema.safeParse(lead.outcome).data ?? null,
       },

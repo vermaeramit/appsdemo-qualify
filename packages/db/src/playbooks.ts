@@ -176,3 +176,30 @@ export async function resolvePlaybookForAttribution(
   }
   return getDefaultPublishedPlaybook(tx);
 }
+
+/** Configs of the given versions, by version id (call inside withTenant). */
+export async function configsByVersion(
+  tx: Transaction,
+  versionIds: readonly (string | null)[],
+): Promise<Map<string, PlaybookConfig>> {
+  const result = new Map<string, PlaybookConfig>();
+  for (const id of new Set(versionIds.filter((value): value is string => Boolean(value)))) {
+    const version = await getPlaybookVersion(tx, id);
+    if (version) result.set(id, version.config);
+  }
+  return result;
+}
+
+/** Every agent's current config, the default agent first (call inside withTenant). */
+export async function currentAgentConfigs(tx: Transaction): Promise<PlaybookConfig[]> {
+  const rows = await tx
+    .select({ id: playbooks.id, isDefault: playbooks.isDefault })
+    .from(playbooks)
+    .orderBy(desc(playbooks.isDefault), playbooks.createdAt);
+  const configs: PlaybookConfig[] = [];
+  for (const row of rows) {
+    const version = await getLatestPublishedVersion(tx, row.id);
+    if (version) configs.push(version.config);
+  }
+  return configs;
+}

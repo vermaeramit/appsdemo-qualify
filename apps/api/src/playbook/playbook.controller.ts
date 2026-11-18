@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -25,6 +26,14 @@ import { parseBody } from '../common/zod-body';
 import { MessageTemplateService, type TemplateKind } from './message-template.service';
 import { PlaybookService } from './playbook.service';
 import { SimulatorService } from './simulator.service';
+
+/** Optional ?agent=<playbook id>; the default agent when absent (D-086). */
+function parseAgent(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const parsed = z.uuid().safeParse(value);
+  if (!parsed.success) throw new BadRequestException('Invalid agent');
+  return parsed.data;
+}
 
 function parseKind(value: string): TemplateKind {
   if (value === 'opening' || value === 'followup') return value;
@@ -53,23 +62,34 @@ export class PlaybookController {
   }
 
   @Get()
-  get(@CurrentWorkspace() workspace: WorkspaceContext): Promise<PlaybookResponse> {
-    return this.playbooks.get(workspace.tenantId);
+  get(
+    @CurrentWorkspace() workspace: WorkspaceContext,
+    @Query('agent') agent?: string,
+  ): Promise<PlaybookResponse> {
+    return this.playbooks.get(workspace.tenantId, parseAgent(agent));
   }
 
   @Put()
   publish(
     @CurrentWorkspace() workspace: WorkspaceContext,
     @Body() body: unknown,
+    @Query('agent') agent?: string,
   ): Promise<PlaybookResponse> {
     requireManager(workspace);
-    return this.playbooks.publish(workspace, parseBody(playbookConfigSchema, body));
+    return this.playbooks.publish(
+      workspace,
+      parseBody(playbookConfigSchema, body),
+      parseAgent(agent),
+    );
   }
 
   /** Version history (FR-4.9). */
   @Get('versions')
-  versions(@CurrentWorkspace() workspace: WorkspaceContext): Promise<PlaybookVersionList> {
-    return this.playbooks.versions(workspace.tenantId);
+  versions(
+    @CurrentWorkspace() workspace: WorkspaceContext,
+    @Query('agent') agent?: string,
+  ): Promise<PlaybookVersionList> {
+    return this.playbooks.versions(workspace.tenantId, parseAgent(agent));
   }
 
   @Get('versions/:id')
@@ -87,8 +107,9 @@ export class PlaybookController {
   templateStatus(
     @CurrentWorkspace() workspace: WorkspaceContext,
     @Param('kind') kind: string,
+    @Query('agent') agent?: string,
   ): Promise<OpeningTemplateStatus> {
-    return this.templates.status(workspace.tenantId, parseKind(kind));
+    return this.templates.status(workspace.tenantId, parseKind(kind), parseAgent(agent));
   }
 
   /** Submits the published text to Meta for review (an outward action). */
@@ -96,17 +117,19 @@ export class PlaybookController {
   submitTemplate(
     @CurrentWorkspace() workspace: WorkspaceContext,
     @Param('kind') kind: string,
+    @Query('agent') agent?: string,
   ): Promise<OpeningTemplateStatus> {
     requireManager(workspace);
-    return this.templates.submit(workspace, parseKind(kind));
+    return this.templates.submit(workspace, parseKind(kind), parseAgent(agent));
   }
 
   @Post('templates/:kind/activate')
   activateTemplate(
     @CurrentWorkspace() workspace: WorkspaceContext,
     @Param('kind') kind: string,
+    @Query('agent') agent?: string,
   ): Promise<OpeningTemplateStatus> {
     requireManager(workspace);
-    return this.templates.activate(workspace, parseKind(kind));
+    return this.templates.activate(workspace, parseKind(kind), parseAgent(agent));
   }
 }

@@ -15,7 +15,7 @@ import { type EditorConfig, editorResolver, tabWithError, toEditorConfig } from 
 import { FollowUpsEditor } from './follow-ups-editor';
 import { ScoringEditor } from './scoring-editor';
 import { OpeningEditor } from './opening-editor';
-import { playbookQueryOptions } from './queries';
+import { agentPlaybookQueryOptions, agentQuery, playbookQueryOptions, useAgentId } from './queries';
 import { QuestionsEditor } from './questions-editor';
 import { TemplatePicker } from './template-picker';
 import { TestChat } from './test-chat';
@@ -63,12 +63,16 @@ export function PlaybookEditor({
     disabled: !isDirty,
   });
 
+  const agentId = useAgentId();
   const publish = useMutation({
     mutationFn: (config: EditorConfig) =>
-      apiSend('PUT', '/api/playbook', config, playbookResponseSchema),
+      apiSend('PUT', `/api/playbook${agentQuery(agentId)}`, config, playbookResponseSchema),
     onSuccess: async (published) => {
-      queryClient.setQueryData(playbookQueryOptions.queryKey, published);
+      queryClient.setQueryData(agentPlaybookQueryOptions(agentId).queryKey, published);
       await queryClient.invalidateQueries({ queryKey: ['playbook', 'template'] });
+      await queryClient.invalidateQueries({ queryKey: ['agents'] });
+      if (!agentId)
+        await queryClient.invalidateQueries({ queryKey: playbookQueryOptions.queryKey });
       toast.success(`Published version ${published.versionNo}`, {
         description: 'New conversations use it. Running ones keep their version.',
       });

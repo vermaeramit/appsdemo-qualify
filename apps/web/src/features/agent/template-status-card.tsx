@@ -29,7 +29,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiSend, errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { playbookQueryOptions, templateQueryOptions } from './queries';
+import { agentQuery, templateQueryOptions, useAgentId } from './queries';
 
 export type TemplateKind = 'opening' | 'followup';
 
@@ -93,7 +93,8 @@ export function TemplateStatusCard({
   readOnly: boolean;
   dirty: boolean;
 }) {
-  const options = templateQueryOptions(kind);
+  const agentId = useAgentId();
+  const options = templateQueryOptions(kind, agentId);
   const queryClient = useQueryClient();
   const status = useQuery(options);
 
@@ -102,7 +103,12 @@ export function TemplateStatusCard({
 
   const submit = useMutation({
     mutationFn: () =>
-      apiSend('POST', `/api/playbook/templates/${kind}`, undefined, openingTemplateStatusSchema),
+      apiSend(
+        'POST',
+        `/api/playbook/templates/${kind}${agentQuery(agentId)}`,
+        undefined,
+        openingTemplateStatusSchema,
+      ),
     onSuccess: (data) => {
       onStatus(data);
       toast.success('Submitted to Meta for review');
@@ -114,14 +120,14 @@ export function TemplateStatusCard({
     mutationFn: () =>
       apiSend(
         'POST',
-        `/api/playbook/templates/${kind}/activate`,
+        `/api/playbook/templates/${kind}/activate${agentQuery(agentId)}`,
         undefined,
         openingTemplateStatusSchema,
       ),
     onSuccess: async (data) => {
       onStatus(data);
       toast.success(`The approved template is now used for ${LABEL[kind]} messages`);
-      await queryClient.invalidateQueries({ queryKey: playbookQueryOptions.queryKey });
+      await queryClient.invalidateQueries({ queryKey: ['playbook'] });
     },
     onError: (error) => toast.error(errorMessage(error, 'Could not activate the template.')),
   });

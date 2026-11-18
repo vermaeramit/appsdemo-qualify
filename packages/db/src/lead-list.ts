@@ -36,6 +36,7 @@ export interface LeadListRow {
   fields: Record<string, string>;
   attribution: LeadAttribution | null;
   outcome: StoredLeadOutcome | null;
+  playbookVersionId: string | null;
   createdAt: string;
   lastMessageAt: string | null;
   qualifiedAt: string | null;
@@ -55,6 +56,7 @@ type RawRow = {
   fields: Record<string, string> | null;
   attribution: LeadAttribution | null;
   outcome: StoredLeadOutcome | null;
+  playbook_version_id: string | null;
   created_at: string;
   last_message_at: string | null;
   qualified_at: string | null;
@@ -164,7 +166,7 @@ export async function listLeads(
   const raw = (
     await tx.execute<RawRow>(sql`
       select l.id, l.name, l.phone_e164, l.source, l.status, l.grade, l.score, l.score_details,
-             l.summary, l.fields, l.attribution, l.outcome, l.created_at::text as created_at,
+             l.summary, l.fields, l.attribution, l.outcome, l.playbook_version_id, l.created_at::text as created_at,
              l.last_message_at::text as last_message_at, l.qualified_at::text as qualified_at,
              l.handoff_at::text as handoff_at, (${expr})::text as sort_key
       from leads l
@@ -199,6 +201,7 @@ export async function listLeads(
       fields: row.fields ?? {},
       attribution: row.attribution,
       outcome: row.outcome,
+      playbookVersionId: row.playbook_version_id,
       createdAt: row.created_at,
       lastMessageAt: row.last_message_at,
       qualifiedAt: row.qualified_at,

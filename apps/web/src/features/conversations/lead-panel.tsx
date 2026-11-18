@@ -76,6 +76,12 @@ export function LeadPanel({ lead }: { lead: ConversationThread['lead'] }) {
         </div>
       )}
 
+      {lead.agentName && (
+        <p className="border-t pt-4 text-xs text-muted-foreground">
+          Handled by: <span className="font-medium text-foreground">{lead.agentName}</span>
+        </p>
+      )}
+
       <LeadSource lead={lead} />
 
       {lead.language && (

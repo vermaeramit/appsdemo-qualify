@@ -63,6 +63,8 @@ export const conversationThreadSchema = z.object({
     scoreDetails: leadScoreDetailsSchema.nullable(),
     summary: z.string().nullable(),
     source: z.string(),
+    /** The agent (playbook) that handles this lead (D-086). */
+    agentName: z.string().nullable(),
     attribution: leadAttributionSchema.nullable(),
     outcome: storedLeadOutcomeSchema.nullable(),
   }),

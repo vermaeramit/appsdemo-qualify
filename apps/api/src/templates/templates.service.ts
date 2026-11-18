@@ -6,7 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { resolveFollowUps, resolveOpening } from '@qualify/core';
-import { auditLogs, type DbHandle, getDefaultPublishedPlaybook, withTenant } from '@qualify/db';
+import { auditLogs, currentAgentConfigs, type DbHandle, withTenant } from '@qualify/db';
 import { type GraphTemplate, MetaApiError } from '@qualify/integrations';
 import {
   type CreateTemplateRequest,
@@ -22,13 +22,13 @@ import { WhatsAppAccessService } from '../whatsapp/whatsapp-access.service';
 /** Graph template → our shape, with where the AI agent uses it. */
 export function toMessageTemplate(
   template: GraphTemplate,
-  inUse: { opening: string | null; followup: string | null },
+  inUse: { opening: readonly (string | null)[]; followup: readonly (string | null)[] },
 ): MessageTemplate {
   const component = (type: string) => template.components?.find((item) => item.type === type);
   const header = component('HEADER');
   const usedFor: MessageTemplate['usedFor'] = [];
-  if (template.name === inUse.opening) usedFor.push('opening');
-  if (template.name === inUse.followup) usedFor.push('followup');
+  if (inUse.opening.includes(template.name)) usedFor.push('opening');
+  if (inUse.followup.includes(template.name)) usedFor.push('followup');
   const reason = template.rejected_reason;
   const score = template.quality_score?.score;
   return {
@@ -107,7 +107,7 @@ export class TemplatesService {
 
   async remove(workspace: WorkspaceContext, name: string): Promise<void> {
     const inUse = await this.inUse(workspace.tenantId);
-    if (name === inUse.opening || name === inUse.followup) {
+    if (inUse.opening.includes(name) || inUse.followup.includes(name)) {
       throw new ConflictException(
         'The AI agent uses this template. Change the opening or follow-up first.',
       );
@@ -117,13 +117,12 @@ export class TemplatesService {
     await this.audit(workspace, 'template.deleted', name, {});
   }
 
+  /** Template names every agent's opening and follow-up use right now (D-086). */
   private async inUse(tenantId: string) {
-    const playbook = await withTenant(this.handle.db, tenantId, (tx) =>
-      getDefaultPublishedPlaybook(tx),
-    );
+    const configs = await withTenant(this.handle.db, tenantId, (tx) => currentAgentConfigs(tx));
     return {
-      opening: playbook ? (resolveOpening(playbook.config).templateName ?? null) : null,
-      followup: playbook ? (resolveFollowUps(playbook.config).template.templateName ?? null) : null,
+      opening: configs.map((config) => resolveOpening(config).templateName ?? null),
+      followup: configs.map((config) => resolveFollowUps(config).template.templateName ?? null),
     };
   }
 

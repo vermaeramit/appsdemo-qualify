@@ -20,7 +20,7 @@ describe('templates', () => {
           { type: 'BUTTONS', buttons: [{ type: 'QUICK_REPLY', text: 'Yes' }] },
         ],
       },
-      { opening: 'qualify_opening_abc', followup: null },
+      { opening: ['qualify_opening_abc'], followup: [null] },
     );
     expect(template).toMatchObject({
       headerText: 'Hello',

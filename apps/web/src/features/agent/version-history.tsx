@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { errorMessage, fetchJson } from '@/lib/api';
+import { agentQuery, useAgentId } from './queries';
 
 const when = (iso: string | null) =>
   iso
@@ -40,9 +41,11 @@ export function VersionHistory({
   onLoad: (config: PlaybookConfig, versionNo: number) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const agentId = useAgentId();
   const versions = useQuery({
-    queryKey: ['playbook', 'versions'],
-    queryFn: () => fetchJson('/api/playbook/versions', playbookVersionListSchema),
+    queryKey: ['playbook', 'versions', agentId ?? 'default'],
+    queryFn: () =>
+      fetchJson(`/api/playbook/versions${agentQuery(agentId)}`, playbookVersionListSchema),
     enabled: open,
   });
   const load = useMutation({

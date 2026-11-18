@@ -2,6 +2,8 @@ import { PassThrough } from 'node:stream';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   type DbHandle,
+  configsByVersion,
+  currentAgentConfigs,
   getDefaultPublishedPlaybook,
   type LeadListKey,
   type LeadListRow,
@@ -69,7 +71,7 @@ export class LeadListService {
     page: { limit: number; cursor?: string | undefined },
   ): Promise<LeadListResponse> {
     const after = decodeCursor(page.cursor, filters.sort === 'score' ? 'integer' : 'timestamp');
-    const { result, definitions } = await withTenant(
+    const { result, definitions, byVersion } = await withTenant(
       this.handle.db,
       workspace.tenantId,
       async (tx) => {
@@ -81,10 +83,18 @@ export class LeadListService {
           limit: page.limit,
           after,
         });
-        return { result, definitions: playbook?.config.fields ?? [] };
+        // Each lead's own agent's questions (D-086); unpinned leads use the default agent.
+        const byVersion = await configsByVersion(
+          tx,
+          result.rows.map((row) => row.playbookVersionId),
+        );
+        return { result, definitions: playbook?.config.fields ?? [], byVersion };
       },
     );
-    const required = definitions.filter((field) => field.required);
+    const requiredFor = (versionId: string | null) =>
+      ((versionId && byVersion.get(versionId)?.fields) || definitions).filter(
+        (field) => field.required,
+      );
     return leadListResponseSchema.parse({
       items: result.rows.map((row) => ({
         id: row.id,
@@ -95,8 +105,9 @@ export class LeadListService {
         grade: row.grade,
         score: row.score,
         scoreReason: row.scoreDetails?.reason ?? null,
-        requiredDone: required.filter((field) => row.fields[field.key]).length,
-        requiredTotal: required.length,
+        requiredDone: requiredFor(row.playbookVersionId).filter((field) => row.fields[field.key])
+          .length,
+        requiredTotal: requiredFor(row.playbookVersionId).length,
         origin: originOf(row.attribution),
         createdAt: iso(row.createdAt),
         lastMessageAt: iso(row.lastMessageAt),
@@ -119,7 +130,11 @@ export class LeadListService {
   ): Promise<{ stream: PassThrough; filename: string }> {
     const setup = await withTenant(this.handle.db, workspace.tenantId, async (tx) => {
       const timeZone = await postgresTimeZone(tx, filters.tz);
-      const playbook = await getDefaultPublishedPlaybook(tx);
+      // One column per question across every agent (default agent first), deduplicated by key.
+      const seen = new Set<string>();
+      const allFields = (await currentAgentConfigs(tx))
+        .flatMap((config) => [...config.fields].sort((a, b) => a.priority - b.priority))
+        .filter((field) => !seen.has(field.key) && Boolean(seen.add(field.key)));
       // Resolves the range once, so the file name and every page agree.
       const probe = await listLeads(tx, {
         ...filtersFor(filters, timeZone),
@@ -127,7 +142,7 @@ export class LeadListService {
         limit: 1,
         withTotal: false,
       });
-      return { timeZone, definitions: playbook?.config.fields ?? [], probe };
+      return { timeZone, definitions: allFields, probe };
     });
     const { timeZone, definitions } = setup;
     const range = { from: setup.probe.from, to: setup.probe.to };

@@ -5,7 +5,7 @@ import {
   type DbHandle,
   desc,
   eq,
-  getDefaultPublishedPlaybook,
+  resolvePlaybookForAttribution,
   leadFormMappings,
   leadFormSubmissions,
   sql,
@@ -60,7 +60,11 @@ export class FormMappingService {
       if (unknown.length) {
         throw new BadRequestException(`Not a question in the AI agent: ${unknown.join(', ')}`);
       }
-      const playbook = await getDefaultPublishedPlaybook(tx);
+      const playbook = await resolvePlaybookForAttribution(tx, {
+        channel: 'meta_form',
+        at: new Date().toISOString(),
+        formId,
+      });
       const mapping = sanitizeFormMapping(
         input.mapping,
         current.questions.map((question) => ({ key: question.key })),
@@ -104,7 +108,12 @@ export class FormMappingService {
       .limit(1);
     if (!stored && !latest) throw new NotFoundException('No submissions from this form yet');
 
-    const playbook = await getDefaultPublishedPlaybook(tx);
+    // The agent this form routes to (D-086), else the default agent.
+    const playbook = await resolvePlaybookForAttribution(tx, {
+      channel: 'meta_form',
+      at: new Date().toISOString(),
+      formId,
+    });
     const fields = [...(playbook?.config.fields ?? [])]
       .sort((a, b) => a.priority - b.priority)
       .map((field) => ({ key: field.key, label: field.label }));

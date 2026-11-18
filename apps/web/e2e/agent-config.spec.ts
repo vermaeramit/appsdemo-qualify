@@ -133,15 +133,32 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await expect(page.getByText('You have unpublished changes.')).toBeVisible();
   await page.getByRole('button', { name: 'Discard' }).click();
 
+  // A second agent for one campaign (D-086): its own questions, routed by the lead's source.
+  await page.getByRole('button', { name: 'New agent' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Premium projects');
+  await page.getByRole('button', { name: 'Create agent' }).click();
+  await expect(page.getByText('Created “Premium projects”')).toBeVisible();
+  await expect(page).toHaveURL(/agent=/);
+  await expect(page.getByText('No rules yet: this agent gets no leads.')).toBeVisible();
+  await page.getByRole('button', { name: 'Agent settings' }).click();
+  await page.getByLabel('Type a campaign').fill('Premium');
+  await page.getByLabel('Type a campaign').press('Enter');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Agent saved')).toBeVisible();
+  await expect(page.getByText('Handles leads from Premium.')).toBeVisible();
+
   // Add a lead like a lead form would; it opens in Conversations.
   await page.getByRole('link', { name: 'Conversations' }).click();
   await page.getByRole('button', { name: 'Add lead' }).click();
   await page.getByLabel('WhatsApp number').fill('+91 99999 0' + String(Date.now()).slice(-4));
   await page.getByLabel('Name', { exact: true }).fill('Form Lead');
+  await page.getByLabel('Campaign (optional)').fill('premium');
   await page.getByRole('button', { name: 'Add lead and send opening' }).click();
   await expect(page.getByText('Lead added')).toBeVisible();
   await expect(page).toHaveURL(/\/conversations\?lead=/);
   await expect(page.getByText('Form Lead').first()).toBeVisible();
+  // The campaign routed it to the second agent.
+  await expect(page.locator('p', { hasText: 'Handled by:' })).toContainText('Premium projects');
 
   // The dashboard shows the real lead (no sample data).
   await page.getByRole('link', { name: 'Dashboard' }).click();
