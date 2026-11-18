@@ -120,10 +120,14 @@
 - **Meta leads page** (D-063): every lead form submission as received, date presets and custom range, form filter, raw JSON. E2E: `meta-leads.spec.ts`.
 - **Pagination and indexing** (D-064): keyset pagination for Meta leads, Conversations ("Load more") and threads ("Load older messages"); keyset indexes verified with EXPLAIN; rescoring on publish runs as a background job in batches.
 
+- **CTWA attribution** (D-065): ad referral stored on the lead (ad id, headline, text, URL, `ctwa_clid`), ad context for the agent for 72 h, "Came from" in the lead panel; form and API attribution too.
+- **Undeliverable detection** (D-066): Meta 131026 on a lead who never wrote to us → `undeliverable`, follow-ups cancelled; delivery errors explained in the inbox.
+- **Form mapping editor** (D-067): Meta leads → Field mapping, sample answers, one-to-one, applies to new submissions.
+
 **Remaining:**
-- Lead form mapping editor UI; `pages_manage_ads` on the Page token (to read form questions and list forms)
-- CTWA referral capture + routing rules
-- Undeliverable detection
+- Owner: submit the follow-up template (AI agent → Follow-ups) and get it approved, then run the acceptance test below. Optional: `pages_manage_ads` on the Page token (form questions with labels).
+- Live CTWA check needs a real Click-to-WhatsApp ad (any small budget) to confirm the referral fields.
+- Routing rules moved to M5 (D-068).
 
 **Acceptance:** a test form lead → template within 60 s → reply → chat → score + reason. A lead that doesn't reply → follow-ups → `unresponsive`.
 

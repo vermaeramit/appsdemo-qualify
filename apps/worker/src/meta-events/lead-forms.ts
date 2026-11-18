@@ -30,7 +30,12 @@ import {
   toE164,
   type WhatsAppClient,
 } from '@qualify/integrations';
-import { type ContactJob, formMappingOutputSchema, type PlaybookField } from '@qualify/shared';
+import {
+  type ContactJob,
+  formMappingOutputSchema,
+  type LeadAttribution,
+  type PlaybookField,
+} from '@qualify/shared';
 import type { Logger } from '../logger.ts';
 
 /** The Graph calls a lead form needs (fake in tests). */
@@ -167,6 +172,7 @@ export async function handleLeadgen(
       name: answers.name,
       source: 'meta_form',
       fields: answers.fields,
+      attribution: formAttribution(value, form.name ?? null, value.ad_id ?? lead.ad_id ?? null),
       score: (current) =>
         leadScoreColumns({
           config: context.playbook!.config,
@@ -207,6 +213,22 @@ export async function handleLeadgen(
   await deps.enqueueContact({ tenantId, leadId: result.leadId });
   logger.info({ ...log, tenantId, leadId: result.leadId }, 'Lead received from a Meta form');
   return result.isNewLead ? 'created' : 'updated';
+}
+
+/** The form (and ad) behind a submission, as the lead's attribution. */
+function formAttribution(
+  value: LeadgenValue,
+  formName: string | null,
+  adId: string | null,
+): LeadAttribution {
+  return {
+    channel: 'meta_form',
+    at: new Date().toISOString(),
+    formId: value.form_id.slice(0, 64),
+    pageId: value.page_id.slice(0, 64),
+    ...(formName ? { formName: formName.slice(0, 200) } : {}),
+    ...(adId ? { adId: adId.slice(0, 64) } : {}),
+  };
 }
 
 /** AI mapping (validated), or matching by wording when no AI is configured or it fails. */

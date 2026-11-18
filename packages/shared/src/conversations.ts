@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { leadGradeSchema, leadScoreDetailsSchema } from './lead.js';
+import { leadAttributionSchema, leadGradeSchema, leadScoreDetailsSchema } from './lead.js';
 
 export const messageDirectionSchema = z.enum(['inbound', 'outbound']);
 export const messageSenderSchema = z.enum(['lead', 'ai', 'human_app', 'system']);
@@ -61,6 +61,8 @@ export const conversationThreadSchema = z.object({
     grade: leadGradeSchema.nullable(),
     scoreDetails: leadScoreDetailsSchema.nullable(),
     summary: z.string().nullable(),
+    source: z.string(),
+    attribution: leadAttributionSchema.nullable(),
   }),
   /** The latest messages, oldest first. */
   messages: z.array(conversationMessageSchema),

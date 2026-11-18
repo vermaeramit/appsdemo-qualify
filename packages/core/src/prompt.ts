@@ -130,6 +130,19 @@ export interface StateNoteInput {
   replyLanguage?: AgentLanguage;
   /** Set when the lead stopped replying: write a short follow-up instead of an answer. */
   followUp?: { step: number; hoursSilent: number };
+  /** The Click-to-WhatsApp ad the lead tapped (the business's own ad text). */
+  ad?: { headline?: string | undefined; body?: string | undefined } | undefined;
+}
+
+function adLine(ad: StateNoteInput['ad']): string {
+  const text = [ad?.headline, ad?.body]
+    .map((part) => part?.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join(' — ')
+    .slice(0, 400);
+  return text
+    ? `\nCame from your ad: "${text}". Use it to understand what they are asking about; don't ask again what the ad already tells you.`
+    : '';
 }
 
 /** Per-turn state, appended after the conversation (keeps the system prompt cacheable). */
@@ -146,7 +159,7 @@ Lead name: ${input.leadName ?? 'unknown'}
 Collected fields: ${collected.length ? collected.join('; ') : 'none yet'}
 Missing required fields (ask in this order): ${complete ? 'none' : missing.join(', ')}
 Qualification complete: ${complete ? 'YES, send the closing message (or, if already sent, only answer questions)' : 'no'}
-Lead status: ${input.status}${input.replyLanguage ? `\nReply language: ${LANGUAGE_NAMES[input.replyLanguage]}. Write the whole reply and the quick replies in this language.` : ''}
+Lead status: ${input.status}${adLine(input.ad)}${input.replyLanguage ? `\nReply language: ${LANGUAGE_NAMES[input.replyLanguage]}. Write the whole reply and the quick replies in this language.` : ''}
 </state>
 ${
   input.followUp

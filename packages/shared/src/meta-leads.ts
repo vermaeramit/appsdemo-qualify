@@ -49,3 +49,37 @@ export const metaLeadsResponseSchema = z.object({
   ),
 });
 export type MetaLeadsResponse = z.infer<typeof metaLeadsResponseSchema>;
+
+/** GET /api/meta-leads/forms/:formId/mapping — how a form's questions feed the playbook. */
+export const formMappingResponseSchema = z.object({
+  formId: z.string(),
+  formName: z.string().nullable(),
+  /** ai = worked out by the AI, auto = by wording, manual = edited by the team. */
+  source: z.enum(['ai', 'auto', 'manual']).nullable(),
+  updatedAt: z.iso.datetime().nullable(),
+  /** The form's questions (contact questions like name and phone are handled separately). */
+  questions: z.array(
+    z.object({
+      key: z.string(),
+      /** An answer from the latest submission, to recognise the question. */
+      sample: z.string().nullable(),
+      /** Playbook question key, or null when the answer is only kept for reference. */
+      target: z.string().nullable(),
+    }),
+  ),
+  /** The playbook's questions that answers can fill. */
+  fields: z.array(z.object({ key: z.string(), label: z.string() })),
+});
+export type FormMappingResponse = z.infer<typeof formMappingResponseSchema>;
+
+/** PUT /api/meta-leads/forms/:formId/mapping — form question key → playbook key (or null). */
+export const updateFormMappingSchema = z.object({
+  mapping: z
+    .record(z.string().min(1).max(200), z.string().min(1).max(64).nullable())
+    .refine((mapping) => Object.keys(mapping).length <= 100, 'Too many questions')
+    .refine((mapping) => {
+      const targets = Object.values(mapping).filter((value) => value !== null);
+      return new Set(targets).size === targets.length;
+    }, 'Each playbook question can take the answer of one form question only'),
+});
+export type UpdateFormMapping = z.infer<typeof updateFormMappingSchema>;

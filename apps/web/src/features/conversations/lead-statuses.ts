@@ -7,4 +7,9 @@ export const LEAD_STATUSES: { status: string; label: string; className: string }
   { status: 'handoff', label: 'Handed off', className: 'bg-grade-warm/16 text-grade-warm' },
   { status: 'disqualified', label: 'Not a fit', className: 'bg-muted text-muted-foreground' },
   { status: 'unresponsive', label: 'No reply', className: 'bg-muted text-muted-foreground' },
+  {
+    status: 'undeliverable',
+    label: 'Undeliverable',
+    className: 'bg-destructive/10 text-destructive',
+  },
 ];

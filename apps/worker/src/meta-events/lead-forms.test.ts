@@ -137,6 +137,11 @@ describe('Meta lead forms', () => {
       fields: { travel_month: '2026-12', trip_type: 'Family' },
     });
     expect(created!.score).not.toBeNull();
+    expect(created!.attribution).toMatchObject({
+      channel: 'meta_form',
+      formName: 'Travel enquiry',
+      adId: 'ad_9',
+    });
     expect(enqueueContact).toHaveBeenCalledWith({ tenantId: TENANT, leadId: created!.id });
 
     const [submission] = await withTenant(testDb.app.db, TENANT, (tx) =>

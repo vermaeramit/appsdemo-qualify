@@ -1,16 +1,20 @@
-import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Put, Query, UseGuards } from '@nestjs/common';
 import { type DbHandle, listLeadFormSubmissions, withTenant } from '@qualify/db';
 import {
+  type FormMappingResponse,
   type MetaLeadItem,
   type MetaLeadsResponse,
   metaLeadsQuerySchema,
   metaLeadsResponseSchema,
+  updateFormMappingSchema,
 } from '@qualify/shared';
 import { z } from 'zod';
 import { CurrentWorkspace, type WorkspaceContext, WorkspaceGuard } from '../auth/workspace.guard';
 import { decodeCursor, encodeCursor } from '../common/cursor';
 import { postgresTimeZone } from '../common/time-zone';
-import { parseQuery } from '../common/zod-body';
+import { requireManager } from '../auth/roles';
+import { parseBody, parseQuery } from '../common/zod-body';
+import { FormMappingService, parseFormId } from './form-mapping.service';
 import { DB } from '../tokens';
 
 // Meta's field_data as stored: [{ name, values }]. Lenient on purpose: whatever arrived is shown.
@@ -32,7 +36,34 @@ function fieldsOf(raw: unknown): MetaLeadItem['fields'] {
 @Controller('meta-leads')
 @UseGuards(WorkspaceGuard)
 export class MetaLeadsController {
-  constructor(@Inject(DB) private readonly handle: DbHandle) {}
+  constructor(
+    @Inject(DB) private readonly handle: DbHandle,
+    @Inject(FormMappingService) private readonly mappings: FormMappingService,
+  ) {}
+
+  /** How a form's questions feed the AI agent's questions. */
+  @Get('forms/:formId/mapping')
+  mapping(
+    @CurrentWorkspace() workspace: WorkspaceContext,
+    @Param('formId') formId: string,
+  ): Promise<FormMappingResponse> {
+    return this.mappings.get(workspace, parseFormId(formId));
+  }
+
+  /** Correct the mapping (owners and managers); applies to new submissions. */
+  @Put('forms/:formId/mapping')
+  updateMapping(
+    @CurrentWorkspace() workspace: WorkspaceContext,
+    @Param('formId') formId: string,
+    @Body() body: unknown,
+  ): Promise<FormMappingResponse> {
+    requireManager(workspace);
+    return this.mappings.update(
+      workspace,
+      parseFormId(formId),
+      parseBody(updateFormMappingSchema, body),
+    );
+  }
 
   @Get()
   async list(

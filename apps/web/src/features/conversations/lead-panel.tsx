@@ -1,6 +1,9 @@
 import type { ConversationThread } from '@qualify/shared';
-import { CircleCheck, CircleDashed } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
+import { CircleCheck, CircleDashed, ExternalLink } from 'lucide-react';
 import { motion } from 'motion/react';
+import { SOURCE_LABELS } from '@/features/dashboard/queries';
+import { timeAgo } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { LeadScore } from './lead-score';
 
@@ -59,10 +62,57 @@ export function LeadPanel({ lead }: { lead: ConversationThread['lead'] }) {
         })}
       </dl>
 
+      <LeadSource lead={lead} />
+
       {lead.language && (
         <p className="text-xs text-muted-foreground">
           Language: <span className="font-medium text-foreground">{lead.language}</span>
         </p>
+      )}
+    </div>
+  );
+}
+
+/** Where the latest enquiry came from: the ad the lead tapped, the form, or the API campaign. */
+function LeadSource({ lead }: { lead: ConversationThread['lead'] }) {
+  const attribution = lead.attribution;
+  const channel = attribution?.channel ?? lead.source;
+  return (
+    <div className="space-y-1.5 border-t pt-4 text-sm">
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="font-medium text-muted-foreground">Came from</span>
+        {attribution && <span className="text-muted-foreground">{timeAgo(attribution.at)}</span>}
+      </div>
+      <p className="font-medium">{SOURCE_LABELS[channel] ?? channel}</p>
+      {attribution?.headline && <p className="break-words">“{attribution.headline}”</p>}
+      {attribution?.body && (
+        <p className="line-clamp-3 text-xs break-words text-muted-foreground">{attribution.body}</p>
+      )}
+      {attribution?.channel === 'meta_form' && attribution.formId && (
+        <Link
+          to="/meta-leads"
+          search={{ formId: attribution.formId }}
+          className="block text-xs text-primary hover:underline"
+        >
+          {attribution.formName ?? `Form ${attribution.formId}`}
+        </Link>
+      )}
+      {attribution?.campaign && (
+        <p className="text-xs text-muted-foreground">Campaign: {attribution.campaign}</p>
+      )}
+      {attribution?.adId && (
+        <p className="font-mono text-[0.7rem] text-muted-foreground">ad {attribution.adId}</p>
+      )}
+      {attribution?.sourceUrl && /^https:\/\//.test(attribution.sourceUrl) && (
+        <a
+          href={attribution.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+        >
+          View the ad
+          <ExternalLink className="size-3" />
+        </a>
       )}
     </div>
   );

@@ -71,6 +71,11 @@ export class LeadIntakeService {
         name: input.name ?? null,
         source: input.source,
         fields: accepted,
+        attribution: {
+          channel: input.source,
+          at: new Date().toISOString(),
+          ...(input.campaign ? { campaign: input.campaign.slice(0, 200) } : {}),
+        },
         score: (lead) =>
           playbook
             ? leadScoreColumns({

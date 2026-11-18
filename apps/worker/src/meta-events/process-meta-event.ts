@@ -1,7 +1,10 @@
 import {
+  and,
+  auditLogs,
   type Database,
   eq,
   inboundMetaEvents,
+  isNull,
   leads,
   messages,
   resolveTenantByPhoneNumberId,
@@ -18,7 +21,7 @@ import {
   type WaStatus,
   type WaValue,
 } from '@qualify/integrations';
-import type { RespondJob } from '@qualify/shared';
+import type { LeadAttribution, RespondJob } from '@qualify/shared';
 import type { FollowUpScheduler } from '../agent/follow-up.ts';
 import { handleLeadgen, type LeadFormDeps } from './lead-forms.ts';
 import type { Logger } from '../logger.ts';
@@ -38,6 +41,35 @@ export interface ProcessorDeps {
 }
 
 const STATUS_RANK: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3 };
+
+/**
+ * Meta's "Message undeliverable" (131026): not a WhatsApp number, an outdated app, or terms not
+ * accepted. It only marks a lead undeliverable when the lead has never written to us.
+ */
+const UNDELIVERABLE_CODE = 131026;
+
+const clip = (value: string | undefined, max: number) => (value ? value.slice(0, max) : undefined);
+
+/** The Click-to-WhatsApp ad (or post) behind a lead's message, as attribution. */
+export function ctwaAttribution(
+  referral: NonNullable<WaInboundMessage['referral']>,
+  at: Date,
+): LeadAttribution {
+  const sourceType = clip(referral.source_type, 32);
+  const attribution: LeadAttribution = { channel: 'ctwa', at: at.toISOString() };
+  const optional = {
+    adId: sourceType === 'ad' ? clip(referral.source_id, 64) : undefined,
+    sourceType,
+    sourceUrl: clip(referral.source_url, 1000),
+    headline: clip(referral.headline, 300),
+    body: clip(referral.body, 1000),
+    ctwaClid: clip(referral.ctwa_clid, 500),
+  };
+  for (const [key, value] of Object.entries(optional)) {
+    if (value) Object.assign(attribution, { [key]: value });
+  }
+  return attribution;
+}
 
 /** Emoji reactions are not messages: never stored as chat turns, never answered. */
 const IGNORED_TYPES = new Set(['reaction']);
@@ -82,7 +114,7 @@ export async function processMetaEvent(eventId: string, deps: ProcessorDeps): Pr
       await handleInboundMessage(deps, tenantId, phoneNumberId, change.value, message);
     }
     for (const status of change.value.statuses ?? []) {
-      await handleStatus(db, tenantId, status);
+      await handleStatus(deps, tenantId, status);
     }
   }
 
@@ -117,6 +149,8 @@ async function handleInboundMessage(
   const sentAt = new Date(Number(message.timestamp) * 1000);
   const profileName = value.contacts?.find((contact) => contact.wa_id === message.from)?.profile
     ?.name;
+  // A tap on a Click-to-WhatsApp ad: remember which ad (last touch).
+  const attribution = message.referral ? ctwaAttribution(message.referral, sentAt) : null;
 
   const stored = await withTenant(db, tenantId, async (tx) => {
     const [lead] = await tx
@@ -126,6 +160,7 @@ async function handleInboundMessage(
         phoneE164: toE164(message.from),
         name: profileName ?? null,
         source: message.referral ? 'ctwa' : 'whatsapp_inbound',
+        attribution,
         lastMessageAt: sentAt,
         lastInboundAt: sentAt,
       })
@@ -135,6 +170,7 @@ async function handleInboundMessage(
           lastMessageAt: sentAt,
           lastInboundAt: sentAt,
           name: sql`coalesce(${leads.name}, excluded.name)`,
+          ...(attribution ? { attribution } : {}),
         },
       })
       .returning({ id: leads.id });
@@ -176,14 +212,24 @@ async function handleInboundMessage(
   await deps.enqueueRespond({ tenantId, leadId: stored.leadId });
 }
 
-async function handleStatus(db: Database, tenantId: string, status: WaStatus): Promise<void> {
-  await withTenant(db, tenantId, async (tx) => {
+async function handleStatus(
+  deps: ProcessorDeps,
+  tenantId: string,
+  status: WaStatus,
+): Promise<void> {
+  const undeliverableLeadId = await withTenant(deps.db, tenantId, async (tx) => {
     const [existing] = await tx
-      .select({ id: messages.id, status: messages.status, pricing: messages.pricing })
+      .select({
+        id: messages.id,
+        leadId: messages.leadId,
+        direction: messages.direction,
+        status: messages.status,
+        pricing: messages.pricing,
+      })
       .from(messages)
       .where(eq(messages.waMessageId, status.id))
       .limit(1);
-    if (!existing) return;
+    if (!existing) return null;
 
     const next = status.status;
     const failed = next === 'failed';
@@ -200,7 +246,7 @@ async function handleStatus(db: Database, tenantId: string, status: WaStatus): P
             ...(status.pricing.type ? { type: status.pricing.type } : {}),
           }
         : null;
-    if (!moves && !pricing) return;
+    if (!moves && !pricing) return null;
 
     await tx
       .update(messages)
@@ -215,5 +261,40 @@ async function handleStatus(db: Database, tenantId: string, status: WaStatus): P
         ...(pricing ? { pricing } : {}),
       })
       .where(eq(messages.id, existing.id));
+
+    // Never reached a lead who never wrote to us: stop trying (a new enquiry tries again).
+    const undeliverable =
+      failed &&
+      existing.direction === 'outbound' &&
+      (status.errors ?? []).some((error) => error.code === UNDELIVERABLE_CODE);
+    if (!undeliverable) return null;
+    const [marked] = await tx
+      .update(leads)
+      .set({ status: 'undeliverable' })
+      .where(
+        and(
+          eq(leads.id, existing.leadId),
+          isNull(leads.lastInboundAt),
+          sql`${leads.status} in ('new', 'contacting')`,
+        ),
+      )
+      .returning({ id: leads.id });
+    if (!marked) return null;
+    await tx.insert(auditLogs).values({
+      tenantId,
+      actorUserId: null,
+      action: 'lead.undeliverable',
+      target: marked.id,
+      metadata: { errors: status.errors ?? [] },
+    });
+    return marked.id;
   });
+
+  if (undeliverableLeadId) {
+    await deps.followUps?.cancel(undeliverableLeadId);
+    deps.logger.info(
+      { tenantId, leadId: undeliverableLeadId },
+      'Lead is undeliverable on WhatsApp',
+    );
+  }
 }

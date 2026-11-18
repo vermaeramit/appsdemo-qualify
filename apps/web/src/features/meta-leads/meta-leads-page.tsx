@@ -18,6 +18,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { FormMappingDialog } from './form-mapping-dialog';
 import { lastDays, metaLeadsQueryOptions } from './queries';
 
 export interface MetaLeadsSearch {
@@ -296,7 +297,8 @@ function SubmissionCard({ item, index }: { item: MetaLeadItem; index: number }) 
           ))}
         </dl>
       )}
-      <div className="mt-2 flex justify-end">
+      <div className="mt-2 flex justify-end gap-1">
+        <FormMappingDialog formId={item.formId} formName={item.formName ?? `Form ${item.formId}`} />
         <Button variant="ghost" size="xs" onClick={() => setRaw((value) => !value)}>
           <Braces data-icon="inline-start" />
           {raw ? 'Show fields' : 'Raw JSON'}

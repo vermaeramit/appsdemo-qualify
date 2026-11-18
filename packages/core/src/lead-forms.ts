@@ -12,7 +12,14 @@ export interface FormQuestion {
 export type FormMapping = Record<string, string | null>;
 
 /** Meta's standard contact questions, handled before any mapping. */
-const CONTACT_KEYS = new Set(['full_name', 'first_name', 'last_name', 'phone_number', 'email']);
+export const FORM_CONTACT_KEYS: ReadonlySet<string> = new Set([
+  'full_name',
+  'first_name',
+  'last_name',
+  'phone_number',
+  'email',
+]);
+const CONTACT_KEYS = FORM_CONTACT_KEYS;
 
 const STOPWORDS = new Set(
   'a an and are can could do does for have how i in is it me my of on or our please the to we what when where which who would you your like mind'.split(

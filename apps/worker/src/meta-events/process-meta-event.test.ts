@@ -242,4 +242,79 @@ describe('processMetaEvent', () => {
     expect((await tenantMessages()).length).toBe(before);
     expect(enqueueRespond).not.toHaveBeenCalled();
   });
+
+  it('remembers the Click-to-WhatsApp ad behind a message (last touch)', async () => {
+    const payload = inboundPayload('919800000123', 'wamid.in.ctwa.1', 'Can I get more info?');
+    const value = payload.entry[0]!.changes[0]!.value as { messages: Record<string, unknown>[] };
+    value.messages[0]!.referral = {
+      source_type: 'ad',
+      source_id: '120200000000001',
+      source_url: 'https://fb.me/abc',
+      headline: 'Summer offer',
+      body: 'Book this week and save 10%',
+      ctwa_clid: 'ARAkLkA',
+    };
+    await processMetaEvent(await storeEvent(payload), deps());
+    const [lead] = await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx.select().from(leads).where(eq(leads.phoneE164, '+919800000123')),
+    );
+    expect(lead?.source).toBe('ctwa');
+    expect(lead?.attribution).toMatchObject({
+      channel: 'ctwa',
+      adId: '120200000000001',
+      sourceType: 'ad',
+      headline: 'Summer offer',
+      body: 'Book this week and save 10%',
+      ctwaClid: 'ARAkLkA',
+    });
+  });
+
+  it('marks a lead undeliverable when the opening fails with 131026 and stops follow-ups', async () => {
+    const cancel = vi.fn(async () => undefined);
+    const schedule = vi.fn(async () => undefined);
+    const [unreached, talking] = await withTenant(testDb.app.db, TENANT, async (tx) => {
+      const rows = await tx
+        .insert(leads)
+        .values([
+          { tenantId: TENANT, phoneE164: '+919800000201', source: 'api', status: 'contacting' },
+          {
+            tenantId: TENANT,
+            phoneE164: '+919800000202',
+            source: 'api',
+            status: 'engaged',
+            lastInboundAt: new Date(),
+          },
+        ])
+        .returning();
+      await tx.insert(messages).values(
+        rows.map((lead, index) => ({
+          tenantId: TENANT,
+          leadId: lead.id,
+          phoneNumberId: PHONE_NUMBER_ID,
+          direction: 'outbound' as const,
+          sender: 'system' as const,
+          type: 'template',
+          body: 'Hi',
+          waMessageId: `wamid.out.undeliverable.${index}`,
+          status: 'sent' as const,
+        })),
+      );
+      return rows;
+    });
+    for (const index of [0, 1]) {
+      const payload = statusPayload(`wamid.out.undeliverable.${index}`, 'failed', '1763400300');
+      const value = payload.entry[0]!.changes[0]!.value as { statuses: Record<string, unknown>[] };
+      value.statuses[0]!.errors = [{ code: 131026, title: 'Message undeliverable' }];
+      await processMetaEvent(await storeEvent(payload), {
+        ...deps(),
+        followUps: { cancel, schedule },
+      });
+    }
+    const rows = await withTenant(testDb.app.db, TENANT, (tx) => tx.select().from(leads));
+    expect(rows.find((row) => row.id === unreached!.id)?.status).toBe('undeliverable');
+    // A lead who has written to us is on WhatsApp: only the message shows the failure.
+    expect(rows.find((row) => row.id === talking!.id)?.status).toBe('engaged');
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledWith(unreached!.id);
+  });
 });

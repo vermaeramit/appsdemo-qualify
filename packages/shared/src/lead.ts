@@ -34,3 +34,27 @@ export const leadScoreDetailsSchema = z.object({
     .optional(),
 });
 export type LeadScoreDetails = z.infer<typeof leadScoreDetailsSchema>;
+
+/**
+ * Where the lead's latest enquiry came from (last touch): a Click-to-WhatsApp ad, a Meta lead
+ * form, or the API. Shown on the lead and sent in exports/webhooks (M7).
+ */
+export const leadAttributionSchema = z.object({
+  channel: z.enum(['whatsapp_inbound', 'meta_form', 'ctwa', 'api']),
+  at: z.iso.datetime(),
+  /** Meta ad id (CTWA referral source_id for an ad, or the lead form's ad). */
+  adId: z.string().max(64).optional(),
+  /** CTWA referral: 'ad' or 'post', its URL, and the ad's headline and text as shown to the lead. */
+  sourceType: z.string().max(32).optional(),
+  sourceUrl: z.string().max(1000).optional(),
+  headline: z.string().max(300).optional(),
+  body: z.string().max(1000).optional(),
+  /** Click id for the Conversions API (Phase 2). */
+  ctwaClid: z.string().max(500).optional(),
+  formId: z.string().max(64).optional(),
+  formName: z.string().max(200).optional(),
+  pageId: z.string().max(64).optional(),
+  /** Free text from the API caller. */
+  campaign: z.string().max(200).optional(),
+});
+export type LeadAttribution = z.infer<typeof leadAttributionSchema>;

@@ -11,7 +11,8 @@ import { clampSignal, sanitizeReply } from './policy.ts';
 
 const CLOSED_STATUSES = new Set(['qualified', 'handoff', 'disqualified']);
 /** Before the first real exchange: a lead who wrote in (new) or got our opening (contacting). */
-const OPENING_STATUSES = new Set(['new', 'contacting']);
+// A lead we couldn't reach who writes to us is reachable after all.
+const OPENING_STATUSES = new Set(['new', 'contacting', 'undeliverable']);
 
 export interface AppliedTurn {
   fields: LeadFields;

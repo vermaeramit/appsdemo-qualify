@@ -471,6 +471,22 @@ describe('language detection', () => {
     });
     expect(note).toContain('Reply language: English.');
   });
+
+  it('gives the agent the Click-to-WhatsApp ad the lead tapped', () => {
+    const base = {
+      today: '2026-11-18',
+      fields: {},
+      definitions: fields,
+      status: 'new',
+      leadName: null,
+    };
+    const note = buildStateNote({
+      ...base,
+      ad: { headline: 'Summer  offer', body: 'Save 10%\nthis week' },
+    });
+    expect(note).toContain('Came from your ad: "Summer offer — Save 10% this week"');
+    expect(buildStateNote(base)).not.toContain('Came from your ad');
+  });
 });
 
 describe('applyAgentTurn', () => {
@@ -491,6 +507,11 @@ describe('applyAgentTurn', () => {
     departure_city: 'Delhi',
     budget: '70000 INR total',
   };
+
+  it('treats an undeliverable lead who writes to us as engaged', () => {
+    const applied = applyAgentTurn(fields, { fields: {}, status: 'undeliverable' }, baseTurn);
+    expect(applied.status).toBe('engaged');
+  });
 
   it('keeps qualifying-time signals after the lead is qualified', () => {
     const signals = { urgency: 8, seriousness: 9, buyingSignals: 7, note: 'Honeymoon, ready' };

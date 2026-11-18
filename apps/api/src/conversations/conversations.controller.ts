@@ -29,10 +29,12 @@ import {
   type ConversationThread,
   conversationThreadSchema,
   cursorSchema,
+  leadAttributionSchema,
   pageLimitSchema,
 } from '@qualify/shared';
 import { z } from 'zod';
 import { decodeCursor, encodeCursor } from '../common/cursor';
+import { deliveryErrorMessage } from '../common/delivery-error';
 import { parseQuery } from '../common/zod-body';
 import { CurrentWorkspace, type WorkspaceContext, WorkspaceGuard } from '../auth/workspace.guard';
 import { DB } from '../tokens';
@@ -170,6 +172,8 @@ export class ConversationsController {
         grade: lead.grade,
         scoreDetails: lead.scoreDetails,
         summary: lead.summary,
+        source: lead.source,
+        attribution: leadAttributionSchema.safeParse(lead.attribution).data ?? null,
       },
       messages: [...page].reverse().map((row) => ({
         id: row.id,
@@ -178,12 +182,7 @@ export class ConversationsController {
         type: row.type,
         body: row.body,
         status: row.status,
-        errorMessage:
-          row.status === 'failed'
-            ? typeof row.error?.message === 'string'
-              ? row.error.message
-              : 'Not delivered'
-            : null,
+        errorMessage: row.status === 'failed' ? deliveryErrorMessage(row.error) : null,
         createdAt: row.createdAt.toISOString(),
       })),
       olderCursor:

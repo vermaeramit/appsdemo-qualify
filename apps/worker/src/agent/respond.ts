@@ -33,6 +33,7 @@ import {
   agentLanguageSchema,
   type AgentTurn,
   agentTurnSchema,
+  type LeadAttribution,
   type RespondJob,
 } from '@qualify/shared';
 import type { LeadLock } from '../lock.ts';
@@ -84,6 +85,16 @@ export type RespondOutcome =
   | 'superseded';
 
 const SILENT_STATUSES = new Set<string>(['disqualified', 'handoff']);
+
+const AD_CONTEXT_MS = 72 * 3_600_000;
+
+/** The Click-to-WhatsApp ad the lead tapped, while that enquiry is fresh. */
+function freshAd(attribution: LeadAttribution | null, at: Date) {
+  if (attribution?.channel !== 'ctwa') return undefined;
+  if (at.getTime() - Date.parse(attribution.at) > AD_CONTEXT_MS) return undefined;
+  if (!attribution.headline && !attribution.body) return undefined;
+  return { headline: attribution.headline, body: attribution.body };
+}
 
 function localDate(now: Date, timeZone: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone, dateStyle: 'short' }).format(now); // YYYY-MM-DD
@@ -184,6 +195,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
         status: lead.status,
         leadName: lead.name,
         replyLanguage,
+        ad: freshAd(lead.attribution, now()),
       }),
       schema: agentTurnSchema,
       reasoningEffort: deps.reasoningEffort,

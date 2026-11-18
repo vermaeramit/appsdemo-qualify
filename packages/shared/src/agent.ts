@@ -37,6 +37,8 @@ export const leadStatusSchema = z.enum([
   'disqualified',
   'handoff',
   'unresponsive',
+  /** Our opening failed with Meta's "undeliverable" error and the lead never wrote to us. */
+  'undeliverable',
 ]);
 export type LeadStatus = z.infer<typeof leadStatusSchema>;
 

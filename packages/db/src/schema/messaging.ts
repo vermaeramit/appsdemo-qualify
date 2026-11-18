@@ -10,7 +10,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { LeadScoreDetails, LeadSignals } from '@qualify/shared';
+import type { LeadAttribution, LeadScoreDetails, LeadSignals } from '@qualify/shared';
 import { tenants } from './platform.ts';
 import { playbookVersions } from './playbooks.ts';
 
@@ -79,6 +79,8 @@ export const leads = pgTable(
     playbookVersionId: uuid('playbook_version_id').references(() => playbookVersions.id, {
       onDelete: 'set null',
     }),
+    /** Where the latest enquiry came from (ad, form, API): leadAttributionSchema. */
+    attribution: jsonb('attribution').$type<LeadAttribution>(),
     /** Collected qualification fields, normalised (key → value). */
     fields: jsonb('fields').$type<Record<string, string>>().notNull().default({}),
     language: text('language'),
