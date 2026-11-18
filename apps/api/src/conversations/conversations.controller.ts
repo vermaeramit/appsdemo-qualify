@@ -118,6 +118,12 @@ export class ConversationsController {
         type: row.type,
         body: row.body,
         status: row.status,
+        errorMessage:
+          row.status === 'failed'
+            ? typeof row.error?.message === 'string'
+              ? row.error.message
+              : 'Not delivered'
+            : null,
         createdAt: row.createdAt.toISOString(),
       })),
     });

@@ -122,6 +122,12 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
           {clockTime(message.createdAt)}
           {outbound && <StatusIcon status={message.status} />}
         </div>
+        {message.errorMessage && (
+          <p className="mt-1.5 flex items-start gap-1 border-t border-primary-foreground/20 pt-1.5 text-[0.7rem] text-primary-foreground/90">
+            <CircleAlert className="mt-px size-3 shrink-0" />
+            {message.errorMessage}
+          </p>
+        )}
       </div>
     </motion.div>
   );

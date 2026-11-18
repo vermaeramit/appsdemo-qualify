@@ -164,9 +164,21 @@ describe('processContact (opening message)', () => {
     expect(client.sendTemplate).toHaveBeenCalledOnce();
   });
 
-  it('respects the dev allowlist', async () => {
+  it('respects the dev allowlist and shows why nothing was sent', async () => {
     const leadId = await createApiLead('919811111111');
     expect(await processContact({ tenantId: TENANT, leadId }, deps())).toBe('skipped_not_allowed');
+    expect(client.sendTemplate).not.toHaveBeenCalled();
+    const [attempt] = await leadMessages(leadId);
+    expect(attempt).toMatchObject({ status: 'failed', sender: 'system' });
+    expect(attempt!.error).toMatchObject({
+      message: expect.stringContaining('DEV_ALLOWED_NUMBERS'),
+    });
+    expect((await getLead(leadId)).status).toBe('new');
+
+    // Once the number is allowed, a new submission is sent right away (a failed attempt
+    // doesn't count for the 10-minute repeat guard).
+    const allowed = deps({ allowlist: ['919811111111'] });
+    expect(await processContact({ tenantId: TENANT, leadId }, allowed)).toBe('sent_template');
   });
 
   it('continues with the AI when the lead answers the opening, without re-asking form answers', async () => {

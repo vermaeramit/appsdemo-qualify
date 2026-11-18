@@ -87,7 +87,7 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
       .where(eq(phoneNumbers.status, 'active'))
       .limit(1);
     const [lastOpening] = await tx
-      .select({ createdAt: messages.createdAt, payload: messages.payload })
+      .select({ createdAt: messages.createdAt, payload: messages.payload, status: messages.status })
       .from(messages)
       .where(and(eq(messages.leadId, job.leadId), eq(messages.direction, 'outbound')))
       .orderBy(desc(messages.createdAt))
@@ -98,23 +98,22 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
   if (!context) return 'skipped_missing';
   const { lead, playbook, number, lastOpening } = context;
   if (lead.aiPaused) return 'skipped_paused';
-  if (!isAllowedRecipient(toWaId(lead.phoneE164), deps.allowlist, deps.isProduction)) {
-    logger.info(log, 'Dev safety switch: lead not in DEV_ALLOWED_NUMBERS, no opening sent');
-    return 'skipped_not_allowed';
-  }
   if (!playbook) return 'skipped_no_playbook';
   if (!number) {
     logger.warn(log, 'Workspace has no connected WhatsApp number: cannot contact the lead');
     return 'skipped_no_number';
   }
+  // Only a delivered (not failed) opening blocks a quick repeat.
   if (
     lastOpening &&
     (lastOpening.payload as { kind?: string }).kind === 'opening' &&
+    lastOpening.status !== 'failed' &&
     now().getTime() - lastOpening.createdAt.getTime() < OPENING_DEDUPE_MS
   ) {
     return 'skipped_recent_opening';
   }
-  if (!deps.masterKey) {
+  const allowed = isAllowedRecipient(toWaId(lead.phoneE164), deps.allowlist, deps.isProduction);
+  if (allowed && !deps.masterKey) {
     logger.warn(log, 'ENCRYPTION_MASTER_KEY missing: cannot decrypt token');
     return 'send_failed';
   }
@@ -125,13 +124,28 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
     fields: lead.fields,
     businessName: playbook.config.business.name,
   });
-  const client = deps.createClient(decryptSecret(number.accessTokenEnc, deps.masterKey));
   const to = toWaId(lead.phoneE164);
   const windowOpen = isServiceWindowOpen(lead.lastInboundAt, now());
+  const client =
+    allowed && deps.masterKey
+      ? deps.createClient(decryptSecret(number.accessTokenEnc, deps.masterKey))
+      : null;
 
   let sent: SendResult;
   let outcome: ContactOutcome;
-  if (windowOpen) {
+  if (!client) {
+    // Development safety switch: recorded as a failed attempt so the reason shows in the inbox.
+    logger.info(log, 'Dev safety switch: lead not in DEV_ALLOWED_NUMBERS, no opening sent');
+    sent = {
+      waMessageId: null,
+      error: {
+        message:
+          'Not sent: development safety switch. Only numbers in DEV_ALLOWED_NUMBERS receive messages in development.',
+      },
+      type: windowOpen ? 'text' : 'template',
+    };
+    outcome = 'skipped_not_allowed';
+  } else if (windowOpen) {
     sent = await sendWithOptions(client, {
       phoneNumberId: number.phoneNumberId,
       to,
@@ -179,7 +193,7 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
       body: rendered.text,
       payload: {
         kind: 'opening',
-        mode: windowOpen ? 'freeform' : 'template',
+        mode: outcome === 'skipped_not_allowed' ? 'blocked' : windowOpen ? 'freeform' : 'template',
         templateName: windowOpen ? null : opening.templateName,
         buttons: opening.buttons,
       },

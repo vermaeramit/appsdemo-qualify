@@ -33,6 +33,8 @@ export const conversationMessageSchema = z.object({
   type: z.string(),
   body: z.string().nullable(),
   status: messageStatusSchema,
+  /** Why a failed message was not delivered (shown under the bubble). */
+  errorMessage: z.string().nullable(),
   createdAt: z.iso.datetime(),
 });
 export type ConversationMessage = z.infer<typeof conversationMessageSchema>;
