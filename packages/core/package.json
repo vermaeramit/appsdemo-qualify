@@ -4,6 +4,7 @@
   "private": true,
   "description": "Pure domain logic (no I/O): agent prompt builder, field normalisation, policies, playbook templates.",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

@@ -29,3 +29,8 @@ export function initials(name: string): string {
   const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
   return (first + last).toUpperCase() || '?';
 }
+
+/** Owners and managers change settings; viewers only read (the API enforces the same). */
+export function canManage(role: WorkspaceRole): boolean {
+  return role === 'owner' || role === 'admin';
+}

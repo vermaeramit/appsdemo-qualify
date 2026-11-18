@@ -15,6 +15,7 @@
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
     "@hookform/resolvers": "^7.0.6",
+    "@qualify/core": "workspace:*",
     "@qualify/shared": "workspace:*",
     "@tanstack/react-query": "^5.107.1",
     "@tanstack/react-router": "^1.170.46",

@@ -224,11 +224,18 @@ export class WhatsAppClient {
     wabaId: string,
     name: string,
   ): Promise<{
-    data: { id: string; name: string; status: string; language: string; category: string }[];
+    data: {
+      id: string;
+      name: string;
+      status: string;
+      language: string;
+      category: string;
+      rejected_reason?: string;
+    }[];
   }> {
     return this.request(
       'GET',
-      `/${wabaId}/message_templates?name=${encodeURIComponent(name)}&fields=id,name,status,language,category`,
+      `/${wabaId}/message_templates?name=${encodeURIComponent(name)}&fields=id,name,status,language,category,rejected_reason`,
     );
   }
 

@@ -52,11 +52,12 @@ Full-stack TypeScript, pnpm 12 monorepo, Node.js 26 LTS, TypeScript 6.0 (don't u
 - 2026-11-17: **M1 built and verified** (auth, workspaces, RLS, protected app shell; e2e passes).
 - 2026-11-17: **M2 done and live-verified** (real WhatsApp messages → inbox → dev reply → read receipts). The owner's own workspace "Appsdemo" (with the connected number and real messages) exists in the dev DB, so don't delete it. Next: M3 (AI agent) with OpenAI (D-039). Needs `OPENAI_API_KEY` in `.env`.
 - 2026-11-18: **M3 done and live-verified.** The AI agent (gpt-5.4-mini, low; D-040) qualifies leads on WhatsApp. The travel playbook is installed in "Appsdemo". Next: M4 (lead forms, CTWA routing, opening templates, follow-ups, hybrid scoring).
-- 2026-11-18: **M4 started.** Built early: inbound lead API `POST /api/v1/leads` + API keys, opening message (contact job, template outside 24 h), questions with options vs plain (buttons/list from `askingField`), playbook API `GET/PUT /api/v1/playbook` (D-044 to D-048). Postman: [docs/api/](docs/api/README.md). The opening template `qualify_opening_v1` is NOT submitted to Meta yet (ask the owner first). Next: lead forms, CTWA routing, follow-ups, hybrid scoring.
+- 2026-11-18: **M4 started.** Built early: inbound lead API `POST /api/v1/leads` + API keys, opening message (contact job, template outside 24 h), questions with options vs plain (buttons/list from `askingField`), playbook API `GET/PUT /api/v1/playbook` (D-044 to D-048). Postman: [docs/api/](docs/api/README.md). Dashboard: AI agent page, Add lead, Settings → API keys (D-049 to D-051). The opening template is NOT submitted to Meta yet; the owner submits it from AI agent → Opening (template names are derived from the text, D-050). Next: lead forms, CTWA routing, follow-ups, hybrid scoring.
 
 ## Local dev notes
 - Run commands with Node 26 (`nvm use 26.13.1`). In tool shells, prepend `C:\nvm4w\nodejs` to PATH.
 - The owner's machine has a **stale global `OPENAI_API_KEY`** environment variable. In development the api/worker loaders make `.env` override machine variables (`load-dotenv.ts` / `load-env.ts`). In ad-hoc scripts, read the key from `.env` directly; `process.loadEnvFile` and `--env-file` do NOT override existing variables.
+- Don't run `pnpm build` while `pnpm dev` is running: it rewrites `apps/api/dist` and the Nest watcher exits (MODULE_NOT_FOUND). Restart `pnpm dev` if it happens.
 - `pnpm infra:up`, then `pnpm db:migrate`, then `pnpm dev`. Web: http://localhost:5173, API: http://localhost:3000/api/health, Seq: http://localhost:5380.
 - E2E: `pnpm --filter @qualify/web test:e2e`, with the dev stack running (uses the installed Chrome).
 - Playwright's `getByLabel('Password')` also matches the "Show password" button, so use `{ exact: true }`.

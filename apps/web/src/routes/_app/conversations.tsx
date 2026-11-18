@@ -5,9 +5,12 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ConversationList } from '@/features/conversations/conversation-list';
+import { AddLeadDialog } from '@/features/leads/add-lead-dialog';
 import { MessageThread } from '@/features/conversations/message-thread';
 import { conversationsQueryOptions, threadQueryOptions } from '@/features/conversations/queries';
+import { useActiveWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
+import { canManage } from '@/lib/workspace';
 
 export const Route = createFileRoute('/_app/conversations')({
   validateSearch: z.object({ lead: z.uuid().optional() }),
@@ -16,6 +19,7 @@ export const Route = createFileRoute('/_app/conversations')({
 
 function ConversationsPage() {
   const { lead: selectedId } = Route.useSearch();
+  const workspace = useActiveWorkspace();
   const list = useQuery(conversationsQueryOptions);
   const thread = useQuery({
     ...threadQueryOptions(selectedId ?? ''),
@@ -24,11 +28,14 @@ function ConversationsPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Conversations</h1>
-        <p className="text-sm text-muted-foreground">
-          WhatsApp messages on your connected number. Updates every few seconds.
-        </p>
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Conversations</h1>
+          <p className="text-sm text-muted-foreground">
+            WhatsApp messages on your connected number. Updates every few seconds.
+          </p>
+        </div>
+        {canManage(workspace.role) && <AddLeadDialog />}
       </div>
 
       <div className="grid h-[calc(100svh-12rem)] min-h-[420px] overflow-hidden rounded-xl border bg-card md:grid-cols-[320px_1fr]">

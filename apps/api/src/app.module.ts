@@ -1,17 +1,24 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
+import { ApiKeysController } from './api-keys/api-keys.controller';
 import type { Env } from './config/env';
 import { ConversationsController } from './conversations/conversations.controller';
 import { CoreModule } from './core/core.module';
 import { HealthController } from './health/health.controller';
+import { LeadIntakeService } from './leads/lead-intake.service';
+import { LeadsController } from './leads/leads.controller';
 import { MeController } from './me/me.controller';
+import { OpeningTemplateService } from './playbook/opening-template.service';
+import { PlaybookController } from './playbook/playbook.controller';
+import { PlaybookService } from './playbook/playbook.service';
 import { QueueModule } from './queue/queue.module';
 import { OriginGuard } from './security/origin.guard';
 import { ENV } from './tokens';
 import { LeadsV1Controller } from './v1/leads-v1.controller';
 import { PlaybookV1Controller } from './v1/playbook-v1.controller';
 import { MetaWebhookController } from './webhooks/meta-webhook.controller';
+import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
 
 @Module({
   imports: [
@@ -54,7 +61,16 @@ import { MetaWebhookController } from './webhooks/meta-webhook.controller';
     MetaWebhookController,
     LeadsV1Controller,
     PlaybookV1Controller,
+    PlaybookController,
+    LeadsController,
+    ApiKeysController,
   ],
-  providers: [{ provide: APP_GUARD, useClass: OriginGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: OriginGuard },
+    LeadIntakeService,
+    PlaybookService,
+    WhatsAppAccessService,
+    OpeningTemplateService,
+  ],
 })
 export class AppModule {}

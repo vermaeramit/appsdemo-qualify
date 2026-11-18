@@ -2,6 +2,8 @@
 
 Import [`AppsDemo-Qualify.postman_collection.json`](AppsDemo-Qualify.postman_collection.json) into Postman, then set the collection variables.
 
+Everything here is also available in the dashboard: **AI agent** (questions, opening, persona, knowledge base), **Conversations → Add lead**, and **Settings → API keys**.
+
 ## Authentication
 
 Every request needs a workspace API key:
@@ -10,7 +12,7 @@ Every request needs a workspace API key:
 Authorization: Bearer qk_live_…        (or)        X-API-Key: qk_live_…
 ```
 
-Create a key (it is printed once; only its hash is stored):
+Create a key in **Settings → API keys** (shown once; only its hash is stored), or from the terminal:
 
 ```bash
 pnpm --filter @qualify/worker create-api-key [workspace-slug] ["Key name"]
@@ -88,7 +90,7 @@ Example:
 
 ```json
 "opening": {
-  "templateName": "qualify_opening_v1",
+  "templateName": "qualify_opening_1a2b3c4d",
   "templateLanguage": "en",
   "bodyText": "Hi {{1}}! 👋 Thanks for your enquiry with {{2}}. …",
   "bodyParams": ["lead.firstName", "business.name"],
@@ -98,7 +100,7 @@ Example:
 
 `bodyParams` sources: `lead.firstName`, `lead.name`, `business.name`, `field:<key>|fallback`, `text:<literal>`. `bodyText` must match the approved template exactly.
 
-Submit and activate the template:
+Submit and activate the template in **AI agent → Opening** (the template name is derived from the text, so a changed text gets a new review), or:
 
 ```bash
 pnpm --filter @qualify/worker opening-template create   # submit to Meta for review

@@ -44,7 +44,8 @@ export function resolveParam(spec: string, context: OpeningContext): string {
   else if (source?.startsWith('field:')) value = context.fields[source.slice('field:'.length)];
   else if (source?.startsWith('text:')) value = source.slice('text:'.length);
 
-  const resolved = value && value.length > 0 ? value : (fallback ?? defaultFallback(source));
+  // WhatsApp rejects empty parameters, so a blank value or fallback counts as missing.
+  const resolved = value?.trim() ? value : fallback?.trim() || defaultFallback(source);
   return cleanParam(resolved);
 }
 
@@ -62,4 +63,37 @@ export function renderOpening(
     return params[Number(index) - 1] ?? match;
   });
   return { text, params };
+}
+
+/** 32-bit FNV-1a, as 8 hex characters. Stable across runtimes (browser and Node). */
+function fnv1a(text: string): string {
+  let hash = 0x811c9dc5;
+  for (const char of text) {
+    hash ^= char.codePointAt(0)!;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+
+/**
+ * Template name for an opening's text, buttons and language. A changed text maps to a new name,
+ * so it gets its own Meta approval (approved templates can't be silently edited).
+ */
+export function openingTemplateName(
+  opening: Pick<PlaybookOpening, 'bodyText' | 'buttons' | 'templateLanguage'>,
+): string {
+  const content = [opening.templateLanguage, opening.bodyText, ...opening.buttons].join('\u0000');
+  return `qualify_opening_${fnv1a(content)}`;
+}
+
+/** Example values Meta requires for each {{n}} when a template is submitted for review. */
+export function openingExampleParams(opening: PlaybookOpening, businessName: string): string[] {
+  const fields: LeadFields = {};
+  for (const spec of opening.bodyParams) {
+    const source = spec.split('|')[0] ?? '';
+    if (source.startsWith('field:')) fields[source.slice('field:'.length)] = 'Dubai';
+  }
+  return opening.bodyParams.map((spec) =>
+    resolveParam(spec, { leadName: 'Rahul Sharma', fields, businessName }),
+  );
 }

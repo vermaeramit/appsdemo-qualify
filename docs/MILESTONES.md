@@ -109,11 +109,12 @@
 - Opening message: `lead-contact` job, free-form inside the 24 h window, approved template outside it, explicit failure without a template, 10-minute dedupe, status `contacting` (D-045). Template scripts: `opening-template create|status`.
 - Questions with options vs plain questions, buttons/list chosen in code from `askingField` (D-046)
 - Agent configuration API `GET/PUT /api/v1/playbook` (D-047), `install-playbook --upgrade`
+- Dashboard (D-049 to D-051): **AI agent** page (questions with options / yes-no / plain, drag to reorder, WhatsApp preview, opening editor with variables and Meta template submit/status/activate, persona, rules, handoff, closing, knowledge base, publish), **Add lead** in Conversations, **Settings → API keys**. E2E: `agent-config.spec.ts`.
 
 **Remaining:**
 - Page connect + `leadgen` webhook + lead fetch + field mapping (tested with the Lead Ads Testing Tool)
 - CTWA referral capture + routing rules
-- Opening template approval (submit `qualify_opening_v1`) + follow-up sequence (BullMQ delayed jobs)
+- Opening template approval (submit from AI agent → Opening) + follow-up sequence (BullMQ delayed jobs)
 - Hybrid scoring engine, final score, reason, summary, status machine
 - Undeliverable detection
 

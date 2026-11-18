@@ -104,3 +104,31 @@ export const playbookResponseSchema = z.object({
   config: playbookConfigSchema,
 });
 export type PlaybookResponse = z.infer<typeof playbookResponseSchema>;
+
+/** Review state of the opening template on Meta. */
+export const openingTemplateStateSchema = z.enum([
+  /** No active WhatsApp number (or no encryption key on the server). */
+  'not_connected',
+  'not_submitted',
+  'pending',
+  'approved',
+  'rejected',
+  /** Paused or disabled by Meta (quality issues). */
+  'paused',
+  'disabled',
+]);
+export type OpeningTemplateState = z.infer<typeof openingTemplateStateSchema>;
+
+/** GET /api/playbook/opening-template */
+export const openingTemplateStatusSchema = z.object({
+  /** The template for the published opening (the active one, or the name its text maps to). */
+  name: z.string(),
+  language: z.string(),
+  state: openingTemplateStateSchema,
+  /** True when openings outside the 24 h window are sent with this approved template. */
+  active: z.boolean(),
+  rejectedReason: z.string().nullable(),
+  /** Why the status could not be checked (state `not_connected`). */
+  message: z.string().nullable(),
+});
+export type OpeningTemplateStatus = z.infer<typeof openingTemplateStatusSchema>;

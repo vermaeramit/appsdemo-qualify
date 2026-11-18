@@ -2,9 +2,11 @@
 //   pnpm --filter @qualify/worker opening-template create [workspace-slug]   → submit to Meta
 //   pnpm --filter @qualify/worker opening-template status [workspace-slug]   → check; when APPROVED,
 //                                                                             activate it in the playbook
-// The template body and buttons come from the playbook's `opening` section.
+// The template body and buttons come from the playbook's `opening` section; the template name
+// is derived from that text (openingTemplateName), so a changed text gets its own approval.
+// The same actions are available in the dashboard (AI agent → Opening).
 import '../load-env.ts';
-import { resolveOpening } from '@qualify/core';
+import { openingExampleParams, openingTemplateName, resolveOpening } from '@qualify/core';
 import {
   createDb,
   getDefaultPublishedPlaybook,
@@ -13,8 +15,6 @@ import {
   withTenant,
 } from '@qualify/db';
 import { WhatsAppClient } from '@qualify/integrations';
-
-export const OPENING_TEMPLATE_NAME = 'qualify_opening_v1';
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -56,33 +56,29 @@ try {
     process.exit(1);
   }
   const opening = resolveOpening(playbook.config);
+  const templateName = opening.templateName ?? openingTemplateName(opening);
 
   if (command === 'create') {
-    // Meta requires an example value for every {{n}} placeholder.
-    const example = opening.bodyParams.map((spec, index) =>
-      spec === 'business.name'
-        ? playbook.config.business.name
-        : (['Rahul', 'Dubai'][index] ?? 'Sample'),
-    );
     const created = await client.createTemplate({
       wabaId,
-      name: OPENING_TEMPLATE_NAME,
+      name: templateName,
       language: opening.templateLanguage,
       category: 'MARKETING',
       bodyText: opening.bodyText,
-      bodyExample: example,
+      // Meta requires an example value for every {{n}} placeholder.
+      bodyExample: openingExampleParams(opening, playbook.config.business.name),
       quickReplies: opening.buttons,
     });
     console.log(
-      `✓ Submitted "${OPENING_TEMPLATE_NAME}" (${opening.templateLanguage}) for review: ${created.status}, category ${created.category}`,
+      `✓ Submitted "${templateName}" (${opening.templateLanguage}) for review: ${created.status}, category ${created.category}`,
     );
     console.log('  Check approval with: pnpm --filter @qualify/worker opening-template status');
   } else {
-    const found = await client.findTemplates(wabaId, OPENING_TEMPLATE_NAME);
+    const found = await client.findTemplates(wabaId, templateName);
     const template =
       found.data.find((item) => item.language === opening.templateLanguage) ?? found.data[0];
     if (!template) {
-      console.log(`• "${OPENING_TEMPLATE_NAME}" not found. Run: opening-template create`);
+      console.log(`• "${templateName}" not found. Run: opening-template create`);
     } else if (template.status !== 'APPROVED') {
       console.log(
         `• "${template.name}" is ${template.status} (${template.category}). Try again later.`,

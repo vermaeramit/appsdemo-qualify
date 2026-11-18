@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { MeResponse } from '@qualify/shared';
 import { Link } from '@tanstack/react-router';
 import {
+  Bot,
   LayoutDashboard,
   MessageSquareText,
   MessagesSquare,
@@ -9,7 +10,6 @@ import {
   Settings,
   Users,
   Webhook,
-  Workflow,
   type LucideIcon,
 } from 'lucide-react';
 import { ApiStatus } from '@/components/api-status';
@@ -31,10 +31,8 @@ interface AppShellProps {
 
 const upcoming: { label: string; icon: LucideIcon }[] = [
   { label: 'Leads', icon: Users },
-  { label: 'Playbooks', icon: Workflow },
   { label: 'Templates', icon: MessageSquareText },
   { label: 'Integrations', icon: Webhook },
-  { label: 'Settings', icon: Settings },
 ];
 
 const navItemClass =
@@ -43,6 +41,8 @@ const navItemClass =
 const navLinks = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/conversations', label: 'Conversations', icon: MessagesSquare, exact: false },
+  { to: '/agent', label: 'AI agent', icon: Bot, exact: false },
+  { to: '/settings', label: 'Settings', icon: Settings, exact: false },
 ] as const;
 
 export function AppShell({ user, workspace, children }: AppShellProps) {

@@ -18,6 +18,9 @@ const envSchema = z.object({
   /** Meta webhooks. Optional so the api can run before Meta is configured (webhook → 503). */
   META_APP_SECRET: optionalSecret,
   META_WEBHOOK_VERIFY_TOKEN: optionalSecret,
+  /** Decrypts per-tenant Meta tokens (opening template submit/status). Same key as the worker. */
+  ENCRYPTION_MASTER_KEY: optionalSecret,
+  META_GRAPH_VERSION: optionalSecret,
 });
 
 export type Env = z.infer<typeof envSchema>;

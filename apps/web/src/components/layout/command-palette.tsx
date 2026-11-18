@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { LayoutDashboard, LogOut, MessagesSquare, Moon, Sun } from 'lucide-react';
+import { Bot, LayoutDashboard, LogOut, MessagesSquare, Moon, Settings, Sun } from 'lucide-react';
 import { useTheme } from '@/components/theme/use-theme';
 import {
   Command,
@@ -56,6 +56,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <CommandItem onSelect={() => run(() => navigate({ to: '/conversations' }))}>
               <MessagesSquare />
               Conversations
+            </CommandItem>
+            <CommandItem onSelect={() => run(() => navigate({ to: '/agent' }))}>
+              <Bot />
+              AI agent (questions, opening, knowledge base)
+            </CommandItem>
+            <CommandItem onSelect={() => run(() => navigate({ to: '/settings' }))}>
+              <Settings />
+              Settings (API keys)
             </CommandItem>
           </CommandGroup>
           <CommandSeparator />

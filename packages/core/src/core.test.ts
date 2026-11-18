@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   applyAgentTurn,
   chooseReplyOptions,
+  openingExampleParams,
+  openingTemplateName,
   renderOpening,
   resolveOpening,
   resolveParam,
@@ -361,6 +363,23 @@ describe('opening message', () => {
         businessName: 'X',
       }),
     ).toBe('Goa beach');
+  });
+
+  it('names the template after its text, so a changed text needs a new approval', () => {
+    const name = openingTemplateName(opening);
+    expect(name).toMatch(/^qualify_opening_[0-9a-f]{8}$/);
+    expect(openingTemplateName({ ...opening })).toBe(name);
+    expect(openingTemplateName({ ...opening, bodyText: opening.bodyText + '!' })).not.toBe(name);
+    expect(openingTemplateName({ ...opening, buttons: ['Yes'] })).not.toBe(name);
+  });
+
+  it('gives Meta an example for every placeholder', () => {
+    expect(
+      openingExampleParams(
+        { ...opening, bodyParams: ['lead.firstName', 'business.name', 'field:destination'] },
+        'Sunrise Holidays',
+      ),
+    ).toEqual(['Rahul', 'Sunrise Holidays', 'Dubai']);
   });
 
   it('provides a default opening for playbooks created before M4', () => {
