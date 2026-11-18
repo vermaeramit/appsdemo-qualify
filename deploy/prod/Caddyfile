@@ -5,7 +5,9 @@
 }
 
 {$APP_DOMAIN} {
-	encode zstd gzip
+	# Live updates are a Server-Sent Events stream (D-079): never buffer or compress it.
+	@compressible not path /api/live
+	encode @compressible zstd gzip
 
 	# API, Better Auth, Meta webhooks: all under /api (D-035).
 	handle /api/* {

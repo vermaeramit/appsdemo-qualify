@@ -18,7 +18,7 @@ Full-stack TypeScript, pnpm 12 monorepo, Node.js 26 LTS, TypeScript 6.0 (don't u
 - **worker:** BullMQ on Redis
 - **data:** PostgreSQL 17 + Drizzle ORM + RLS
 - **auth:** Better Auth (cookie sessions, organization = tenant)
-- **real-time:** Socket.IO
+- **real-time:** Server-Sent Events fed by Postgres LISTEN/NOTIFY (D-079)
 - **contracts:** Zod schemas in `packages/shared`
 - **AI:** Vercel AI SDK with the OpenAI provider (OpenRouter optional)
 - **web:** React + Vite + Tailwind + shadcn/ui + Motion

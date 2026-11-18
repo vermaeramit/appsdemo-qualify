@@ -2,7 +2,7 @@ import { infiniteQueryOptions } from '@tanstack/react-query';
 import { conversationListSchema, conversationThreadSchema } from '@qualify/shared';
 import { fetchJson } from '@/lib/api';
 
-// Polling keeps the inbox fresh until live updates (Socket.IO) arrive in M5.
+// Live updates (Server-Sent Events, D-079) refetch on every change; polling is the fallback.
 // Both are keyset-paginated: a refetch reloads the loaded pages in order, so they stay contiguous.
 
 export const conversationsQueryOptions = infiniteQueryOptions({
@@ -14,7 +14,7 @@ export const conversationsQueryOptions = infiniteQueryOptions({
     ),
   initialPageParam: '',
   getNextPageParam: (page) => page.nextCursor ?? undefined,
-  refetchInterval: 4_000,
+  refetchInterval: 20_000,
 });
 
 /** Page 0 is the latest messages; each next page is older. */
@@ -28,5 +28,5 @@ export const threadQueryOptions = (leadId: string) =>
       ),
     initialPageParam: '',
     getNextPageParam: (page) => page.olderCursor ?? undefined,
-    refetchInterval: 3_000,
+    refetchInterval: 15_000,
   });

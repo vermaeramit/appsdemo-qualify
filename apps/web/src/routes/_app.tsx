@@ -2,6 +2,7 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Navigate, Outlet, redirect } from '@tanstack/react-router';
 import { AppShell } from '@/components/layout/app-shell';
 import { meQueryOptions } from '@/lib/session';
+import { useLiveUpdates } from '@/lib/use-live-updates';
 
 /** Layout for every signed-in page: requires a session and an active workspace. */
 export const Route = createFileRoute('/_app')({
@@ -19,7 +20,14 @@ function AppLayout() {
 
   return (
     <AppShell user={me.user} workspace={me.activeWorkspace}>
+      <LiveUpdates workspaceId={me.activeWorkspace.id} />
       <Outlet />
     </AppShell>
   );
+}
+
+/** Keeps the open pages current while signed in (Server-Sent Events). */
+function LiveUpdates({ workspaceId }: { workspaceId: string }) {
+  useLiveUpdates(workspaceId);
+  return null;
 }
