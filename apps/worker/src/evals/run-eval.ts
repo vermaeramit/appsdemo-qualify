@@ -10,6 +10,7 @@ import {
   applyAgentTurn,
   buildStateNote,
   chooseReplyLanguage,
+  optionTitles,
   buildSystemPrompt,
   type HistoryMessage,
   toModelHistory,
@@ -190,6 +191,12 @@ async function runConversation(
 
   try {
     for (let index = 0; index < maxTurns; index += 1) {
+      const replyLanguage = chooseReplyLanguage({
+        latestLeadText: history.filter((m) => m.direction === 'inbound').at(-1)?.body ?? null,
+        previous: language,
+        allowed: ['hinglish', 'en', 'hi'],
+        fallback: 'hinglish',
+      });
       const { output, usage } = await llm.generateStructured({
         model: config.model,
         reasoningEffort: config.effort,
@@ -201,23 +208,18 @@ async function runConversation(
           definitions: playbook.fields,
           status,
           leadName: null,
-          replyLanguage: chooseReplyLanguage({
-            latestLeadText: history.filter((m) => m.direction === 'inbound').at(-1)?.body ?? null,
-            previous: language,
-            allowed: ['hinglish', 'en', 'hi'],
-            fallback: 'hinglish',
-          }),
+          replyLanguage,
         }),
         schema: agentTurnSchema,
         cacheKey: `eval:${config.label}`,
       });
-      const applied = applyAgentTurn(playbook.fields, { fields, status }, output);
+      const applied = applyAgentTurn(playbook.fields, { fields, status }, output, replyLanguage);
       fields = applied.fields;
       status = applied.status;
       language = applied.language ?? language;
       const log: TurnLog = {
         agent: applied.reply,
-        quickReplies: applied.quickReplies,
+        quickReplies: optionTitles(applied.options),
         latencyMs: usage.latencyMs,
         costUsd: costUsd(usage),
         rejected: applied.rejected.length,

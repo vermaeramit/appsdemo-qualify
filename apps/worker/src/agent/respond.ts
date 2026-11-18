@@ -25,10 +25,8 @@ import {
   isAllowedRecipient,
   type LlmClient,
   type LlmUsage,
-  MetaApiError,
   type ReasoningEffort,
   toWaId,
-  type WhatsAppClient,
 } from '@qualify/integrations';
 import {
   type AgentLanguage,
@@ -38,9 +36,10 @@ import {
   type RespondJob,
 } from '@qualify/shared';
 import type { LeadLock } from '../lock.ts';
+import { type AgentMessagingClient, sendWithOptions } from './send.ts';
 import type { Logger } from '../logger.ts';
 
-export type AgentMessagingClient = Pick<WhatsAppClient, 'sendText' | 'sendButtons' | 'markRead'>;
+export type { AgentMessagingClient } from './send.ts';
 
 export interface RespondDeps {
   db: Database;
@@ -157,6 +156,12 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
   const defaultLanguage: AgentLanguage =
     agentLanguageSchema.safeParse(tenant?.defaultLanguage).data ?? 'hinglish';
   const definitions = playbook.config.fields;
+  const replyLanguage = chooseReplyLanguage({
+    latestLeadText: latestInbound.body,
+    previous: lead.language,
+    allowed: allowedLanguages.length ? allowedLanguages : ['hinglish', 'en', 'hi'],
+    fallback: defaultLanguage,
+  });
 
   let turn: AgentTurn;
   let usage: LlmUsage;
@@ -174,12 +179,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
         definitions,
         status: lead.status,
         leadName: lead.name,
-        replyLanguage: chooseReplyLanguage({
-          latestLeadText: latestInbound.body,
-          previous: lead.language,
-          allowed: allowedLanguages.length ? allowedLanguages : ['hinglish', 'en', 'hi'],
-          fallback: defaultLanguage,
-        }),
+        replyLanguage,
       }),
       schema: agentTurnSchema,
       reasoningEffort: deps.reasoningEffort,
@@ -205,34 +205,21 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
   }
 
   // 6. Apply the turn (same pure logic the eval harness uses).
-  const applied = applyAgentTurn(definitions, lead, turn); // lead carries fields, status, signals
-  const { reply, quickReplies, status } = applied;
+  const applied = applyAgentTurn(definitions, lead, turn, replyLanguage);
+  const { reply, options, status } = applied;
   const updates: Partial<typeof leads.$inferInsert> = {};
   if (applied.becameQualified) updates.qualifiedAt = now();
   if (applied.handedOff) updates.handoffAt = now();
 
   // 7. Send.
-  const to = toWaId(lead.phoneE164);
-  let waMessageId: string | null = null;
-  let sendError: Record<string, unknown> | null = null;
-  try {
-    waMessageId = (
-      quickReplies.length > 0
-        ? await client.sendButtons({
-            phoneNumberId: latestInbound.phoneNumberId,
-            to,
-            body: reply,
-            buttons: quickReplies,
-          })
-        : await client.sendText({ phoneNumberId: latestInbound.phoneNumberId, to, body: reply })
-    ).messageId;
-  } catch (error) {
-    sendError =
-      error instanceof MetaApiError
-        ? { message: error.message, status: error.status, code: error.code ?? null }
-        : { message: error instanceof Error ? error.message : String(error) };
-    logger.error({ ...log, error: sendError }, 'Failed to send AI reply');
-  }
+  const sent = await sendWithOptions(client, {
+    phoneNumberId: latestInbound.phoneNumberId,
+    to: toWaId(lead.phoneE164),
+    body: reply,
+    options,
+  });
+  const waMessageId = sent.waMessageId;
+  if (sent.error) logger.error({ ...log, error: sent.error }, 'Failed to send AI reply');
 
   // 8. Persist the reply and the lead's new state.
   await withTenant(db, job.tenantId, async (tx) => {
@@ -242,10 +229,11 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
       phoneNumberId: latestInbound.phoneNumberId,
       direction: 'outbound',
       sender: 'ai',
-      type: quickReplies.length > 0 ? 'interactive' : 'text',
+      type: sent.type,
       body: reply,
       payload: {
-        quickReplies,
+        options,
+        askingField: turn.askingField,
         model: usage.model,
         usage,
         extracted: turn.extracted,
@@ -255,7 +243,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
       },
       waMessageId,
       status: waMessageId ? 'sent' : 'failed',
-      error: sendError,
+      error: sent.error,
     });
     await tx
       .update(leads)

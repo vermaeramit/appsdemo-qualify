@@ -32,6 +32,7 @@ function turn(overrides: Partial<AgentTurn> = {}): AgentTurn {
     language: 'hinglish',
     reply: 'Wah, Dubai! Kab ka plan hai?',
     quickReplies: [],
+    askingField: null,
     extracted: [],
     signals: { urgency: 5, seriousness: 5, buyingSignals: 5, note: 'ok' },
     handoff: { requested: false, reason: null },

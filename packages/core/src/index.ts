@@ -1,5 +1,7 @@
 export * from './fields.ts';
 export * from './history.ts';
+export * from './interactive.ts';
+export * from './opening.ts';
 export * from './language.ts';
 export * from './policy.ts';
 export * from './prompt.ts';

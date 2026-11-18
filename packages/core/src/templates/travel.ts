@@ -27,6 +27,7 @@ export function travelPlaybookTemplate(businessName: string): PlaybookConfig {
         type: 'text',
         required: true,
         priority: 1,
+        question: 'Which destination do you have in mind?',
         guidance:
           'A specific place or region (e.g. "Dubai", "Kashmir"). If they want suggestions, suggest 2–3 packages from the knowledge base that fit what they said, then store their choice. Store "open to suggestions" only if they will not pick.',
       },
@@ -36,6 +37,7 @@ export function travelPlaybookTemplate(businessName: string): PlaybookConfig {
         type: 'date_month',
         required: true,
         priority: 2,
+        question: 'When are you planning to travel?',
         guidance: 'When they plan to travel. Store as YYYY-MM, or "flexible".',
       },
       {
@@ -44,6 +46,7 @@ export function travelPlaybookTemplate(businessName: string): PlaybookConfig {
         type: 'text',
         required: true,
         priority: 3,
+        question: 'How many people are travelling? Any kids (with ages)?',
         guidance:
           'How many people, and children with ages if any. Normalise like "2 adults" or "2 adults, 1 child (5)".',
       },
@@ -53,6 +56,7 @@ export function travelPlaybookTemplate(businessName: string): PlaybookConfig {
         type: 'text',
         required: true,
         priority: 4,
+        question: 'Which city will you start the trip from?',
         guidance: 'The city they will start the trip from, in English (e.g. "Delhi").',
       },
       {
@@ -61,6 +65,7 @@ export function travelPlaybookTemplate(businessName: string): PlaybookConfig {
         type: 'range',
         required: true,
         priority: 5,
+        question: 'What budget range do you have in mind for the trip?',
         guidance:
           'Ask tactfully after destination and dates; you may mention the "starting from" price as an anchor. Normalise like "60000-70000 INR total" or "35000 INR per person".',
       },
@@ -70,7 +75,9 @@ export function travelPlaybookTemplate(businessName: string): PlaybookConfig {
         type: 'choice',
         required: false,
         priority: 6,
+        question: 'What kind of trip is this?',
         options: ['Honeymoon', 'Family', 'Friends', 'Solo', 'Group'],
+        allowOther: true,
         guidance:
           'Infer from context when obvious (e.g. "with my wife" → Honeymoon only if they say it is a honeymoon).',
       },
@@ -80,6 +87,7 @@ export function travelPlaybookTemplate(businessName: string): PlaybookConfig {
         type: 'number',
         required: false,
         priority: 7,
+        question: 'How many nights would you like?',
         guidance: 'Number of nights, e.g. "5 days" → 4.',
       },
       {
@@ -88,6 +96,7 @@ export function travelPlaybookTemplate(businessName: string): PlaybookConfig {
         type: 'choice',
         required: false,
         priority: 8,
+        question: 'Is your passport ready?',
         options: ['Ready', 'Applied', 'Not yet'],
         guidance: 'Ask only for international destinations.',
       },
@@ -97,6 +106,7 @@ export function travelPlaybookTemplate(businessName: string): PlaybookConfig {
         type: 'choice',
         required: false,
         priority: 9,
+        question: 'Which hotel category do you prefer?',
         options: ['3 star', '4 star', '5 star'],
       },
     ],
@@ -145,6 +155,14 @@ Prices are "starting from", per person, on twin sharing, excluding flights unles
       message:
         "Thank you! I've noted everything. Our travel expert will call you shortly with the best options and the final quote 😊",
       afterQualified: 'answer_faqs',
+    },
+    opening: {
+      templateName: null,
+      templateLanguage: 'en',
+      bodyText:
+        "Hi {{1}}! 👋 Thanks for your enquiry with {{2}}. I'm Riya, your travel advisor. Can I ask you 2–3 quick questions to share the best options?",
+      bodyParams: ['lead.firstName', 'business.name'],
+      buttons: ['Yes, sure', 'Not now'],
     },
   };
 }

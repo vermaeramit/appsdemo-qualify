@@ -13,7 +13,9 @@
     "connect-dev-number": "node --env-file-if-exists=../../.env src/scripts/connect-dev-number.ts",
     "set-dev-webhook": "node --env-file-if-exists=../../.env src/scripts/set-dev-webhook.ts",
     "install-playbook": "node src/scripts/install-playbook.ts",
-    "eval": "node src/evals/run-eval.ts"
+    "eval": "node src/evals/run-eval.ts",
+    "create-api-key": "node src/scripts/create-api-key.ts",
+    "opening-template": "node src/scripts/opening-template.ts"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^12.2.1",

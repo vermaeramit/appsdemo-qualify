@@ -103,10 +103,17 @@
 
 **Follow-ups (M5 prompt tuning with the playbook builder):** always split travelers into adults and children; apply destination corrections reliably; send the closing message in the lead's language; occasional re-confirmation of a given field.
 
-## M4 — Leads & scoring
+## M4 — Leads & scoring 🚧 in progress
+**Done early (2026-11-18):**
+- Inbound lead API `POST /api/v1/leads` + workspace API keys (D-044), Postman collection and guide in [docs/api/](api/README.md)
+- Opening message: `lead-contact` job, free-form inside the 24 h window, approved template outside it, explicit failure without a template, 10-minute dedupe, status `contacting` (D-045). Template scripts: `opening-template create|status`.
+- Questions with options vs plain questions, buttons/list chosen in code from `askingField` (D-046)
+- Agent configuration API `GET/PUT /api/v1/playbook` (D-047), `install-playbook --upgrade`
+
+**Remaining:**
 - Page connect + `leadgen` webhook + lead fetch + field mapping (tested with the Lead Ads Testing Tool)
 - CTWA referral capture + routing rules
-- Opening templates + follow-up sequence (BullMQ delayed jobs)
+- Opening template approval (submit `qualify_opening_v1`) + follow-up sequence (BullMQ delayed jobs)
 - Hybrid scoring engine, final score, reason, summary, status machine
 - Undeliverable detection
 
@@ -137,7 +144,7 @@
 ## M7 — Outputs & admin
 - Excel export (ExcelJS, filters, column picker), scheduled email reports (BullMQ repeatable jobs)
 - Webhook endpoints: events, conditions, mapping, auth, signing, retries, delivery logs, resend, test payload
-- Inbound API (`/api/v1/leads`, `/outcome`) + API keys
+- Inbound API `/outcome` (the `/api/v1/leads` endpoint and API keys were built early in M4, D-044); API key management in the UI
 - Super Admin panel: tenants, usage, health, audited impersonation, Bull Board
 
 **Acceptance:** a qualified lead arrives at webhook.site with a valid signature, and the Excel export matches the UI.

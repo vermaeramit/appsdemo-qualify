@@ -7,6 +7,8 @@ import {
   WhatsAppClient,
 } from '@qualify/integrations';
 import {
+  CONTACT_QUEUE,
+  contactJobSchema,
   metaEventJobSchema,
   QUEUES,
   RESPOND_QUEUE,
@@ -15,6 +17,7 @@ import {
 } from '@qualify/shared';
 import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
+import { ContactBusyError, processContact } from './agent/contact.ts';
 import { LeadBusyError, processRespond } from './agent/respond.ts';
 import { loadWorkerEnv } from './env.ts';
 import { createRedisLock } from './lock.ts';
@@ -111,12 +114,30 @@ const respondWorker = new Worker(
   { connection, concurrency: 20 },
 );
 
+const contactWorker = new Worker(
+  CONTACT_QUEUE,
+  async (job) => {
+    const outcome = await processContact(contactJobSchema.parse(job.data), {
+      db,
+      logger,
+      masterKey,
+      createClient: whatsapp,
+      allowlist,
+      isProduction,
+      lock: createRedisLock(connection),
+    });
+    logger.info({ leadId: job.data.leadId, outcome }, 'Contact run');
+  },
+  { connection, concurrency: 10 },
+);
+
 for (const [name, worker] of [
   ['meta-events', metaEventsWorker],
   ['respond', respondWorker],
+  ['contact', contactWorker],
 ] as const) {
   worker.on('failed', (job, error) => {
-    if (error instanceof LeadBusyError) return; // expected: retried shortly
+    if (error instanceof LeadBusyError || error instanceof ContactBusyError) return; // retried shortly
     logger.error(
       { queue: name, jobId: job?.id, attempts: job?.attemptsMade, err: error },
       'Job failed',
@@ -124,11 +145,11 @@ for (const [name, worker] of [
   });
 }
 
-logger.info({ queues: [QUEUES.metaEvents, RESPOND_QUEUE] }, 'Worker started');
+logger.info({ queues: [QUEUES.metaEvents, RESPOND_QUEUE, CONTACT_QUEUE] }, 'Worker started');
 
 async function shutdown(signal: string): Promise<void> {
   logger.info(`Received ${signal}, shutting down`);
-  await Promise.all([metaEventsWorker.close(), respondWorker.close()]);
+  await Promise.all([metaEventsWorker.close(), respondWorker.close(), contactWorker.close()]);
   await respondQueue.close();
   await pool.end();
   connection.disconnect();

@@ -18,11 +18,22 @@ export interface PromptContext {
   defaultLanguage: AgentLanguage;
 }
 
+function describeAnswerStyle(field: PlaybookField): string {
+  if (field.type === 'choice') {
+    const other = field.allowOther ? ' (the lead may also type another answer)' : '';
+    return `question with options, shown as buttons/list: ${(field.options ?? []).join(' | ')}${other}`;
+  }
+  if (field.type === 'yes_no') return 'yes/no question, shown as Yes/No buttons';
+  return 'plain question, the lead types the answer';
+}
+
 function describeField(field: PlaybookField): string {
   const parts = [
-    `- \`${field.key}\`: ${field.label} (${field.type}${field.required ? ', REQUIRED' : ', optional'}, priority ${field.priority})`,
+    `- \`${field.key}\`: ${field.label} (${field.type}${field.required ? ', REQUIRED' : ', optional'}, priority ${field.priority}) — ${describeAnswerStyle(field)}`,
   ];
-  if (field.options?.length) parts.push(`  Options: ${field.options.join(' | ')}`);
+  if (field.question) {
+    parts.push(`  Ask as: "${field.question}" (keep the meaning, use the lead's language)`);
+  }
   if (field.guidance) parts.push(`  Guidance: ${field.guidance}`);
   return parts.join('\n');
 }
@@ -68,8 +79,10 @@ Collect the fields listed below through a natural, friendly conversation. When t
 - Don't add opinions about weather, seasons or how good a time is, unless the knowledge base says so.
 - When you mention a month, say it the way the lead did (e.g. "December"); don't add the year.
 
-# Quick replies
-- When the next question has a few clear answers (e.g. a month range, yes/no, trip type), offer 2–3 quick replies of at most 20 characters each. Otherwise return an empty list.
+# Questions, options and quick replies
+- Set \`askingField\` to the key of the field your reply asks about (null if the reply asks nothing).
+- For questions with options (choice) and yes/no questions, the app shows the configured options as tap buttons or a list automatically: just ask the question, don't list the options in your text, and return an empty quickReplies list.
+- For plain questions you may offer 2–3 quick replies (at most 20 characters each) when there are a few obvious answers (e.g. "This month", "Next month"); otherwise return an empty list.
 
 # Extraction (field \`extracted\`)
 - Return every field value the lead has stated that is missing from, or different from, the collected fields in the state note. Use the field keys exactly as listed below.

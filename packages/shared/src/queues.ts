@@ -6,6 +6,15 @@ export const QUEUES = {
   metaEvents: 'meta-events',
 } as const;
 
+/** "Send the opening message to this new form/API lead" jobs. */
+export const CONTACT_QUEUE = 'lead-contact';
+
+export const contactJobSchema = z.object({
+  tenantId: z.string().min(1),
+  leadId: z.uuid(),
+});
+export type ContactJob = z.infer<typeof contactJobSchema>;
+
 /** Debounced "the AI should answer this lead" jobs. */
 export const RESPOND_QUEUE = 'lead-respond';
 

@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 
 const STATUS: Record<string, { label: string; className: string }> = {
   new: { label: 'New', className: 'bg-muted text-muted-foreground' },
+  contacting: { label: 'Contacted', className: 'bg-grade-cold/12 text-grade-cold' },
   engaged: { label: 'Qualifying', className: 'bg-primary/12 text-primary' },
   qualified: { label: 'Qualified', className: 'bg-success/14 text-success' },
   handoff: { label: 'Handed off', className: 'bg-grade-warm/16 text-grade-warm' },

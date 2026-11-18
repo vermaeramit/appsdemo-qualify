@@ -2,6 +2,10 @@ import { playbookConfigSchema } from '@qualify/shared';
 import { describe, expect, it } from 'vitest';
 import {
   applyAgentTurn,
+  chooseReplyOptions,
+  renderOpening,
+  resolveOpening,
+  resolveParam,
   chooseReplyLanguage,
   detectLanguage,
   buildStateNote,
@@ -219,6 +223,7 @@ describe('applyAgentTurn', () => {
     language: 'en' as const,
     reply: 'You are welcome!',
     quickReplies: ['Ok'],
+    askingField: null,
     extracted: [],
     signals: { urgency: 1, seriousness: 1, buyingSignals: 0, note: 'said thanks' },
     handoff: { requested: false, reason: null },
@@ -241,7 +246,12 @@ describe('applyAgentTurn', () => {
     );
     expect(applied.signals).toEqual(signals);
     expect(applied.becameQualified).toBe(false);
-    expect(applied.quickReplies).toEqual([]);
+    expect(applied.options).toEqual({ kind: 'none' });
+  });
+
+  it('moves a contacted lead (opening sent) to engaged on the first reply', () => {
+    const applied = applyAgentTurn(fields, { fields: {}, status: 'contacting' }, baseTurn);
+    expect(applied.status).toBe('engaged');
   });
 
   it('updates signals while still qualifying', () => {
@@ -255,6 +265,107 @@ describe('applyAgentTurn', () => {
       baseTurn,
     );
     expect(applied.signals).toMatchObject({ urgency: 1, note: 'said thanks' });
+  });
+});
+
+describe('reply options (questions with options vs plain questions)', () => {
+  const base = { definitions: fields, status: 'engaged', language: 'en' as const, suggested: [] };
+
+  it('shows ≤3 short choice options as buttons', () => {
+    expect(chooseReplyOptions({ ...base, askingField: 'hotel_category' })).toEqual({
+      kind: 'buttons',
+      buttons: ['3 star', '4 star', '5 star'],
+    });
+  });
+
+  it('shows 4–10 choice options as a list menu, labelled in the lead language', () => {
+    expect(chooseReplyOptions({ ...base, askingField: 'trip_type', language: 'hinglish' })).toEqual(
+      {
+        kind: 'list',
+        buttonLabel: 'Choose karein',
+        rows: ['Honeymoon', 'Family', 'Friends', 'Solo', 'Group'],
+      },
+    );
+  });
+
+  it('shows Yes/No buttons in the lead language for yes/no questions', () => {
+    const withYesNo = [
+      ...fields,
+      { key: 'visa_needed', label: 'Visa', type: 'yes_no' as const, required: false, priority: 20 },
+    ];
+    expect(
+      chooseReplyOptions({
+        ...base,
+        definitions: withYesNo,
+        askingField: 'visa_needed',
+        language: 'hi',
+      }),
+    ).toEqual({ kind: 'buttons', buttons: ['हाँ', 'नहीं'] });
+  });
+
+  it('uses model suggestions for plain questions, and nothing once qualified', () => {
+    expect(
+      chooseReplyOptions({
+        ...base,
+        askingField: 'travel_month',
+        suggested: ['This month', 'Next month'],
+      }),
+    ).toEqual({ kind: 'buttons', buttons: ['This month', 'Next month'] });
+    expect(chooseReplyOptions({ ...base, askingField: 'departure_city' })).toEqual({
+      kind: 'none',
+    });
+    expect(
+      chooseReplyOptions({ ...base, status: 'qualified', askingField: 'hotel_category' }),
+    ).toEqual({
+      kind: 'none',
+    });
+  });
+
+  it('rejects choice questions without options', () => {
+    const invalid = {
+      ...playbook,
+      fields: [{ key: 'x', label: 'X', type: 'choice', required: true, priority: 1 }],
+    };
+    expect(playbookConfigSchema.safeParse(invalid).success).toBe(false);
+  });
+});
+
+describe('opening message', () => {
+  const opening = resolveOpening(playbook);
+
+  it('renders template parameters from the lead and business', () => {
+    const rendered = renderOpening(opening, {
+      leadName: 'Rahul Sharma',
+      fields: {},
+      businessName: 'Sunrise Holidays',
+    });
+    expect(rendered.params).toEqual(['Rahul', 'Sunrise Holidays']);
+    expect(rendered.text).toContain('Hi Rahul! 👋 Thanks for your enquiry with Sunrise Holidays.');
+  });
+
+  it('falls back when the name is unknown and cleans unsafe characters', () => {
+    expect(resolveParam('lead.firstName', { leadName: null, fields: {}, businessName: 'X' })).toBe(
+      'there',
+    );
+    expect(
+      resolveParam('field:destination|our packages', {
+        leadName: null,
+        fields: {},
+        businessName: 'X',
+      }),
+    ).toBe('our packages');
+    expect(
+      resolveParam('field:destination', {
+        leadName: null,
+        fields: { destination: 'Goa\n\tbeach' },
+        businessName: 'X',
+      }),
+    ).toBe('Goa beach');
+  });
+
+  it('provides a default opening for playbooks created before M4', () => {
+    const { opening: _unused, ...legacy } = playbook;
+    expect(resolveOpening(legacy).bodyParams).toEqual(['lead.firstName', 'business.name']);
   });
 });
 

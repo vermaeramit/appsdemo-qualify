@@ -1,8 +1,17 @@
-import type { AgentTurn, LeadSignals, LeadStatus, PlaybookField } from '@qualify/shared';
+import type {
+  AgentLanguage,
+  AgentTurn,
+  LeadSignals,
+  LeadStatus,
+  PlaybookField,
+} from '@qualify/shared';
 import { isQualificationComplete, type LeadFields, mergeExtractedFields } from './fields.ts';
-import { clampSignal, sanitizeQuickReplies, sanitizeReply } from './policy.ts';
+import { chooseReplyOptions, type ReplyOptions } from './interactive.ts';
+import { clampSignal, sanitizeReply } from './policy.ts';
 
 const CLOSED_STATUSES = new Set(['qualified', 'handoff', 'disqualified']);
+/** Before the first real exchange: a lead who wrote in (new) or got our opening (contacting). */
+const OPENING_STATUSES = new Set(['new', 'contacting']);
 
 export interface AppliedTurn {
   fields: LeadFields;
@@ -14,10 +23,10 @@ export interface AppliedTurn {
   becameQualified: boolean;
   handedOff: boolean;
   reply: string;
-  /** Only offered while still qualifying. */
-  quickReplies: string[];
+  /** Buttons / list for the reply (only while still qualifying). */
+  options: ReplyOptions;
   signals: LeadSignals;
-  language: 'hinglish' | 'en' | 'hi' | null;
+  language: AgentLanguage | null;
 }
 
 /**
@@ -28,6 +37,7 @@ export function applyAgentTurn(
   definitions: readonly PlaybookField[],
   lead: { fields: LeadFields; status: string; signals?: LeadSignals | null },
   turn: AgentTurn,
+  replyLanguage: AgentLanguage = 'en',
 ): AppliedTurn {
   const merged = mergeExtractedFields(definitions, lead.fields, turn.extracted);
   // Once the lead reached an end state, follow-up chit-chat ("thanks", "ok") must not
@@ -47,10 +57,11 @@ export function applyAgentTurn(
   } else if (isQualificationComplete(definitions, merged.fields)) {
     becameQualified = status !== 'qualified';
     status = 'qualified';
-  } else if (status === 'new') {
+  } else if (OPENING_STATUSES.has(status)) {
     status = 'engaged';
   }
 
+  const language = turn.language === 'other' ? null : turn.language;
   return {
     fields: merged.fields,
     changed: merged.changed,
@@ -60,7 +71,13 @@ export function applyAgentTurn(
     becameQualified,
     handedOff,
     reply: sanitizeReply(turn.reply),
-    quickReplies: status === 'engaged' ? sanitizeQuickReplies(turn.quickReplies) : [],
+    options: chooseReplyOptions({
+      definitions,
+      askingField: turn.askingField,
+      status,
+      language: replyLanguage,
+      suggested: turn.quickReplies,
+    }),
     signals:
       keepSignals && lead.signals
         ? lead.signals
@@ -70,6 +87,6 @@ export function applyAgentTurn(
             buyingSignals: clampSignal(turn.signals.buyingSignals),
             note: turn.signals.note.slice(0, 300),
           },
-    language: turn.language === 'other' ? null : turn.language,
+    language,
   };
 }

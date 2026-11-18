@@ -52,6 +52,7 @@ Full-stack TypeScript, pnpm 12 monorepo, Node.js 26 LTS, TypeScript 6.0 (don't u
 - 2026-11-17: **M1 built and verified** (auth, workspaces, RLS, protected app shell; e2e passes).
 - 2026-11-17: **M2 done and live-verified** (real WhatsApp messages → inbox → dev reply → read receipts). The owner's own workspace "Appsdemo" (with the connected number and real messages) exists in the dev DB, so don't delete it. Next: M3 (AI agent) with OpenAI (D-039). Needs `OPENAI_API_KEY` in `.env`.
 - 2026-11-18: **M3 done and live-verified.** The AI agent (gpt-5.4-mini, low; D-040) qualifies leads on WhatsApp. The travel playbook is installed in "Appsdemo". Next: M4 (lead forms, CTWA routing, opening templates, follow-ups, hybrid scoring).
+- 2026-11-18: **M4 started.** Built early: inbound lead API `POST /api/v1/leads` + API keys, opening message (contact job, template outside 24 h), questions with options vs plain (buttons/list from `askingField`), playbook API `GET/PUT /api/v1/playbook` (D-044 to D-048). Postman: [docs/api/](docs/api/README.md). The opening template `qualify_opening_v1` is NOT submitted to Meta yet (ask the owner first). Next: lead forms, CTWA routing, follow-ups, hybrid scoring.
 
 ## Local dev notes
 - Run commands with Node 26 (`nvm use 26.13.1`). In tool shells, prepend `C:\nvm4w\nodejs` to PATH.
@@ -64,5 +65,7 @@ Full-stack TypeScript, pnpm 12 monorepo, Node.js 26 LTS, TypeScript 6.0 (don't u
 - Connect our dev number: `pnpm --filter @qualify/worker connect-dev-number [workspace-slug]`. It is connected to the owner's "Appsdemo" workspace. Meta app = **appsdemo_api** (App ID, secret and system-user token are all from it).
 - Live webhooks in dev: run `"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --no-autoupdate --url http://localhost:5173`, then `pnpm --filter @qualify/worker set-dev-webhook https://<host>.trycloudflare.com`. The quick-tunnel URL changes on every restart.
 - Agent eval: `pnpm --filter @qualify/worker eval -- --models gpt-5.4-mini` (~$0.5 per model; spends API credits, so ask first). Install the template in a workspace: `pnpm --filter @qualify/worker install-playbook [slug]`.
+- API key for Postman: `pnpm --filter @qualify/worker create-api-key [slug] ["name"]` (printed once; the owner runs it so only they see the key). Opening template: `pnpm --filter @qualify/worker opening-template create|status [slug]` (`create` submits to Meta, so ask first). Upgrade a workspace to the latest travel template: `install-playbook [slug] --upgrade`.
+- For a live API check, create a temporary key in a script, never print it, and revoke it afterwards.
 - Clean test data only by exact criteria. The owner uses the dev DB too (their workspace "Appsdemo").
 - The owner's other Docker containers (e.g. `personal-assistant-*`) are separate projects. Stop or change them only when the owner asks. They were stopped on request on 2026-11-17 (restart policy `unless-stopped`, so they stay stopped).

@@ -12,6 +12,8 @@ export const agentTurnSchema = z.object({
   reply: z.string(),
   /** Up to 3 tap-to-answer options (≤20 chars each); empty when free text is better. */
   quickReplies: z.array(z.string()),
+  /** Key of the field this reply asks about (null if none). For choice / yes-no questions the app shows the configured options. */
+  askingField: z.string().nullable(),
   /** Field values learnt from the lead's latest messages, normalised to English. */
   extracted: z.array(z.object({ key: z.string(), value: z.string() })),
   /** 0–10 each. */
@@ -28,6 +30,8 @@ export type AgentTurn = z.infer<typeof agentTurnSchema>;
 
 export const leadStatusSchema = z.enum([
   'new',
+  /** We sent the opening (form/API lead) and are waiting for the first reply. */
+  'contacting',
   'engaged',
   'qualified',
   'disqualified',

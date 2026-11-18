@@ -5,15 +5,25 @@ import { eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type DbHandle } from './client.ts';
+import { createApiKey, resolveTenantByApiKey } from './api-keys.ts';
 import { runMigrations } from './migrate.ts';
-import { resolveTenantByPhoneNumberId } from './routing.ts';
 import {
+  createPublishedPlaybook,
+  getDefaultPublishedPlaybook,
+  publishPlaybookVersion,
+} from './playbooks.ts';
+import { resolveTenantByPhoneNumberId } from './routing.ts';
+import type { PlaybookConfig } from '@qualify/shared';
+import {
+  apiKeys,
   auditLogs,
   leads,
   messages,
   organization,
   partners,
   phoneNumbers,
+  playbooks,
+  playbookVersions,
   tenants,
   whatsappAccounts,
 } from './schema/index.ts';
@@ -205,5 +215,60 @@ describe('Messaging tables and webhook routing (connected as qualify_app)', () =
       });
     });
     await expect(duplicate).rejects.toSatisfy((error) => /duplicate key/.test(errorText(error)));
+  });
+});
+
+describe('Playbooks and API keys (connected as qualify_app)', () => {
+  const config = { persona: { name: 'Riya' } } as unknown as PlaybookConfig; // RLS test only
+
+  it('isolates playbooks and their versions', async () => {
+    await withTenant(app.db, 'org_a', (tx) =>
+      createPublishedPlaybook(tx, {
+        tenantId: 'org_a',
+        name: 'A playbook',
+        templateKey: null,
+        config,
+        isDefault: true,
+      }),
+    );
+    expect(await app.db.select().from(playbooks)).toEqual([]);
+    expect(await withTenant(app.db, 'org_b', (tx) => tx.select().from(playbooks))).toEqual([]);
+    expect(await withTenant(app.db, 'org_b', (tx) => tx.select().from(playbookVersions))).toEqual(
+      [],
+    );
+    const own = await withTenant(app.db, 'org_a', (tx) => getDefaultPublishedPlaybook(tx));
+    expect(own?.versionNo).toBe(1);
+  });
+
+  it('publishes new immutable versions', async () => {
+    const next = await withTenant(app.db, 'org_a', async (tx) => {
+      const current = await getDefaultPublishedPlaybook(tx);
+      return publishPlaybookVersion(tx, {
+        tenantId: 'org_a',
+        playbookId: current!.playbookId,
+        config,
+      });
+    });
+    expect(next.versionNo).toBe(2);
+  });
+
+  it('resolves API keys to their tenant, hides them from other tenants, honours revocation', async () => {
+    const created = await withTenant(app.db, 'org_a', (tx) =>
+      createApiKey(tx, { tenantId: 'org_a', name: 'Postman', createdBy: null }),
+    );
+    expect(created.key.startsWith('qk_live_')).toBe(true);
+    expect(await resolveTenantByApiKey(app.db, created.key)).toBe('org_a');
+    expect(await resolveTenantByApiKey(app.db, 'qk_live_not-a-real-key')).toBeNull();
+    expect(await resolveTenantByApiKey(app.db, 'random')).toBeNull();
+
+    expect(await app.db.select().from(apiKeys)).toEqual([]);
+    expect(await withTenant(app.db, 'org_b', (tx) => tx.select().from(apiKeys))).toEqual([]);
+    const [stored] = await withTenant(app.db, 'org_a', (tx) => tx.select().from(apiKeys));
+    expect(stored?.keyHash).not.toContain(created.key); // only the hash is stored
+
+    await withTenant(app.db, 'org_a', (tx) =>
+      tx.update(apiKeys).set({ revokedAt: new Date() }).where(eq(apiKeys.id, created.id)),
+    );
+    expect(await resolveTenantByApiKey(app.db, created.key)).toBeNull();
   });
 });

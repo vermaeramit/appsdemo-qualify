@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { healthResponseSchema, leadGradeSchema, leadScoreSchema } from './index.js';
+import {
+  createLeadRequestSchema,
+  healthResponseSchema,
+  leadGradeSchema,
+  leadScoreSchema,
+} from './index.js';
 
 describe('healthResponseSchema', () => {
   it('accepts a valid health response', () => {
@@ -20,6 +25,20 @@ describe('healthResponseSchema', () => {
       time: 'yesterday',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('createLeadRequestSchema', () => {
+  it('accepts common phone formats with country code', () => {
+    for (const phone of ['+91 98123 45678', '919812345678', '+1 (415) 555-0100']) {
+      expect(createLeadRequestSchema.safeParse({ phone }).success).toBe(true);
+    }
+  });
+
+  it('rejects letters and numbers without a country code', () => {
+    for (const phone of ['12345678abc', '98123', '+91 98123']) {
+      expect(createLeadRequestSchema.safeParse({ phone }).success).toBe(false);
+    }
   });
 });
 

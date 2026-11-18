@@ -47,6 +47,35 @@ export async function getPlaybookVersion(
 }
 
 /**
+ * Publishes a new version of a playbook (call inside withTenant). Versions are immutable:
+ * running conversations keep the version they started with.
+ */
+export async function publishPlaybookVersion(
+  tx: Transaction,
+  input: { tenantId: string; playbookId: string; config: PlaybookConfig },
+): Promise<PublishedPlaybook> {
+  const [latest] = await tx
+    .select({ versionNo: playbookVersions.versionNo })
+    .from(playbookVersions)
+    .where(eq(playbookVersions.playbookId, input.playbookId))
+    .orderBy(desc(playbookVersions.versionNo))
+    .limit(1);
+  const versionNo = (latest?.versionNo ?? 0) + 1;
+  const [version] = await tx
+    .insert(playbookVersions)
+    .values({
+      tenantId: input.tenantId,
+      playbookId: input.playbookId,
+      versionNo,
+      status: 'published',
+      config: input.config,
+      publishedAt: new Date(),
+    })
+    .returning({ id: playbookVersions.id });
+  return { playbookId: input.playbookId, versionId: version!.id, versionNo, config: input.config };
+}
+
+/**
  * Creates a playbook with a published v1 (call inside withTenant). When `isDefault` is set and
  * the tenant already has a default playbook, the existing default is kept and nothing is created.
  */

@@ -151,6 +151,56 @@ describe('WhatsAppClient', () => {
     });
   });
 
+  it('sends a list menu and a template with body parameters', async () => {
+    const fetchImpl = vi.fn(async () => Response.json({ messages: [{ id: 'wamid.x' }] }));
+    const client = new WhatsAppClient({ accessToken: 'token', fetchImpl });
+
+    await client.sendList({
+      phoneNumberId: 'PN',
+      to: '91',
+      body: 'What kind of trip?',
+      buttonLabel: 'Choose',
+      rows: ['Honeymoon', 'Family', 'Friends', 'Solo'],
+    });
+    await client.sendTemplate({
+      phoneNumberId: 'PN',
+      to: '91',
+      templateName: 'qualify_opening_v1',
+      language: 'en',
+      bodyParams: ['Rahul', 'Sunrise Holidays'],
+    });
+
+    const list = JSON.parse(
+      (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body as string,
+    );
+    expect(list.interactive).toMatchObject({
+      type: 'list',
+      action: {
+        button: 'Choose',
+        sections: [{ rows: [{ id: 'opt_1', title: 'Honeymoon' }, {}, {}, {}] }],
+      },
+    });
+    const template = JSON.parse(
+      (fetchImpl.mock.calls[1] as unknown as [string, RequestInit])[1].body as string,
+    );
+    expect(template).toMatchObject({
+      type: 'template',
+      template: {
+        name: 'qualify_opening_v1',
+        language: { code: 'en' },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: 'Rahul' },
+              { type: 'text', text: 'Sunrise Holidays' },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
   it('maps Graph API errors', async () => {
     const fetchImpl = vi.fn(async () =>
       Response.json({ error: { message: 'Invalid token', code: 190 } }, { status: 401 }),
