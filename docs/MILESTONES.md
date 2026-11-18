@@ -142,6 +142,7 @@
 - Coexistence onboarding path + echo handling + history sync handling
 - Business profile editor
 - Number health: quality rating, token validity, 14-day app-activity alerts
+- Client billing helpers (D-004: each client pays Meta directly): onboarding checklist incl. payment method, payment-issue alert on error 131042 with a Billing Hub link, month-end spend projection on Costs, deep links to Billing Hub / invoices / WhatsApp Manager. Multi-partner (Solution Partner credit line) stays an option for consolidated billing later.
 
 **Acceptance:** create a template in the UI → it shows Meta's approval status. Health page shows live status.
 
