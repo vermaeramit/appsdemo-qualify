@@ -97,11 +97,18 @@ export async function handleLeadgen(
   }
 
   const client = deps.createClient(decryptSecret(context.page.accessTokenEnc, deps.masterKey));
-  const [lead, form] = await Promise.all([
-    client.getLead(value.leadgen_id),
-    client.getLeadForm(value.form_id),
-  ]);
-  const questions: FormQuestion[] = form.questions ?? [];
+  const lead = await client.getLead(value.leadgen_id);
+  // Reading the form needs pages_manage_ads; without it, map from the answers' own keys.
+  const form = await client.getLeadForm(value.form_id).catch((error: unknown) => {
+    logger.warn(
+      { ...log, tenantId, err: error },
+      'Could not read the lead form; using answer keys',
+    );
+    return { id: value.form_id } as Awaited<ReturnType<LeadFormClient['getLeadForm']>>;
+  });
+  const questions: FormQuestion[] = form.questions?.length
+    ? form.questions
+    : lead.field_data.map((item) => ({ key: item.name, label: item.name.replace(/_/g, ' ') }));
   const definitions = context.playbook.config.fields;
 
   let mapping = context.stored?.mapping;
