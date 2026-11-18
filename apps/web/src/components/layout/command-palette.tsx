@@ -9,6 +9,7 @@ import {
   Moon,
   Settings,
   Sun,
+  Wallet,
 } from 'lucide-react';
 import { useTheme } from '@/components/theme/use-theme';
 import {
@@ -69,6 +70,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <CommandItem onSelect={() => run(() => navigate({ to: '/agent' }))}>
               <Bot />
               AI agent (questions, opening, knowledge base)
+            </CommandItem>
+            <CommandItem onSelect={() => run(() => navigate({ to: '/costs' }))}>
+              <Wallet />
+              Costs (Meta and AI)
             </CommandItem>
             <CommandItem onSelect={() => run(() => navigate({ to: '/api-docs' }))}>
               <BookOpen />

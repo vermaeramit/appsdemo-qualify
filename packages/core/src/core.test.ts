@@ -1,6 +1,7 @@
 import { playbookConfigSchema } from '@qualify/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  aiCostUsd,
   applyAgentTurn,
   chooseReplyOptions,
   openingExampleParams,
@@ -24,6 +25,16 @@ import {
 
 const playbook = travelPlaybookTemplate('Sunrise Holidays');
 const fields = playbook.fields;
+
+describe('aiCostUsd', () => {
+  it('prices cached input separately and knows dated model snapshots', () => {
+    const usage = { inputTokens: 1_000_000, cachedInputTokens: 400_000, outputTokens: 100_000 };
+    // 600k × 0.75 + 400k × 0.075 + 100k × 4.5 per 1M = 0.45 + 0.03 + 0.45
+    expect(aiCostUsd({ model: 'gpt-5.4-mini', ...usage })).toBeCloseTo(0.93, 6);
+    expect(aiCostUsd({ model: 'gpt-5.4-mini-2026-03-05', ...usage })).toBeCloseTo(0.93, 6);
+    expect(aiCostUsd({ model: 'unknown-model', ...usage })).toBeNull();
+  });
+});
 
 describe('travel template', () => {
   it('is a valid playbook config', () => {

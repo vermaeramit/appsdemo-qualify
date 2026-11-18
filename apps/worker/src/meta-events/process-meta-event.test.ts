@@ -61,7 +61,12 @@ function inboundPayload(
   };
 }
 
-function statusPayload(waMessageId: string, status: string, timestamp: string) {
+function statusPayload(
+  waMessageId: string,
+  status: string,
+  timestamp: string,
+  pricing?: Record<string, unknown>,
+) {
   return {
     object: 'whatsapp_business_account',
     entry: [
@@ -72,7 +77,15 @@ function statusPayload(waMessageId: string, status: string, timestamp: string) {
             field: 'messages',
             value: {
               metadata: { display_phone_number: '919350983656', phone_number_id: PHONE_NUMBER_ID },
-              statuses: [{ id: waMessageId, status, timestamp, recipient_id: ALLOWED }],
+              statuses: [
+                {
+                  id: waMessageId,
+                  status,
+                  timestamp,
+                  recipient_id: ALLOWED,
+                  ...(pricing ? { pricing } : {}),
+                },
+              ],
             },
           },
         ],
@@ -181,6 +194,25 @@ describe('processMetaEvent', () => {
       tx.select().from(messages).where(eq(messages.waMessageId, 'wamid.out.1')),
     );
     expect(updated?.status).toBe('read');
+    expect(updated?.pricing).toBeNull();
+  });
+
+  it('stores Meta pricing from a status, even one that arrives late', async () => {
+    const pricing = {
+      billable: true,
+      category: 'marketing',
+      type: 'regular',
+      pricing_model: 'PMP',
+    };
+    await processMetaEvent(
+      await storeEvent(statusPayload('wamid.out.1', 'delivered', '1763400011', pricing)),
+      deps(),
+    );
+    const [updated] = await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx.select().from(messages).where(eq(messages.waMessageId, 'wamid.out.1')),
+    );
+    expect(updated?.status).toBe('read');
+    expect(updated?.pricing).toEqual({ billable: true, category: 'marketing', type: 'regular' });
   });
 
   it('ignores emoji reactions completely', async () => {

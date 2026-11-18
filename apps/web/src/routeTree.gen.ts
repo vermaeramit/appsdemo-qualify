@@ -17,6 +17,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAgentRouteImport } from './routes/_app/agent'
 import { Route as AppApiDocsRouteImport } from './routes/_app/api-docs'
 import { Route as AppConversationsRouteImport } from './routes/_app/conversations'
+import { Route as AppCostsRouteImport } from './routes/_app/costs'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 
 const AppRoute = AppRouteImport.update({
@@ -58,6 +59,11 @@ const AppConversationsRoute = AppConversationsRouteImport.update({
   path: '/conversations',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCostsRoute = AppCostsRouteImport.update({
+  id: '/costs',
+  path: '/costs',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/agent': typeof AppAgentRoute
   '/api-docs': typeof AppApiDocsRoute
   '/conversations': typeof AppConversationsRoute
+  '/costs': typeof AppCostsRoute
   '/settings': typeof AppSettingsRoute
 }
 export interface FileRoutesByTo {
@@ -81,6 +88,7 @@ export interface FileRoutesByTo {
   '/agent': typeof AppAgentRoute
   '/api-docs': typeof AppApiDocsRoute
   '/conversations': typeof AppConversationsRoute
+  '/costs': typeof AppCostsRoute
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
 }
@@ -93,6 +101,7 @@ export interface FileRoutesById {
   '/_app/agent': typeof AppAgentRoute
   '/_app/api-docs': typeof AppApiDocsRoute
   '/_app/conversations': typeof AppConversationsRoute
+  '/_app/costs': typeof AppCostsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/': typeof AppIndexRoute
 }
@@ -106,6 +115,7 @@ export interface FileRouteTypes {
     | '/agent'
     | '/api-docs'
     | '/conversations'
+    | '/costs'
     | '/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -115,6 +125,7 @@ export interface FileRouteTypes {
     | '/agent'
     | '/api-docs'
     | '/conversations'
+    | '/costs'
     | '/settings'
     | '/'
   id:
@@ -126,6 +137,7 @@ export interface FileRouteTypes {
     | '/_app/agent'
     | '/_app/api-docs'
     | '/_app/conversations'
+    | '/_app/costs'
     | '/_app/settings'
     | '/_app/'
   fileRoutesById: FileRoutesById
@@ -195,6 +207,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppConversationsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/costs': {
+      id: '/_app/costs'
+      path: '/costs'
+      fullPath: '/costs'
+      preLoaderRoute: typeof AppCostsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings': {
       id: '/_app/settings'
       path: '/settings'
@@ -209,6 +228,7 @@ interface AppRouteChildren {
   AppAgentRoute: typeof AppAgentRoute
   AppApiDocsRoute: typeof AppApiDocsRoute
   AppConversationsRoute: typeof AppConversationsRoute
+  AppCostsRoute: typeof AppCostsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
 }
@@ -217,6 +237,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAgentRoute: AppAgentRoute,
   AppApiDocsRoute: AppApiDocsRoute,
   AppConversationsRoute: AppConversationsRoute,
+  AppCostsRoute: AppCostsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
 }

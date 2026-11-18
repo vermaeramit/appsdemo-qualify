@@ -77,6 +77,12 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await expect(page.getByRole('link', { name: 'Form Lead' })).toBeVisible();
   await expect(page.getByText('Sample data')).toHaveCount(0);
 
+  // Costs: AI estimate and Meta status for this workspace (no WhatsApp number here).
+  await page.getByRole('link', { name: 'Costs' }).click();
+  await expect(page.getByRole('heading', { name: 'Costs' })).toBeVisible();
+  await expect(page.getByText('No WhatsApp number connected')).toBeVisible();
+  await expect(page.getByText('No AI replies in this period.')).toBeVisible();
+
   // API docs list this workspace's question keys, including the new one.
   await page.getByRole('link', { name: 'API docs' }).click();
   await expect(page.getByRole('heading', { name: 'API docs' })).toBeVisible();

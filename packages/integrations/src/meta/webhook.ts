@@ -41,6 +41,15 @@ export const waStatusSchema = z.looseObject({
   errors: z
     .array(z.looseObject({ code: z.number().optional(), title: z.string().optional() }))
     .optional(),
+  /** Per-message pricing (PMP): whether Meta bills this message, and its category. */
+  pricing: z
+    .looseObject({
+      billable: z.boolean().optional(),
+      category: z.string().optional(),
+      type: z.string().optional(),
+      pricing_model: z.string().optional(),
+    })
+    .optional(),
 });
 export type WaStatus = z.infer<typeof waStatusSchema>;
 

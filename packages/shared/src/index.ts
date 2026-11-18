@@ -2,6 +2,7 @@ export * from './agent.js';
 export * from './api-keys.js';
 export * from './auth.js';
 export * from './conversations.js';
+export * from './costs.js';
 export * from './dashboard.js';
 export * from './health.js';
 export * from './lead.js';

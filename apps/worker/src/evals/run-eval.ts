@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
+  aiCostUsd,
   applyAgentTurn,
   buildStateNote,
   chooseReplyLanguage,
@@ -38,25 +39,8 @@ const { values } = parseArgs({
   },
 });
 
-// USD per 1M tokens (input, cached input, output). Source: OpenAI pricing (checked 2026-11-18).
-// gpt-4.1-mini is an older list price and may be out of date.
-const PRICES: Record<string, { input: number; cached: number; output: number }> = {
-  'gpt-5.4-nano': { input: 0.2, cached: 0.02, output: 1.25 },
-  'gpt-5.4-mini': { input: 0.75, cached: 0.075, output: 4.5 },
-  'gpt-5.5': { input: 5, cached: 0.5, output: 30 },
-  'gpt-4.1-mini': { input: 0.4, cached: 0.1, output: 1.6 },
-};
-
 function costUsd(usage: LlmUsage): number | null {
-  const price = PRICES[usage.model];
-  if (!price) return null;
-  const uncached = Math.max(0, usage.inputTokens - usage.cachedInputTokens);
-  return (
-    (uncached * price.input +
-      usage.cachedInputTokens * price.cached +
-      usage.outputTokens * price.output) /
-    1_000_000
-  );
+  return aiCostUsd(usage);
 }
 
 const apiKey = process.env.OPENAI_API_KEY;

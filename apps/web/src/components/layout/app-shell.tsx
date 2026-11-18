@@ -10,6 +10,7 @@ import {
   Search,
   Settings,
   Users,
+  Wallet,
   Webhook,
   type LucideIcon,
 } from 'lucide-react';
@@ -18,7 +19,7 @@ import { BrandLogo } from '@/components/brand-logo';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { initials, roleLabel } from '@/lib/workspace';
+import { canManage, initials, roleLabel } from '@/lib/workspace';
 import { CommandPalette } from './command-palette';
 import { UserMenu } from './user-menu';
 
@@ -43,6 +44,7 @@ const navLinks = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/conversations', label: 'Conversations', icon: MessagesSquare, exact: false },
   { to: '/agent', label: 'AI agent', icon: Bot, exact: false },
+  { to: '/costs', label: 'Costs', icon: Wallet, exact: false, managerOnly: true },
   { to: '/api-docs', label: 'API docs', icon: BookOpen, exact: false },
   { to: '/settings', label: 'Settings', icon: Settings, exact: false },
 ] as const;
@@ -57,22 +59,24 @@ export function AppShell({ user, workspace, children }: AppShellProps) {
           <BrandLogo />
         </div>
         <nav className="flex-1 space-y-0.5 p-2" aria-label="Main">
-          {navLinks.map(({ to, label, icon: Icon, exact }) => (
-            <Link
-              key={to}
-              to={to}
-              className={navItemClass}
-              activeOptions={{ exact }}
-              activeProps={{ className: 'bg-sidebar-accent text-sidebar-accent-foreground' }}
-              inactiveProps={{
-                className:
-                  'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
-              }}
-            >
-              <Icon className="size-4" />
-              {label}
-            </Link>
-          ))}
+          {navLinks
+            .filter((link) => !('managerOnly' in link) || canManage(workspace.role))
+            .map(({ to, label, icon: Icon, exact }) => (
+              <Link
+                key={to}
+                to={to}
+                className={navItemClass}
+                activeOptions={{ exact }}
+                activeProps={{ className: 'bg-sidebar-accent text-sidebar-accent-foreground' }}
+                inactiveProps={{
+                  className:
+                    'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+                }}
+              >
+                <Icon className="size-4" />
+                {label}
+              </Link>
+            ))}
           {upcoming.map(({ label, icon: Icon }) => (
             <Tooltip key={label}>
               <TooltipTrigger asChild>

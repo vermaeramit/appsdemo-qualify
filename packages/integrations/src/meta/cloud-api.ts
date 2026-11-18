@@ -27,6 +27,17 @@ export interface WhatsAppClientOptions {
   fetchImpl?: typeof fetch;
 }
 
+export interface PricingAnalyticsPoint {
+  /** Unix seconds. */
+  start: number;
+  end: number;
+  pricing_category?: string;
+  pricing_type?: string;
+  country?: string;
+  volume: number;
+  cost: number;
+}
+
 export interface PhoneNumberInfo {
   id: string;
   display_phone_number: string;
@@ -237,6 +248,29 @@ export class WhatsAppClient {
       'GET',
       `/${wabaId}/message_templates?name=${encodeURIComponent(name)}&fields=id,name,status,language,category,rejected_reason`,
     );
+  }
+
+  /**
+   * What Meta billed on a WABA: daily volume and cost (in the WABA's currency) per pricing
+   * category and type. Up to 90 days back; Meta updates it with some delay.
+   */
+  async getPricingAnalytics(
+    wabaId: string,
+    params: { start: number; end: number },
+  ): Promise<PricingAnalyticsPoint[]> {
+    const field =
+      `pricing_analytics.start(${Math.floor(params.start)}).end(${Math.floor(params.end)})` +
+      '.granularity(DAILY).dimensions(["PRICING_CATEGORY","PRICING_TYPE"])';
+    const result = await this.request<{
+      pricing_analytics?: { data?: { data_points?: PricingAnalyticsPoint[] }[] };
+    }>('GET', `/${wabaId}?fields=${encodeURIComponent(field)}`);
+    return (result.pricing_analytics?.data ?? []).flatMap((entry) => entry.data_points ?? []);
+  }
+
+  /** The WABA's billing currency (e.g. "INR"). */
+  async getWabaCurrency(wabaId: string): Promise<string | null> {
+    const result = await this.request<{ currency?: string }>('GET', `/${wabaId}?fields=currency`);
+    return result.currency ?? null;
   }
 
   /** Marks an inbound message as read (blue ticks); optionally shows "typing…" to the lead. */

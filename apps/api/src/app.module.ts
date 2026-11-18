@@ -5,6 +5,7 @@ import { ApiKeysController } from './api-keys/api-keys.controller';
 import type { Env } from './config/env';
 import { ConversationsController } from './conversations/conversations.controller';
 import { CoreModule } from './core/core.module';
+import { CostsController } from './costs/costs.controller';
 import { DashboardController } from './dashboard/dashboard.controller';
 import { HealthController } from './health/health.controller';
 import { LeadIntakeService } from './leads/lead-intake.service';
@@ -66,6 +67,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
     LeadsController,
     ApiKeysController,
     DashboardController,
+    CostsController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: OriginGuard },

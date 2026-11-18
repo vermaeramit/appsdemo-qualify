@@ -19,6 +19,7 @@ import {
   type PlaybookField,
 } from '@qualify/shared';
 import { CurrentWorkspace, type WorkspaceContext, WorkspaceGuard } from '../auth/workspace.guard';
+import { postgresTimeZone } from '../common/time-zone';
 import { DB } from '../tokens';
 
 /** Days before today that a period starts, and its length (for the previous-period window). */
@@ -30,17 +31,6 @@ const PERIODS: Record<DashboardPeriod, { offsetDays: number; spanDays: number }>
 
 const RECENT_LIMIT = 8;
 const HIGHLIGHTS = 3;
-
-/** A valid IANA time zone known to Node, or UTC. (Postgres support is checked in the query.) */
-export function safeTimeZone(value: unknown): string {
-  if (typeof value !== 'string' || value.length === 0 || value.length > 64) return 'UTC';
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: value });
-    return value;
-  } catch {
-    return 'UTC';
-  }
-}
 
 /** Raw query timestamps arrive as Postgres strings; they go back into later queries as-is. */
 type Boundaries = {
@@ -69,7 +59,7 @@ export class DashboardController {
     const { offsetDays, spanDays } = PERIODS[period];
 
     return withTenant(this.handle.db, workspace.tenantId, async (tx) => {
-      const tz = await this.postgresTimeZone(tx, safeTimeZone(tzParam));
+      const tz = await postgresTimeZone(tx, tzParam);
       const localToday = sql`date_trunc('day', now() at time zone ${tz})`;
       const fromLocal = sql`(${localToday} - make_interval(days => ${offsetDays}))`;
 
@@ -185,15 +175,6 @@ export class DashboardController {
         whatsapp: number ?? null,
       });
     });
-  }
-
-  /** Node and Postgres ship separate zone databases; fall back to UTC if Postgres lacks it. */
-  private async postgresTimeZone(tx: Transaction, tz: string): Promise<string> {
-    if (tz === 'UTC') return tz;
-    const { rows } = await tx.execute<{ known: boolean }>(
-      sql`select exists(select 1 from pg_timezone_names where name = ${tz}) as known`,
-    );
-    return rows[0]?.known ? tz : 'UTC';
   }
 
   private async recentLeads(tx: Transaction, from: string) {

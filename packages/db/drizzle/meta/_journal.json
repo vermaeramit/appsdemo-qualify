@@ -57,6 +57,20 @@
       "when": 1794973673340,
       "tag": "0007_api_keys_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794981859862,
+      "tag": "0008_message_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794981860846,
+      "tag": "0009_message_pricing_backfill",
+      "breakpoints": true
     }
   ]
 }

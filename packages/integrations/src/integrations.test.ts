@@ -139,6 +139,27 @@ describe('phone helpers and dev safety switch', () => {
 });
 
 describe('WhatsAppClient', () => {
+  it('reads what Meta billed (pricing analytics) per category and day', async () => {
+    const point = {
+      start: 1794940200,
+      end: 1795026600,
+      pricing_category: 'MARKETING',
+      pricing_type: 'REGULAR',
+      volume: 1,
+      cost: 0.8631,
+    };
+    const fetchImpl = vi.fn(async () =>
+      Response.json({ pricing_analytics: { data: [{ data_points: [point] }] } }),
+    );
+    const client = new WhatsAppClient({ accessToken: 'token', fetchImpl });
+
+    expect(await client.getPricingAnalytics('WABA', { start: 100.7, end: 200 })).toEqual([point]);
+    const [url] = fetchImpl.mock.calls[0] as unknown as [string];
+    expect(decodeURIComponent(url)).toContain(
+      '/WABA?fields=pricing_analytics.start(100).end(200).granularity(DAILY)',
+    );
+  });
+
   it('sends a text message to the Cloud API', async () => {
     const fetchImpl = vi.fn(async () =>
       Response.json({ messages: [{ id: 'wamid.out' }] }, { status: 200 }),

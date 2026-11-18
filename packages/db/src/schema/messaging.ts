@@ -118,6 +118,8 @@ export const messages = pgTable(
       enum: ['received', 'pending', 'sent', 'delivered', 'read', 'failed'],
     }).notNull(),
     error: jsonb('error').$type<Record<string, unknown>>(),
+    /** Meta's per-message pricing from status webhooks: { billable, category, type }. */
+    pricing: jsonb('pricing').$type<{ billable?: boolean; category?: string; type?: string }>(),
     createdAt: createdAt(),
     statusUpdatedAt: timestamp('status_updated_at', { withTimezone: true }),
   },

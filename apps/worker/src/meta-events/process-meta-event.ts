@@ -160,7 +160,7 @@ async function handleInboundMessage(
 async function handleStatus(db: Database, tenantId: string, status: WaStatus): Promise<void> {
   await withTenant(db, tenantId, async (tx) => {
     const [existing] = await tx
-      .select({ id: messages.id, status: messages.status })
+      .select({ id: messages.id, status: messages.status, pricing: messages.pricing })
       .from(messages)
       .where(eq(messages.waMessageId, status.id))
       .limit(1);
@@ -169,15 +169,31 @@ async function handleStatus(db: Database, tenantId: string, status: WaStatus): P
     const next = status.status;
     const failed = next === 'failed';
     // Statuses can arrive out of order: never move backwards (e.g. read → delivered).
-    const moves = failed || (STATUS_RANK[next] ?? -1) > (STATUS_RANK[existing.status] ?? -1);
-    if (!moves || !['sent', 'delivered', 'read', 'failed'].includes(next)) return;
+    const moves =
+      (failed || (STATUS_RANK[next] ?? -1) > (STATUS_RANK[existing.status] ?? -1)) &&
+      ['sent', 'delivered', 'read', 'failed'].includes(next);
+    // Meta's per-message pricing (billable + category) comes with the first status that has it.
+    const pricing =
+      status.pricing && !existing.pricing
+        ? {
+            ...(status.pricing.billable !== undefined ? { billable: status.pricing.billable } : {}),
+            ...(status.pricing.category ? { category: status.pricing.category } : {}),
+            ...(status.pricing.type ? { type: status.pricing.type } : {}),
+          }
+        : null;
+    if (!moves && !pricing) return;
 
     await tx
       .update(messages)
       .set({
-        status: next as 'sent' | 'delivered' | 'read' | 'failed',
-        statusUpdatedAt: new Date(Number(status.timestamp) * 1000),
-        ...(failed ? { error: { errors: status.errors ?? [] } } : {}),
+        ...(moves
+          ? {
+              status: next as 'sent' | 'delivered' | 'read' | 'failed',
+              statusUpdatedAt: new Date(Number(status.timestamp) * 1000),
+              ...(failed ? { error: { errors: status.errors ?? [] } } : {}),
+            }
+          : {}),
+        ...(pricing ? { pricing } : {}),
       })
       .where(eq(messages.id, existing.id));
   });
