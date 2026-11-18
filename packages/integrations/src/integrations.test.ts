@@ -129,6 +129,13 @@ describe('phone helpers and dev safety switch', () => {
     expect(isAllowedRecipient('919811111111', [], false)).toBe(false);
     expect(isAllowedRecipient('919811111111', [], true)).toBe(true);
   });
+
+  it('allows every number when the list is "*" (safety switch off)', () => {
+    const allowlist = parseAllowlist(' * ');
+    expect(allowlist).toEqual(['*']);
+    expect(isAllowedRecipient('919811111111', allowlist, false)).toBe(true);
+    expect(parseAllowlist('919812345678, *')).toEqual(['*']);
+  });
 });
 
 describe('WhatsAppClient', () => {

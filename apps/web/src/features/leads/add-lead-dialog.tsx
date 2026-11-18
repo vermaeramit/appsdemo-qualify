@@ -201,7 +201,8 @@ function AddLeadForm({ onDone }: { onDone: () => void }) {
 
       {import.meta.env.DEV && (
         <p className="text-xs text-muted-foreground">
-          Development: only numbers in DEV_ALLOWED_NUMBERS receive WhatsApp messages.
+          Development: the worker’s DEV_ALLOWED_NUMBERS setting decides who receives WhatsApp
+          messages (“*” = every lead).
         </p>
       )}
       <SubmitButton pending={isSubmitting}>Add lead and send opening</SubmitButton>

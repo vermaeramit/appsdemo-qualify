@@ -334,7 +334,10 @@ export function ApiDocsPage() {
             </Link>
           </div>
           {import.meta.env.DEV && (
-            <P>Development: only numbers in DEV_ALLOWED_NUMBERS receive WhatsApp messages.</P>
+            <P>
+              Development: the worker’s DEV_ALLOWED_NUMBERS setting decides who receives WhatsApp
+              messages (“*” = every lead).
+            </P>
           )}
         </Section>
 

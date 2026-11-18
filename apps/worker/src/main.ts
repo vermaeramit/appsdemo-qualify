@@ -1,6 +1,7 @@
 import './load-env.ts';
 import { createDb } from '@qualify/db';
 import {
+  ALLOW_ALL,
   createLlmClient,
   parseAllowlist,
   parseMasterKey,
@@ -42,12 +43,16 @@ const whatsapp = (accessToken: string) =>
   });
 
 if (!isProduction) {
-  logger.info(
-    { allowedNumbers: allowlist.length },
-    allowlist.length
-      ? 'Dev safety switch ON: replying only to DEV_ALLOWED_NUMBERS'
-      : 'Dev safety switch ON: DEV_ALLOWED_NUMBERS is empty, the bot will not reply to anyone',
-  );
+  if (allowlist.includes(ALLOW_ALL)) {
+    logger.warn('Dev safety switch OFF (DEV_ALLOWED_NUMBERS=*): messaging every lead');
+  } else {
+    logger.info(
+      { allowedNumbers: allowlist.length },
+      allowlist.length
+        ? 'Dev safety switch ON: replying only to DEV_ALLOWED_NUMBERS'
+        : 'Dev safety switch ON: DEV_ALLOWED_NUMBERS is empty, the bot will not reply to anyone',
+    );
+  }
 }
 if (!masterKey) logger.warn('ENCRYPTION_MASTER_KEY not set: messages are stored but not answered');
 logger.info(
