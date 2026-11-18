@@ -54,7 +54,17 @@ const fakeLlm: LlmClient = {
     };
   },
   async generateText() {
-    throw new Error('not used');
+    return {
+      text: 'Wants a Dubai trip in December with family; budget fits; ready to book.',
+      usage: {
+        model: 'fake-model',
+        inputTokens: 600,
+        cachedInputTokens: 0,
+        outputTokens: 40,
+        reasoningTokens: 0,
+        latencyMs: 300,
+      },
+    };
   },
 };
 
@@ -278,7 +288,12 @@ describe('follow-ups', () => {
     expect(await processFollowUp({ ...job(leadId, lastId, 2), kind: 'unresponsive' }, deps())).toBe(
       'marked_unresponsive',
     );
-    expect((await getLead(leadId)).status).toBe('unresponsive');
+    const lead = await getLead(leadId);
+    expect(lead.status).toBe('unresponsive');
+    expect(lead.scoreDetails).toMatchObject({ final: true });
+    expect(lead.grade).toBe('cold');
+    // The lead never wrote: no summary.
+    expect(lead.summary).toBeNull();
   });
 
   it('explain a missing template and go straight to the final check', async () => {

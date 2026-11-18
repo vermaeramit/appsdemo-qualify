@@ -71,6 +71,13 @@
       "when": 1794981860846,
       "tag": "0009_message_pricing_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794989784269,
+      "tag": "0010_lead_score",
+      "breakpoints": true
     }
   ]
 }

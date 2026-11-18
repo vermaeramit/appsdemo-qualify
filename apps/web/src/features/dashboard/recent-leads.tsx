@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { GradeBadge } from '@/components/leads/grade-badge';
 import { LeadStatusBadge } from '@/features/conversations/lead-status';
 import { timeAgo } from '@/lib/time';
 import { SOURCE_LABELS } from './queries';
@@ -67,7 +68,8 @@ export function RecentLeads({ data }: { data: DashboardResponse }) {
               <TableRow className="hover:bg-transparent">
                 <TableHead className="pl-6">Lead</TableHead>
                 <TableHead className="hidden md:table-cell">Answers so far</TableHead>
-                <TableHead>Required</TableHead>
+                <TableHead>Score</TableHead>
+                <TableHead className="hidden lg:table-cell">Required</TableHead>
                 <TableHead className="pr-6 sm:pr-2">Status</TableHead>
                 <TableHead className="hidden pr-6 text-right sm:table-cell">
                   Last activity
@@ -113,6 +115,16 @@ export function RecentLeads({ data }: { data: DashboardResponse }) {
                     )}
                   </TableCell>
                   <TableCell>
+                    {lead.grade && lead.score !== null ? (
+                      <span className="flex items-center gap-2">
+                        <span className="font-semibold tabular-nums">{lead.score}</span>
+                        <GradeBadge grade={lead.grade} />
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell">
                     <RequiredProgress done={lead.requiredAnswered} total={lead.requiredTotal} />
                   </TableCell>
                   <TableCell className="pr-6 sm:pr-2">

@@ -110,6 +110,10 @@ export class ConversationsController {
         fieldDefinitions: [...(playbook?.config.fields ?? [])]
           .sort((a, b) => a.priority - b.priority)
           .map((field) => ({ key: field.key, label: field.label, required: field.required })),
+        score: lead.score,
+        grade: lead.grade,
+        scoreDetails: lead.scoreDetails,
+        summary: lead.summary,
       },
       messages: rows.map((row) => ({
         id: row.id,

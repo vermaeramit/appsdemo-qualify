@@ -21,6 +21,14 @@ export const dashboardResponseSchema = z.object({
     /** Of the leads created in the period: qualified so far / handed to the team. */
     qualified: z.number().int(),
     handoffs: z.number().int(),
+    /** Of the leads created in the period: current grade counts. */
+    grades: z.object({
+      hot: z.number().int(),
+      warm: z.number().int(),
+      cold: z.number().int(),
+      disqualified: z.number().int(),
+      unscored: z.number().int(),
+    }),
     /** Median time from a lead's first unanswered message to the AI reply. */
     medianReplySeconds: z.number().nullable(),
     replySamples: z.number().int(),
@@ -46,6 +54,8 @@ export const dashboardResponseSchema = z.object({
       phone: z.string(),
       source: leadSourceSchema,
       status: z.string(),
+      score: z.number().int().nullable(),
+      grade: z.enum(['hot', 'warm', 'cold', 'disqualified']).nullable(),
       requiredAnswered: z.number().int(),
       requiredTotal: z.number().int(),
       /** First answers in question order, e.g. Destination: Dubai. */

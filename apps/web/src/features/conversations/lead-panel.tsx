@@ -2,8 +2,9 @@ import type { ConversationThread } from '@qualify/shared';
 import { CircleCheck, CircleDashed } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { LeadScore } from './lead-score';
 
-/** Collected qualification fields with progress on the required ones. */
+/** Score, then the collected qualification fields with progress on the required ones. */
 export function LeadPanel({ lead }: { lead: ConversationThread['lead'] }) {
   const required = lead.fieldDefinitions.filter((field) => field.required);
   const done = required.filter((field) => lead.fields[field.key]).length;
@@ -11,6 +12,7 @@ export function LeadPanel({ lead }: { lead: ConversationThread['lead'] }) {
 
   return (
     <div className="space-y-4 p-4">
+      <LeadScore lead={lead} />
       <div>
         <div className="flex items-baseline justify-between text-xs">
           <span className="font-medium text-muted-foreground">Qualification</span>

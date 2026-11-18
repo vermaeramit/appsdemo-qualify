@@ -40,6 +40,7 @@ import {
 } from '@qualify/shared';
 import type { LeadLock } from '../lock.ts';
 import type { Logger } from '../logger.ts';
+import { scoreColumns, writeSummary } from './scoring.ts';
 import { type AgentMessagingClient, describeSendError, sendWithOptions } from './send.ts';
 
 /** Schedules and cancels a lead's follow-up jobs (BullMQ in production, in memory in tests). */
@@ -178,9 +179,34 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
   if (!settings.enabled) return 'skipped_disabled';
 
   if (job.kind === 'unresponsive') {
+    // Final score at "No reply" (FR-7.3), plus a summary if the lead ever wrote.
+    const scored = scoreColumns({
+      config: playbook.config,
+      fields: lead.fields,
+      signals: lead.signals,
+      status: 'unresponsive',
+      today: new Intl.DateTimeFormat('en-CA', {
+        timeZone: tenant?.timezone ?? settings.timezone,
+        dateStyle: 'short',
+      }).format(now()),
+      final: true,
+      now: now(),
+      previous: lead.scoreDetails,
+    });
     await withTenant(db, job.tenantId, (tx) =>
-      tx.update(leads).set({ status: 'unresponsive' }).where(eq(leads.id, job.leadId)),
+      tx
+        .update(leads)
+        .set({ status: 'unresponsive', ...scored })
+        .where(eq(leads.id, job.leadId)),
     );
+    await writeSummary(deps, {
+      tenantId: job.tenantId,
+      leadId: job.leadId,
+      config: playbook.config,
+      history,
+      fields: lead.fields,
+      scoreDetails: scored.scoreDetails,
+    });
     logger.info(log, 'Lead marked as not replying');
     return 'marked_unresponsive';
   }

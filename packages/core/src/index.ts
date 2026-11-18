@@ -7,5 +7,7 @@ export * from './opening.ts';
 export * from './language.ts';
 export * from './policy.ts';
 export * from './prompt.ts';
+export * from './scoring.ts';
+export * from './summary.ts';
 export * from './templates/travel.ts';
 export * from './turn.ts';

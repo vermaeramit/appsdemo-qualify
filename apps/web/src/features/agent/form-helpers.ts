@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { resolveFollowUps, resolveOpening } from '@qualify/core';
+import { resolveFollowUps, resolveOpening, resolveScoring } from '@qualify/core';
 import {
   type FieldType,
   type PlaybookConfig,
@@ -12,10 +12,16 @@ import type { FieldErrors, Resolver } from 'react-hook-form';
 export type EditorConfig = PlaybookConfig & {
   opening: NonNullable<PlaybookConfig['opening']>;
   followUps: NonNullable<PlaybookConfig['followUps']>;
+  scoring: NonNullable<PlaybookConfig['scoring']>;
 };
 
 export function toEditorConfig(config: PlaybookConfig): EditorConfig {
-  return { ...config, opening: resolveOpening(config), followUps: resolveFollowUps(config) };
+  return {
+    ...config,
+    opening: resolveOpening(config),
+    followUps: resolveFollowUps(config),
+    scoring: resolveScoring(config),
+  };
 }
 
 /** How the lead answers, as the editor groups the field types. */
@@ -136,6 +142,7 @@ export function tabWithError(errors: FieldErrors<EditorConfig>): string | null {
   if (errors.fields) return 'questions';
   if (errors.opening) return 'opening';
   if (errors.followUps) return 'followups';
+  if (errors.scoring) return 'scoring';
   if (errors.persona || errors.business || errors.goal || errors.rules) return 'behaviour';
   if (errors.handoff || errors.closing) return 'behaviour';
   if (errors.knowledgeBase) return 'knowledge';

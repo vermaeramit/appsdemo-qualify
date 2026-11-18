@@ -72,6 +72,14 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await page.getByRole('tab', { name: 'Follow-ups' }).click();
   await expect(page.getByLabel('Hours before follow-up 1')).toHaveValue('2');
 
+  // Scoring is configurable too: lower the Hot threshold.
+  await page.getByRole('tab', { name: 'Scoring' }).click();
+  await expect(page.getByText('Points per answer')).toBeVisible();
+  await expect(page.getByText('Highest possible: 70 from answers + 30 from AI')).toBeVisible();
+  await page.getByLabel('Hot from').fill('75');
+  await page.getByRole('button', { name: 'Publish v4' }).click();
+  await expect(page.getByText('Published version 4')).toBeVisible();
+
   // Add a lead like a lead form would; it opens in Conversations.
   await page.getByRole('link', { name: 'Conversations' }).click();
   await page.getByRole('button', { name: 'Add lead' }).click();
@@ -86,6 +94,8 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await page.getByRole('link', { name: 'Dashboard' }).click();
   await expect(page.getByRole('link', { name: 'Form Lead' })).toBeVisible();
   await expect(page.getByText('Sample data')).toHaveCount(0);
+  // The new lead is scored from its (empty) form answers: Cold until it replies.
+  await expect(page.getByText('Cold').first()).toBeVisible();
 
   // Costs: AI estimate and Meta status for this workspace (no WhatsApp number here).
   await page.getByRole('link', { name: 'Costs' }).click();

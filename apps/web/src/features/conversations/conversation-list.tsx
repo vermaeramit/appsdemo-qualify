@@ -49,7 +49,8 @@ export function ConversationList({
                   <span className="block text-xs text-muted-foreground">{conversation.phone}</span>
                 )}
                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                  {conversation.lastMessage ?? 'Media message'}
+                  {conversation.lastMessage ??
+                    (conversation.messageCount === 0 ? 'No messages yet' : 'Media message')}
                 </span>
               </span>
             </Link>

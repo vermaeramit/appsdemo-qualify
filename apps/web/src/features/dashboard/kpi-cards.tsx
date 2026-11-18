@@ -4,10 +4,10 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   BadgeCheck,
+  Flame,
   Inbox,
   Minus,
   Timer,
-  UserRound,
   type LucideIcon,
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -85,11 +85,11 @@ export function KpiCards({ data }: { data: DashboardResponse }) {
       hint: rate === null ? 'No new leads in this period' : `${rate}% of new leads, so far`,
     },
     {
-      label: 'Handed to your team',
-      icon: UserRound,
-      accent: 'text-grade-warm bg-grade-warm/10',
-      value: <AnimatedNumber value={kpis.handoffs} />,
-      hint: 'New leads that asked for a person',
+      label: 'Hot leads',
+      icon: Flame,
+      accent: 'text-grade-hot bg-grade-hot/10',
+      value: <AnimatedNumber value={kpis.grades.hot} />,
+      hint: `${kpis.grades.warm} warm · ${kpis.grades.cold} cold · ${kpis.handoffs} asked for a person`,
     },
     {
       label: 'Median AI reply time',

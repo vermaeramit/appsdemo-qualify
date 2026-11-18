@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { leadGradeSchema, leadScoreDetailsSchema } from './lead.js';
 
 export const messageDirectionSchema = z.enum(['inbound', 'outbound']);
 export const messageSenderSchema = z.enum(['lead', 'ai', 'human_app', 'system']);
@@ -53,6 +54,11 @@ export const conversationThreadSchema = z.object({
     fieldDefinitions: z.array(
       z.object({ key: z.string(), label: z.string(), required: z.boolean() }),
     ),
+    /** Hybrid score and grade (null until first scored), with breakdown and summary. */
+    score: z.number().int().nullable(),
+    grade: leadGradeSchema.nullable(),
+    scoreDetails: leadScoreDetailsSchema.nullable(),
+    summary: z.string().nullable(),
   }),
   messages: z.array(conversationMessageSchema),
 });

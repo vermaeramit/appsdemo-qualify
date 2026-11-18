@@ -1,6 +1,7 @@
 import {
   boolean,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -8,7 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type { LeadSignals } from '@qualify/shared';
+import type { LeadScoreDetails, LeadSignals } from '@qualify/shared';
 import { tenants } from './platform.ts';
 import { playbookVersions } from './playbooks.ts';
 
@@ -87,6 +88,13 @@ export const leads = pgTable(
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
     qualifiedAt: timestamp('qualified_at', { withTimezone: true }),
     handoffAt: timestamp('handoff_at', { withTimezone: true }),
+    /** Hybrid score 0–100 and grade (FR-7): live after each AI turn, final at completion. */
+    score: integer('score'),
+    grade: text('grade', { enum: ['hot', 'warm', 'cold', 'disqualified'] }),
+    scoreDetails: jsonb('score_details').$type<LeadScoreDetails>(),
+    /** 2–3 line conversation summary for the sales team (written at the final score). */
+    summary: text('summary'),
+    scoredAt: timestamp('scored_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

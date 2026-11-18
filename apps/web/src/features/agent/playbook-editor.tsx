@@ -13,6 +13,7 @@ import { ApiError, apiSend, errorMessage } from '@/lib/api';
 import { BehaviourEditor, KnowledgeEditor } from './behaviour-editor';
 import { type EditorConfig, editorResolver, tabWithError, toEditorConfig } from './form-helpers';
 import { FollowUpsEditor } from './follow-ups-editor';
+import { ScoringEditor } from './scoring-editor';
 import { OpeningEditor } from './opening-editor';
 import { playbookQueryOptions } from './queries';
 import { QuestionsEditor } from './questions-editor';
@@ -21,6 +22,7 @@ const TABS = [
   { value: 'questions', label: 'Questions' },
   { value: 'opening', label: 'Opening' },
   { value: 'followups', label: 'Follow-ups' },
+  { value: 'scoring', label: 'Scoring' },
   { value: 'behaviour', label: 'Behaviour' },
   { value: 'knowledge', label: 'Knowledge base' },
 ] as const;
@@ -93,6 +95,7 @@ export function PlaybookEditor({
     questions: Boolean(errors.fields),
     opening: Boolean(errors.opening),
     followups: Boolean(errors.followUps),
+    scoring: Boolean(errors.scoring),
     behaviour: Boolean(
       errors.persona ??
       errors.business ??
@@ -164,6 +167,9 @@ export function PlaybookEditor({
           </TabsContent>
           <TabsContent value="followups" className="mt-4">
             <FollowUpsEditor readOnly={readOnly} dirty={isDirty} />
+          </TabsContent>
+          <TabsContent value="scoring" className="mt-4">
+            <ScoringEditor readOnly={readOnly} />
           </TabsContent>
           <TabsContent value="behaviour" className="mt-4">
             <BehaviourEditor readOnly={readOnly} />

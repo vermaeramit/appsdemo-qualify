@@ -114,11 +114,11 @@
 - **Dashboard with real data** (D-055): period filter, KPIs, leads per hour/day, pipeline, sources, recent leads, WhatsApp health. Sample data removed.
 - **Costs page** (D-058): WhatsApp charges from Meta's pricing analytics, AI cost from token usage, paid messages per lead.
 - **Follow-ups** (D-059): configurable steps, quiet hours, AI nudge inside 24 h, follow-up template outside it, "No reply" at the end. The follow-up template still needs Meta approval in "Appsdemo".
+- **Scoring** (D-060): configurable rules + AI intent, Hot/Warm/Cold, live and final scores, reason, AI summary, rescoring on publish; shown in the lead panel and dashboard.
 
 **Remaining:**
 - Page connect + `leadgen` webhook + lead fetch + field mapping (tested with the Lead Ads Testing Tool)
 - CTWA referral capture + routing rules
-- Hybrid scoring engine, final score, reason, summary, status machine
 - Undeliverable detection
 
 **Acceptance:** a test form lead → template within 60 s → reply → chat → score + reason. A lead that doesn't reply → follow-ups → `unresponsive`.

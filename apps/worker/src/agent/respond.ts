@@ -37,6 +37,7 @@ import {
 } from '@qualify/shared';
 import type { LeadLock } from '../lock.ts';
 import { type FollowUpScheduler, startFollowUps } from './follow-up.ts';
+import { FINAL_STATUSES, scoreColumns, writeSummary } from './scoring.ts';
 import { type AgentMessagingClient, sendWithOptions } from './send.ts';
 import type { Logger } from '../logger.ts';
 
@@ -213,6 +214,19 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
   const updates: Partial<typeof leads.$inferInsert> = {};
   if (applied.becameQualified) updates.qualifiedAt = now();
   if (applied.handedOff) updates.handoffAt = now();
+  // Live score after every turn; final (with a summary) when the conversation just ended.
+  const finished =
+    FINAL_STATUSES.has(status) && (status !== lead.status || applied.becameQualified);
+  const scored = scoreColumns({
+    config: playbook.config,
+    fields: applied.fields,
+    signals: applied.signals,
+    status,
+    today: localDate(now(), deps.timeZone ?? tenant?.timezone ?? 'Asia/Kolkata'),
+    final: FINAL_STATUSES.has(status),
+    now: now(),
+    previous: lead.scoreDetails,
+  });
 
   // 7. Send.
   const sent = await sendWithOptions(client, {
@@ -255,6 +269,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
       .update(leads)
       .set({
         ...updates,
+        ...scored,
         fields: applied.fields,
         language: applied.language ?? lead.language,
         signals: applied.signals,
@@ -266,6 +281,17 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
       .where(eq(leads.id, job.leadId));
     return row!;
   });
+
+  if (finished) {
+    await writeSummary(deps, {
+      tenantId: job.tenantId,
+      leadId: job.leadId,
+      config: playbook.config,
+      history: [...history, { direction: 'outbound', sender: 'ai', type: 'text', body: reply }],
+      fields: applied.fields,
+      scoreDetails: scored.scoreDetails,
+    });
+  }
 
   // Still qualifying: follow up if the lead goes quiet. Otherwise the conversation is done.
   if (waMessageId && status === 'engaged' && !applied.aiPaused) {

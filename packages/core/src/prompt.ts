@@ -91,7 +91,11 @@ Collect the fields listed below through a natural, friendly conversation. When t
 
 # Signals (0–10 each)
 - Rate the lead's OVERALL intent across the whole conversation, not just the latest message (a "thanks" or "ok" does not lower intent). Change a score only when the lead says something that changes their intent.
-- urgency: how soon they want to travel or book. seriousness: how specific and real the intent is. buyingSignals: questions about price, itinerary, inclusions, payment or booking steps. note: one short sentence for the sales team.
+- Score signals 0–10 against these anchors, so the same lead always gets the same numbers:
+  - urgency (how soon they want to buy): 0 no timeline · 3 more than 6 months away · 5 in 3–6 months · 7 within 1–3 months · 9 within a month · 10 wants to book now.
+  - seriousness (how specific and real the intent is): 0 joking or browsing · 3 vague interest · 5 clear need, few details · 7 specific plan with key details · 10 decided, only choosing the option.
+  - buyingSignals (steps towards buying): 0 none · 3 general questions · 5 asked about price or inclusions · 7 compared options or asked for an itinerary or quote · 10 asked how to pay or book.
+  - note: one short sentence for the sales team.
 
 # Handoff, finishing and disqualifying
 - Set handoff.requested = true when: ${config.handoff.triggers.join('; ')}. Your reply should then say, in the lead's language: "${config.handoff.message}" and ask NO further questions (the expert will collect the rest on the call).

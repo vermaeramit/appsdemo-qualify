@@ -1,11 +1,12 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { normaliseFieldValue } from '@qualify/core';
+import { normaliseFieldValue, resolveScoring, scoreLead } from '@qualify/core';
 import {
   auditLogs,
   type DbHandle,
   eq,
   getDefaultPublishedPlaybook,
   leads,
+  tenants,
   withTenant,
 } from '@qualify/db';
 import { toE164 } from '@qualify/integrations';
@@ -62,17 +63,55 @@ export class LeadIntakeService {
       }
 
       const [existing] = await tx
-        .select({ id: leads.id, fields: leads.fields, name: leads.name })
+        .select({
+          id: leads.id,
+          fields: leads.fields,
+          name: leads.name,
+          status: leads.status,
+          signals: leads.signals,
+          scoreDetails: leads.scoreDetails,
+        })
         .from(leads)
         .where(eq(leads.phoneE164, phone))
         .limit(1);
+      const [tenant] = await tx.select({ timezone: tenants.timezone }).from(tenants).limit(1);
+
+      // A first score from the form answers (the AI adds intent once the lead replies).
+      const fields = { ...(existing?.fields ?? {}), ...accepted };
+      const scored = playbook
+        ? (() => {
+            const result = scoreLead({
+              definitions,
+              scoring: resolveScoring(playbook.config),
+              fields,
+              signals: existing?.signals ?? null,
+              status: existing?.status ?? 'new',
+              today: new Intl.DateTimeFormat('en-CA', {
+                timeZone: tenant?.timezone ?? 'Asia/Kolkata',
+                dateStyle: 'short',
+              }).format(new Date()),
+            });
+            return {
+              score: result.score,
+              grade: result.grade,
+              scoreDetails: {
+                ...result.details,
+                final: false,
+                ...(existing?.scoreDetails?.summaryUsage
+                  ? { summaryUsage: existing.scoreDetails.summaryUsage }
+                  : {}),
+              },
+              scoredAt: new Date(),
+            };
+          })()
+        : {};
 
       let leadId: string;
       if (existing) {
         // A repeat enquiry: one lead, one timeline. New answers overwrite old ones.
         await tx
           .update(leads)
-          .set({ name: input.name ?? existing.name, fields: { ...existing.fields, ...accepted } })
+          .set({ name: input.name ?? existing.name, fields, ...scored })
           .where(eq(leads.id, existing.id));
         leadId = existing.id;
       } else {
@@ -84,6 +123,7 @@ export class LeadIntakeService {
             name: input.name ?? null,
             source: input.source,
             fields: accepted,
+            ...scored,
           })
           .returning({ id: leads.id });
         leadId = created!.id;

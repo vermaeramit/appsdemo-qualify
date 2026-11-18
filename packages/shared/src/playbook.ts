@@ -101,6 +101,46 @@ export const playbookFollowUpsSchema = z
   );
 export type PlaybookFollowUps = z.infer<typeof playbookFollowUpsSchema>;
 
+const points = z.number().int().min(0).max(100);
+
+/**
+ * Rule points for one question. Which part applies depends on the question's type:
+ * - `options` for choice and yes/no questions (yes/no keys are "yes" and "no"),
+ * - `months` for month questions: points if travel is within 1 / 3 / 6 months, or later/flexible,
+ * - `amounts` for number and range questions: the first band whose `min` the amount reaches,
+ * - `points` for text questions: when the lead answered.
+ */
+export const scoringRuleSchema = z.object({
+  field: z.string().regex(/^[a-z][a-z0-9_]{1,40}$/),
+  points: points.optional(),
+  options: z.record(z.string(), points).optional(),
+  months: z.tuple([points, points, points, points]).optional(),
+  amounts: z
+    .array(z.object({ min: z.number().min(0), points }))
+    .max(6)
+    .optional(),
+  /** For amounts: divide totals ("… total") by the number of people from this question. */
+  perPersonField: z.string().optional(),
+});
+export type ScoringRule = z.infer<typeof scoringRuleSchema>;
+
+/** Hybrid score (FR-7): rule points from answers + AI intent points, then grade thresholds. */
+export const playbookScoringSchema = z
+  .object({
+    rules: z.array(scoringRuleSchema).max(20),
+    /** Points when every required question is answered. */
+    completePoints: points,
+    /** AI intent (urgency + seriousness + buying signals) is scaled to this many points. */
+    aiMaxPoints: points,
+    hotAt: z.number().int().min(1).max(100),
+    warmAt: z.number().int().min(0).max(99),
+  })
+  .refine((value) => value.hotAt > value.warmAt, {
+    message: 'Hot must start above Warm',
+    path: ['hotAt'],
+  });
+export type PlaybookScoring = z.infer<typeof playbookScoringSchema>;
+
 /** Hybrid playbook (D-007): structured fields + free-text rules + knowledge base. */
 export const playbookConfigSchema = z.object({
   persona: z.object({
@@ -132,6 +172,8 @@ export const playbookConfigSchema = z.object({
   opening: playbookOpeningSchema.optional(),
   /** Optional for playbooks created before follow-ups; defaults apply when missing. */
   followUps: playbookFollowUpsSchema.optional(),
+  /** Optional for playbooks created before scoring; defaults are derived from the questions. */
+  scoring: playbookScoringSchema.optional(),
 });
 export type PlaybookConfig = z.infer<typeof playbookConfigSchema>;
 

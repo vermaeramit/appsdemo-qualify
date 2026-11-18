@@ -3,6 +3,13 @@ import { describe, expect, it } from 'vitest';
 import {
   aiCostUsd,
   applyAgentTurn,
+  countPeople,
+  defaultScoring,
+  maxRulePoints,
+  monthsAhead,
+  parseAmount,
+  resolveScoring,
+  scoreLead,
   defaultFollowUps,
   followUpTemplateName,
   outsideQuietHours,
@@ -101,6 +108,68 @@ describe('follow-ups', () => {
     });
     expect(note).toContain('has not replied for about 3 hours (follow-up 1)');
     expect(note).not.toContain("reply to the lead's latest message");
+  });
+});
+
+describe('scoring', () => {
+  const scoring = resolveScoring(playbook);
+  const answers = {
+    destination: 'Dubai',
+    travel_month: '2026-12',
+    travelers: '2 adults',
+    departure_city: 'Delhi',
+    budget: '120000 INR total',
+    passport_status: 'Ready',
+  };
+
+  it('reads amounts, people and months the way the agent stores them', () => {
+    expect(parseAmount('60000-70000 INR total')).toBe(60000);
+    expect(parseAmount('₹50k–1L')).toBe(50000);
+    expect(parseAmount('1.5 lakh per person')).toBe(150000);
+    expect(parseAmount('35,000 INR per person')).toBe(35000);
+    expect(parseAmount('not sure')).toBeNull();
+    expect(countPeople('2 adults, 1 child (5 yrs)')).toBe(3);
+    expect(countPeople('couple')).toBe(2);
+    expect(countPeople('4')).toBe(4);
+    expect(monthsAhead('2026-12', '2026-11-18')).toBe(1);
+    expect(monthsAhead('2027-06', '2026-11-18')).toBe(7);
+    expect(monthsAhead('flexible', '2026-11-18')).toBeNull();
+  });
+
+  it('adds rule points and AI intent, with a breakdown and a reason', () => {
+    const result = scoreLead({
+      definitions: fields,
+      scoring,
+      fields: answers,
+      signals: { urgency: 8, seriousness: 7, buyingSignals: 9, note: '' },
+      status: 'qualified',
+      today: '2026-11-18',
+    });
+    // Month within 1 month 25 + ₹60,000 per person 20 + passport 10 + complete 15 + AI 24.
+    expect(result.details.rulePoints).toBe(70);
+    expect(result.details.aiPoints).toBe(24);
+    expect(result).toMatchObject({ score: 94, grade: 'hot' });
+    expect(result.details.breakdown).toContainEqual({
+      label: 'Budget: 120000 INR total (≈ ₹60,000 per person)',
+      points: 20,
+    });
+    expect(result.details.reason).toContain('Travel month: 2026-12 (within 1 month) +25');
+  });
+
+  it('grades warm, cold and not-a-fit by the thresholds and status', () => {
+    const base = { definitions: fields, scoring, today: '2026-11-18', signals: null };
+    const warm = scoreLead({ ...base, fields: answers, status: 'qualified' });
+    expect(warm).toMatchObject({ score: 70, grade: 'warm' });
+    const cold = scoreLead({ ...base, fields: { travel_month: 'flexible' }, status: 'engaged' });
+    expect(cold).toMatchObject({ score: 3, grade: 'cold' });
+    const notFit = scoreLead({ ...base, fields: answers, status: 'disqualified' });
+    expect(notFit.grade).toBe('disqualified');
+  });
+
+  it('defaults to completeness for questions without travel rules', () => {
+    const generic = defaultScoring([fields[0]!]);
+    expect(generic).toMatchObject({ rules: [], completePoints: 70, aiMaxPoints: 30 });
+    expect(maxRulePoints(scoring)).toBe(70);
   });
 });
 

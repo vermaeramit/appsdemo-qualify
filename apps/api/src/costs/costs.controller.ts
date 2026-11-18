@@ -126,6 +126,20 @@ export class CostsController {
         from messages
         where sender = 'ai' and direction = 'outbound' and payload ? 'usage'
           and created_at >= ${from} and created_at < ${to}
+        group by 1, 2
+        union all
+        -- Conversation summaries written at the final score.
+        select to_char((score_details->'summaryUsage'->>'at')::timestamptz at time zone ${tz},
+                       'YYYY-MM-DD') as day,
+               score_details->'summaryUsage'->>'model' as model,
+               0 as replies,
+               coalesce(sum((score_details->'summaryUsage'->>'inputTokens')::float8), 0)::float8,
+               coalesce(sum((score_details->'summaryUsage'->>'cachedInputTokens')::float8), 0)::float8,
+               coalesce(sum((score_details->'summaryUsage'->>'outputTokens')::float8), 0)::float8
+        from leads
+        where score_details->'summaryUsage' ? 'at'
+          and (score_details->'summaryUsage'->>'at')::timestamptz >= ${from}
+          and (score_details->'summaryUsage'->>'at')::timestamptz < ${to}
         group by 1, 2`)
     ).rows;
 

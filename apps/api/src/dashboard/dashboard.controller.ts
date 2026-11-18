@@ -78,12 +78,22 @@ export class DashboardController {
           prev_leads: number;
           qualified: number;
           handoffs: number;
+          hot: number;
+          warm: number;
+          cold: number;
+          disqualified: number;
+          unscored: number;
         }>(sql`
           select
             count(*) filter (where created_at >= ${from})::int as new_leads,
             count(*) filter (where created_at >= ${prevFrom} and created_at < ${prevTo})::int as prev_leads,
             count(*) filter (where created_at >= ${from} and qualified_at is not null)::int as qualified,
-            count(*) filter (where created_at >= ${from} and handoff_at is not null)::int as handoffs
+            count(*) filter (where created_at >= ${from} and handoff_at is not null)::int as handoffs,
+            count(*) filter (where created_at >= ${from} and grade = 'hot')::int as hot,
+            count(*) filter (where created_at >= ${from} and grade = 'warm')::int as warm,
+            count(*) filter (where created_at >= ${from} and grade = 'cold')::int as cold,
+            count(*) filter (where created_at >= ${from} and grade = 'disqualified')::int as disqualified,
+            count(*) filter (where created_at >= ${from} and grade is null)::int as unscored
           from leads
           where created_at >= ${prevFrom}`)
       ).rows;
@@ -164,6 +174,13 @@ export class DashboardController {
           previousNewLeads: counts?.prev_leads ?? 0,
           qualified: counts?.qualified ?? 0,
           handoffs: counts?.handoffs ?? 0,
+          grades: {
+            hot: counts?.hot ?? 0,
+            warm: counts?.warm ?? 0,
+            cold: counts?.cold ?? 0,
+            disqualified: counts?.disqualified ?? 0,
+            unscored: counts?.unscored ?? 0,
+          },
           medianReplySeconds: reply?.median ?? null,
           replySamples: reply?.samples ?? 0,
         },
@@ -185,11 +202,13 @@ export class DashboardController {
         phone_e164: string;
         source: LeadSource;
         status: string;
+        score: number | null;
+        grade: 'hot' | 'warm' | 'cold' | 'disqualified' | null;
         fields: Record<string, string>;
         playbook_version_id: string | null;
         last_activity: string;
       }>(sql`
-        select id, name, phone_e164, source, status, fields, playbook_version_id,
+        select id, name, phone_e164, source, status, score, grade, fields, playbook_version_id,
                coalesce(last_message_at, created_at) as last_activity
         from leads
         where coalesce(last_message_at, created_at) >= ${from}
@@ -219,6 +238,8 @@ export class DashboardController {
         phone: row.phone_e164,
         source: row.source,
         status: row.status,
+        score: row.score,
+        grade: row.grade,
         requiredAnswered: required.length - missingRequiredFields(definitions, row.fields).length,
         requiredTotal: required.length,
         highlights: ordered

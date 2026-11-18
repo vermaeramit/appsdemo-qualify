@@ -60,7 +60,17 @@ const fakeLlm: LlmClient = {
     };
   },
   async generateText() {
-    throw new Error('not used');
+    return {
+      text: 'Wants a Dubai trip in December with family; budget fits; ready to book.',
+      usage: {
+        model: 'fake-model',
+        inputTokens: 600,
+        cachedInputTokens: 0,
+        outputTokens: 40,
+        reasoningTokens: 0,
+        latencyMs: 300,
+      },
+    };
   },
 };
 
@@ -235,6 +245,11 @@ describe('processRespond', () => {
     const lead = await getLead(leadId);
     expect(lead.status).toBe('qualified');
     expect(lead.qualifiedAt).not.toBeNull();
+    // Final score with breakdown, reason and an AI summary (its usage is kept for Costs).
+    expect(lead.score).toBeGreaterThan(0);
+    expect(['hot', 'warm', 'cold']).toContain(lead.grade);
+    expect(lead.scoreDetails).toMatchObject({ final: true, summaryUsage: { model: 'fake-model' } });
+    expect(lead.summary).toContain('Dubai trip');
     // Qualified: no follow-ups.
     expect(followUps.cancel).toHaveBeenCalledWith(leadId);
     expect(followUps.schedule).not.toHaveBeenCalled();
