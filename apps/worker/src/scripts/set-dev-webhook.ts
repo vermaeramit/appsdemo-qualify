@@ -23,21 +23,30 @@ const url = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION ?? 'v24
 const callbackUrl = `${base}/api/webhooks/meta`;
 
 // Meta calls the callback (GET handshake) before saving, so the dev stack must be running.
-// One callback for both: WhatsApp messages (WABA) and lead forms (Page leadgen).
-for (const [object, fields] of [
-  ['whatsapp_business_account', 'messages'],
-  ['page', 'leadgen'],
+// One callback for both: WhatsApp messages (WABA, incl. Coexistence echoes) and lead forms (Page
+// leadgen). If Meta refuses smb_message_echoes for this app, messages alone are subscribed.
+for (const [object, fields, fallback] of [
+  ['whatsapp_business_account', 'messages,smb_message_echoes', 'messages'],
+  ['page', 'leadgen', null],
 ] as const) {
-  const response = await fetch(url, {
-    method: 'POST',
-    body: new URLSearchParams({
-      object,
-      callback_url: callbackUrl,
-      verify_token: required('META_WEBHOOK_VERIFY_TOKEN'),
-      fields,
-      access_token: appToken,
-    }),
-  });
+  const subscribe = (list: string) =>
+    fetch(url, {
+      method: 'POST',
+      body: new URLSearchParams({
+        object,
+        callback_url: callbackUrl,
+        verify_token: required('META_WEBHOOK_VERIFY_TOKEN'),
+        fields: list,
+        access_token: appToken,
+      }),
+    });
+  let response = await subscribe(fields);
+  let subscribed: string = fields;
+  if (!response.ok && fallback) {
+    console.warn(`• Meta refused "${fields}"; subscribing "${fallback}" only`);
+    response = await subscribe(fallback);
+    subscribed = fallback;
+  }
   const result = (await response.json()) as { success?: boolean; error?: { message?: string } };
   if (!result.success) {
     console.error(
@@ -45,5 +54,5 @@ for (const [object, fields] of [
     );
     process.exit(1);
   }
-  console.log(`✓ Webhook set to ${callbackUrl} (${object}: ${fields})`);
+  console.log(`✓ Webhook set to ${callbackUrl} (${object}: ${subscribed})`);
 }

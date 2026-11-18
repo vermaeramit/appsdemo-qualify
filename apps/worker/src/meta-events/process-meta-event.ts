@@ -17,6 +17,7 @@ import {
   inboundText,
   isAllowedRecipient,
   toE164,
+  type WaEcho,
   type WaInboundMessage,
   type WaStatus,
   type WaValue,
@@ -119,6 +120,9 @@ export async function processMetaEvent(eventId: string, deps: ProcessorDeps): Pr
     for (const status of change.value.statuses ?? []) {
       await handleStatus(deps, tenantId, status);
     }
+    for (const echo of change.value.message_echoes ?? []) {
+      await handleEcho(deps, tenantId, phoneNumberId, echo);
+    }
   }
 
   for (const submission of leadgen) {
@@ -219,6 +223,82 @@ async function handleInboundMessage(
   }
   await deps.followUps?.cancel(stored.leadId);
   await deps.enqueueRespond({ tenantId, leadId: stored.leadId });
+}
+
+/** Statuses a human reply moves to "Handed off". */
+const TAKEOVER_STATUSES = new Set([
+  'new',
+  'contacting',
+  'engaged',
+  'unresponsive',
+  'undeliverable',
+]);
+
+/**
+ * Coexistence: someone on the team replied from the WhatsApp Business app. The AI pauses for that
+ * lead (the team took over). Echoes to numbers that aren't leads (personal chats) are ignored.
+ */
+async function handleEcho(
+  deps: ProcessorDeps,
+  tenantId: string,
+  phoneNumberId: string,
+  echo: WaEcho,
+): Promise<void> {
+  let phone: string;
+  try {
+    phone = toE164(echo.to);
+  } catch {
+    return;
+  }
+  const outcome = await withTenant(deps.db, tenantId, async (tx) => {
+    const [lead] = await tx
+      .select({ id: leads.id, status: leads.status, handoffAt: leads.handoffAt })
+      .from(leads)
+      .where(eq(leads.phoneE164, phone))
+      .limit(1);
+    if (!lead) return null;
+    const inserted = await tx
+      .insert(messages)
+      .values({
+        tenantId,
+        leadId: lead.id,
+        phoneNumberId,
+        direction: 'outbound',
+        sender: 'human_app',
+        type: echo.type,
+        body: echo.text?.body ?? null,
+        payload: echo,
+        waMessageId: echo.id,
+        status: 'sent',
+      })
+      .onConflictDoNothing({ target: messages.waMessageId })
+      .returning({ id: messages.id });
+    if (!inserted.length) return null; // a retried delivery
+    const takeOver = TAKEOVER_STATUSES.has(lead.status);
+    const now = new Date();
+    await tx
+      .update(leads)
+      .set({
+        aiPaused: true,
+        lastMessageAt: now,
+        ...(takeOver ? { status: 'handoff', handoffAt: lead.handoffAt ?? now } : {}),
+      })
+      .where(eq(leads.id, lead.id));
+    await tx.insert(auditLogs).values({
+      tenantId,
+      actorUserId: null,
+      action: 'lead.team_replied_from_app',
+      target: lead.id,
+      metadata: { waMessageId: echo.id, type: echo.type },
+    });
+    return { leadId: lead.id, handedOff: takeOver };
+  });
+  if (!outcome) return;
+  await deps.followUps?.cancel(outcome.leadId);
+  if (outcome.handedOff) {
+    await deps.emitLeadEvent?.({ tenantId, leadId: outcome.leadId, type: 'lead.handoff' });
+  }
+  deps.logger.info({ tenantId, leadId: outcome.leadId }, 'Team replied from the app: AI paused');
 }
 
 async function handleStatus(

@@ -317,4 +317,87 @@ describe('processMetaEvent', () => {
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(cancel).toHaveBeenCalledWith(unreached!.id);
   });
+
+  it('pauses the AI when the team replies from the WhatsApp Business app (Coexistence)', async () => {
+    const cancel = vi.fn(async () => undefined);
+    const schedule = vi.fn(async () => undefined);
+    const emitLeadEvent = vi.fn(async () => undefined);
+    const [lead] = await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx
+        .insert(leads)
+        .values({
+          tenantId: TENANT,
+          phoneE164: '+919800000301',
+          source: 'meta_form',
+          status: 'engaged',
+        })
+        .returning(),
+    );
+    const echoPayload = (id: string, to: string) => ({
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_DEV',
+          changes: [
+            {
+              field: 'smb_message_echoes',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '919350983656',
+                  phone_number_id: PHONE_NUMBER_ID,
+                },
+                message_echoes: [
+                  {
+                    from: '919350983656',
+                    to,
+                    id,
+                    timestamp: '1763400400',
+                    type: 'text',
+                    text: { body: 'Hi, this is Priya from the team. Calling you in 5 min.' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const run = async (payload: Record<string, unknown>) =>
+      processMetaEvent(await storeEvent(payload), {
+        ...deps(),
+        followUps: { cancel, schedule },
+        emitLeadEvent,
+      });
+
+    await run(echoPayload('wamid.echo.1', '919800000301'));
+    await run(echoPayload('wamid.echo.1', '919800000301')); // Meta retry
+    await run(echoPayload('wamid.echo.2', '919800000399')); // a personal chat, not a lead
+
+    const [updated] = await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx.select().from(leads).where(eq(leads.id, lead!.id)),
+    );
+    expect(updated).toMatchObject({ aiPaused: true, status: 'handoff' });
+    expect(updated!.handoffAt).not.toBeNull();
+    const stored = (await tenantMessages()).filter((row) =>
+      row.waMessageId?.startsWith('wamid.echo'),
+    );
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      direction: 'outbound',
+      sender: 'human_app',
+      leadId: lead!.id,
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(emitLeadEvent).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      leadId: lead!.id,
+      type: 'lead.handoff',
+    });
+    expect(enqueueRespond).not.toHaveBeenCalled();
+    const unknown = await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx.select().from(leads).where(eq(leads.phoneE164, '+919800000399')),
+    );
+    expect(unknown).toHaveLength(0);
+  });
 });

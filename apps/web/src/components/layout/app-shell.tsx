@@ -6,6 +6,7 @@ import {
   BookOpen,
   Bot,
   LayoutDashboard,
+  Menu,
   MessageSquareText,
   MessagesSquare,
   Search,
@@ -19,6 +20,12 @@ import { ApiStatus } from '@/components/api-status';
 import { BrandLogo } from '@/components/brand-logo';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { canManage, initials, roleLabel } from '@/lib/workspace';
 import { CommandPalette } from './command-palette';
@@ -109,7 +116,26 @@ export function AppShell({ user, workspace, children }: AppShellProps) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur-md md:px-6">
-          <div className="md:hidden">
+          <div className="flex items-center gap-1 md:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Open menu">
+                  <Menu />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                {navLinks
+                  .filter((link) => !('managerOnly' in link) || canManage(workspace.role))
+                  .map(({ to, label, icon: Icon }) => (
+                    <DropdownMenuItem key={to} asChild>
+                      <Link to={to}>
+                        <Icon />
+                        {label}
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <BrandLogo />
           </div>
           <Button

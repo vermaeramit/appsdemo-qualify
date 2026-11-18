@@ -1,7 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { ConversationMessage, ConversationThread } from '@qualify/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bot, Check, CheckCheck, CircleAlert, Clock, Loader2, Pause, Play } from 'lucide-react';
+import {
+  Bot,
+  Check,
+  CheckCheck,
+  CircleAlert,
+  Clock,
+  Loader2,
+  Pause,
+  Play,
+  UserRound,
+} from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -147,14 +157,20 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
             : 'rounded-bl-md border bg-card text-card-foreground',
         )}
       >
-        {outbound && message.sender !== 'human_app' && (
+        {outbound && (
           <div className="mb-0.5 flex items-center gap-1 text-[0.65rem] font-medium opacity-80">
-            <Bot className="size-3" />
-            {message.sender === 'ai'
-              ? 'AI agent'
-              : message.type === 'template'
-                ? 'Opening (template)'
-                : 'Automated'}
+            {message.sender === 'human_app' ? (
+              <UserRound className="size-3" />
+            ) : (
+              <Bot className="size-3" />
+            )}
+            {message.sender === 'human_app'
+              ? 'Team (WhatsApp app)'
+              : message.sender === 'ai'
+                ? 'AI agent'
+                : message.type === 'template'
+                  ? 'Opening (template)'
+                  : 'Automated'}
           </div>
         )}
         <p className="break-words whitespace-pre-wrap">

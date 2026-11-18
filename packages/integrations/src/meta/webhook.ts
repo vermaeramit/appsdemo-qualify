@@ -33,6 +33,20 @@ export const waInboundMessageSchema = z.looseObject({
 });
 export type WaInboundMessage = z.infer<typeof waInboundMessageSchema>;
 
+/**
+ * Coexistence: a message the business sent from the WhatsApp Business app (or a linked device)
+ * on a number that is also on Cloud API (`smb_message_echoes`). `to` is the customer.
+ */
+export const waEchoSchema = z.looseObject({
+  id: z.string(),
+  from: z.string(),
+  to: z.string(),
+  timestamp: z.string(),
+  type: z.string(),
+  text: textSchema.optional(),
+});
+export type WaEcho = z.infer<typeof waEchoSchema>;
+
 export const waStatusSchema = z.looseObject({
   id: z.string(),
   status: z.enum(['sent', 'delivered', 'read', 'failed']).or(z.string()),
@@ -63,6 +77,7 @@ const waValueSchema = z.looseObject({
     .optional(),
   messages: z.array(waInboundMessageSchema).optional(),
   statuses: z.array(waStatusSchema).optional(),
+  message_echoes: z.array(waEchoSchema).optional(),
 });
 export type WaValue = z.infer<typeof waValueSchema>;
 
@@ -81,14 +96,17 @@ export interface WaMessagesChange {
   value: WaValue;
 }
 
-/** Extracts the `messages` changes we handle; other fields (templates, account updates…) are skipped. */
+/** WABA webhook fields we handle; others (templates, account updates…) are skipped. */
+const HANDLED_FIELDS = new Set(['messages', 'smb_message_echoes']);
+
+/** Extracts the message changes we handle (incl. Coexistence echoes). */
 export function extractMessageChanges(payload: unknown): WaMessagesChange[] {
   const parsed = waWebhookSchema.parse(payload);
   if (parsed.object !== 'whatsapp_business_account') return [];
   const changes: WaMessagesChange[] = [];
   for (const entry of parsed.entry) {
     for (const change of entry.changes) {
-      if (change.field !== 'messages') continue;
+      if (!HANDLED_FIELDS.has(change.field)) continue;
       changes.push({ wabaId: entry.id, value: waValueSchema.parse(change.value) });
     }
   }

@@ -132,7 +132,7 @@
 **Acceptance:** a test form lead → template within 60 s → reply → chat → score + reason. A lead that doesn't reply → follow-ups → `unresponsive`.
 
 ## M5 — Dashboard UI
-**Done:** Leads list with filters, sorting, keyset paging and Excel export (D-069).
+**Done:** Leads list with filters, sorting, keyset paging and Excel export (D-069); mobile navigation (D-073).
 **Done early in M4:** AI agent page (questions, opening, persona, rules, KB, publish; D-049), dashboard with real data and charts (D-055), Costs page (D-058), API docs (D-054). **Still open:** drafts and version history, test chat simulator, KB file upload, leads list and lead detail, live updates, scoring builder, mobile navigation.
 
 - Leads list (TanStack Table, filters, badges), lead detail (live chat over Socket.IO, fields, animated score gauge, breakdown)
@@ -148,6 +148,7 @@
 - Submit the Meta App Review. Build continues while it is pending.
 
 ## M6 — Templates, Coexistence & health
+**Done:** Coexistence echoes pause the AI and hand the lead off (D-072).
 - Embedded Signup (moved from M2, D-037): Facebook Login for Business config, code → token exchange, WABA/number capture, app subscription, encrypted token per tenant
 - Template manager: create, submit, status sync, multi-language versions, travel template library
 - Coexistence onboarding path + echo handling + history sync handling
