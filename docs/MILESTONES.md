@@ -17,10 +17,10 @@
 - (.NET SDK is no longer needed. See D-022.)
 
 **Accounts & credentials** (store in local `.env`; never paste in chat, never commit)
-- [ ] **OpenAI API key** in `OPENAI_API_KEY` (D-039), with a project budget / usage limit. OpenRouter optional later.
-- [ ] Meta App ID and App Secret
-- [ ] Test number Phone Number ID and WABA ID
-- [ ] System User access token (for development)
+- [x] **OpenAI API key** in `OPENAI_API_KEY` (D-039). Set a project budget / usage limit in the OpenAI dashboard. OpenRouter optional later.
+- [x] Meta App ID and App Secret (app **appsdemo_api**)
+- [x] Phone Number ID and WABA ID (the real AppsDemo number, D-034)
+- [x] System User access token (for development)
 - [ ] Domain DNS access for `appsdemo.in` (subdomains `qualify`, `qualify-staging`)
 
 **Meta**
@@ -117,13 +117,15 @@
 **Remaining:**
 - Page connect + `leadgen` webhook + lead fetch + field mapping (tested with the Lead Ads Testing Tool)
 - CTWA referral capture + routing rules
-- Opening template approval (submit from AI agent → Opening) + follow-up sequence (BullMQ delayed jobs)
+- Follow-up sequence for leads who don't reply (BullMQ delayed jobs, templates outside 24 h) → `unresponsive` (the opening template is approved and live, 2026-11-18)
 - Hybrid scoring engine, final score, reason, summary, status machine
 - Undeliverable detection
 
 **Acceptance:** a test form lead → template within 60 s → reply → chat → score + reason. A lead that doesn't reply → follow-ups → `unresponsive`.
 
 ## M5 — Dashboard UI
+**Done early in M4:** AI agent page (questions, opening, persona, rules, KB, publish; D-049), dashboard with real data and charts (D-055), Costs page (D-058), API docs (D-054). **Still open:** drafts and version history, test chat simulator, KB file upload, leads list and lead detail, live updates, scoring builder, mobile navigation.
+
 - Leads list (TanStack Table, filters, badges), lead detail (live chat over Socket.IO, fields, animated score gauge, breakdown)
 - Playbook builder (drag-and-drop fields, persona, rules, KB upload, draft/publish/versions) + test chat simulator
 - Scoring builder with "test on sample chat"
@@ -149,7 +151,7 @@
 ## M7 — Outputs & admin
 - Excel export (ExcelJS, filters, column picker), scheduled email reports (BullMQ repeatable jobs)
 - Webhook endpoints: events, conditions, mapping, auth, signing, retries, delivery logs, resend, test payload
-- Inbound API `/outcome` (the `/api/v1/leads` endpoint and API keys were built early in M4, D-044); API key management in the UI
+- Inbound API `/outcome` (the `/api/v1/leads` endpoint, API keys and their UI were built early in M4, D-044/D-051)
 - Super Admin panel: tenants, usage, health, audited impersonation, Bull Board
 
 **Acceptance:** a qualified lead arrives at webhook.site with a valid signature, and the Excel export matches the UI.
