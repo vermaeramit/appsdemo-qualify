@@ -11,6 +11,7 @@ import {
   MessagesSquare,
   Search,
   Settings,
+  ShieldCheck,
   Users,
   Wallet,
   Webhook,
@@ -86,6 +87,20 @@ export function AppShell({ user, workspace, children }: AppShellProps) {
                 {label}
               </Link>
             ))}
+          {user.isPlatformAdmin && (
+            <Link
+              to="/admin"
+              className={navItemClass}
+              activeProps={{ className: 'bg-sidebar-accent text-sidebar-accent-foreground' }}
+              inactiveProps={{
+                className:
+                  'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+              }}
+            >
+              <ShieldCheck className="size-4" />
+              Platform admin
+            </Link>
+          )}
           {upcoming.map(({ label, icon: Icon }) => (
             <Tooltip key={label}>
               <TooltipTrigger asChild>

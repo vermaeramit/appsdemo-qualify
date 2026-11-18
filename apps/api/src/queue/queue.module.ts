@@ -42,7 +42,7 @@ const QUEUE_NAMES = [
       useFactory: (connection: Redis) => new Queue(name, { connection }),
     })),
   ],
-  exports: QUEUE_NAMES.map(([token]) => token),
+  exports: [REDIS, ...QUEUE_NAMES.map(([token]) => token)],
 })
 export class QueueModule implements OnApplicationShutdown {
   constructor(

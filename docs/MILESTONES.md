@@ -159,7 +159,7 @@
 **Acceptance:** create a template in the UI → it shows Meta's approval status. Health page shows live status.
 
 ## M7 — Outputs & admin
-**Done:** Excel export (D-069), outbound webhooks with signing, retries, delivery log, resend and test events (D-070).
+**Done:** Excel export (D-069), outbound webhooks with signing, retries, delivery log, resend and test events (D-070); outcome API (D-071); platform admin page (D-078).
 - Excel export (ExcelJS, filters, column picker), scheduled email reports (BullMQ repeatable jobs)
 - Webhook endpoints: events, conditions, mapping, auth, signing, retries, delivery logs, resend, test payload
 - Inbound API `/outcome` (the `/api/v1/leads` endpoint, API keys and their UI were built early in M4, D-044/D-051)

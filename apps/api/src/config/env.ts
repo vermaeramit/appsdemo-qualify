@@ -21,6 +21,8 @@ const envSchema = z.object({
   /** Decrypts per-tenant Meta tokens (opening template submit/status). Same key as the worker. */
   ENCRYPTION_MASTER_KEY: optionalSecret,
   META_GRAPH_VERSION: optionalSecret,
+  /** Comma-separated e-mails that may open the platform admin page. */
+  PLATFORM_ADMIN_EMAILS: optionalSecret,
   /** AI for the test chat on the AI agent page (same settings as the worker). */
   LLM_PROVIDER: z.enum(['openai']).default('openai'),
   OPENAI_API_KEY: optionalSecret,

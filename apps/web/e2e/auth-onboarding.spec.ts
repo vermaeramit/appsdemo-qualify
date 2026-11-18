@@ -37,6 +37,11 @@ test('a new user can sign up, create a workspace and sign back in', async ({ pag
   await page.getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByText('WhatsApp number', { exact: true })).toBeVisible();
   await expect(page.getByText('No WhatsApp number is connected yet.')).toBeVisible();
+
+  // The platform admin page is for PLATFORM_ADMIN_EMAILS only.
+  await expect(page.getByRole('link', { name: 'Platform admin' })).toHaveCount(0);
+  await page.goto('/admin');
+  await expect(page.getByText('Only platform admins can see this page')).toBeVisible();
   await page.getByRole('link', { name: 'Dashboard' }).click();
 
   // Command palette opens with Ctrl+K.

@@ -43,7 +43,13 @@ export type WorkspaceSummary = z.infer<typeof workspaceSummarySchema>;
 
 /** Response of GET /api/me. */
 export const meResponseSchema = z.object({
-  user: z.object({ id: z.string(), name: z.string(), email: z.string() }),
+  user: z.object({
+    id: z.string(),
+    name: z.string(),
+    email: z.string(),
+    /** Listed in PLATFORM_ADMIN_EMAILS: may open the admin page (M7). */
+    isPlatformAdmin: z.boolean(),
+  }),
   activeWorkspace: workspaceSummarySchema
     .extend({ timezone: z.string(), defaultLanguage: z.string() })
     .nullable(),

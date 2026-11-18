@@ -3,12 +3,17 @@ import { eq, member, organization, tenants, withTenant, type DbHandle } from '@q
 import { type MeResponse, meResponseSchema } from '@qualify/shared';
 import type { AuthSession } from '../auth/auth';
 import { CurrentSession, SessionGuard } from '../auth/session.guard';
-import { DB } from '../tokens';
+import { platformAdmins } from '../admin/admin.controller';
+import type { Env } from '../config/env';
+import { DB, ENV } from '../tokens';
 
 @Controller('me')
 @UseGuards(SessionGuard)
 export class MeController {
-  constructor(@Inject(DB) private readonly handle: DbHandle) {}
+  constructor(
+    @Inject(DB) private readonly handle: DbHandle,
+    @Inject(ENV) private readonly env: Env,
+  ) {}
 
   /** The signed-in user, their workspaces, and the active workspace (read through RLS). */
   @Get()
@@ -47,7 +52,12 @@ export class MeController {
     }
 
     return meResponseSchema.parse({
-      user: { id: current.user.id, name: current.user.name, email: current.user.email },
+      user: {
+        id: current.user.id,
+        name: current.user.name,
+        email: current.user.email,
+        isPlatformAdmin: platformAdmins(this.env).has(current.user.email.toLowerCase()),
+      },
       activeWorkspace,
       workspaces,
     });
