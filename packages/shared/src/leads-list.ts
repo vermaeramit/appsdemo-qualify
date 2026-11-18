@@ -84,3 +84,12 @@ export const LEAD_SOURCE_LABELS: Record<z.infer<typeof leadSourceSchema>, string
   ctwa: 'Click-to-WhatsApp',
   api: 'Website / API',
 };
+
+/** DELETE /api/leads/:id — what was removed with the lead (D-085). */
+export const leadDeletionSchema = z.object({
+  messages: z.number().int(),
+  formSubmissions: z.number().int(),
+  webhookDeliveries: z.number().int(),
+  auditEntriesRedacted: z.number().int(),
+});
+export type LeadDeletionResult = z.infer<typeof leadDeletionSchema>;

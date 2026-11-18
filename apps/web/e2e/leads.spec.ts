@@ -69,4 +69,19 @@ test('leads list: search, grade and status filters, sort, Excel export', async (
   );
   const file = readFileSync(await download.path());
   expect(file.subarray(0, 2).toString()).toBe('PK'); // a zip (xlsx) container
+
+  // Delete a lead with its conversation (typed confirmation).
+  await page.goto('/leads');
+  await page.getByRole('cell', { name: /Ravi Gupta/ }).click();
+  await expect(page).toHaveURL(/\/conversations\?lead=/);
+  await page.getByRole('button', { name: 'Delete lead' }).click();
+  const confirm = page.getByRole('button', { name: 'Delete permanently' });
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel('Type DELETE to confirm').fill('delete');
+  await confirm.click();
+  await expect(page.getByText('Deleted Ravi Gupta')).toBeVisible();
+  await expect(page).toHaveURL(/\/conversations$/);
+  await page.goto('/leads');
+  await expect(page.getByText('1–1 of 1 leads')).toBeVisible();
+  await expect(page.getByRole('cell', { name: /Ravi Gupta/ })).toHaveCount(0);
 });

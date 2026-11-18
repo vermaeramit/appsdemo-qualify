@@ -17,6 +17,7 @@ export {
 } from 'drizzle-orm';
 export * from './api-keys.ts';
 export * from './client.ts';
+export * from './lead-delete.ts';
 export * from './lead-form-submissions.ts';
 export * from './lead-list.ts';
 export * from './leads.ts';

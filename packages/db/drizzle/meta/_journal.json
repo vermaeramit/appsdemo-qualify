@@ -169,6 +169,13 @@
       "when": 1795020674347,
       "tag": "0023_media_assets_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795022070502,
+      "tag": "0024_live_notify_delete",
+      "breakpoints": true
     }
   ]
 }

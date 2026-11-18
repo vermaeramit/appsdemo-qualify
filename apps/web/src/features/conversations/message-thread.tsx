@@ -18,6 +18,9 @@ import { Button } from '@/components/ui/button';
 import { apiPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { clockTime } from '@/lib/time';
+import { useActiveWorkspace } from '@/lib/use-workspace';
+import { canManage } from '@/lib/workspace';
+import { DeleteLeadButton } from './delete-lead';
 import { LeadPanel } from './lead-panel';
 import { LeadStatusBadge } from './lead-status';
 
@@ -34,6 +37,7 @@ export function MessageThread({
   onLoadOlder: () => void;
 }) {
   const thread = pages[0]!;
+  const manager = canManage(useActiveWorkspace().role);
   const messages = useMemo(() => {
     const seen = new Set<string>();
     return pages
@@ -81,6 +85,12 @@ export function MessageThread({
               {thread.lead.name ? `${thread.lead.phone} · ` : ''}WhatsApp
             </div>
           </div>
+          {manager && (
+            <DeleteLeadButton
+              leadId={thread.lead.id}
+              label={thread.lead.name ?? thread.lead.phone}
+            />
+          )}
           <AiToggle leadId={thread.lead.id} paused={thread.lead.aiPaused} />
         </div>
         <div
