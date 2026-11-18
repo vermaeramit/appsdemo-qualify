@@ -21,6 +21,9 @@ const envSchema = z.object({
   /** Decrypts per-tenant Meta tokens (opening template submit/status). Same key as the worker. */
   ENCRYPTION_MASTER_KEY: optionalSecret,
   META_GRAPH_VERSION: optionalSecret,
+  /** Embedded Signup (M6): the Meta app id and the Facebook Login for Business configuration. */
+  META_APP_ID: optionalSecret,
+  META_ES_CONFIG_ID: optionalSecret,
   /** Comma-separated e-mails that may open the platform admin page. */
   PLATFORM_ADMIN_EMAILS: optionalSecret,
   /** AI for the test chat on the AI agent page (same settings as the worker). */

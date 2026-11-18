@@ -15,3 +15,4 @@ export * from './webhooks.js';
 export * from './simulate.js';
 export * from './whatsapp-health.js';
 export * from './admin.js';
+export * from './onboarding.js';

@@ -6,7 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { fetchJson } from '@/lib/api';
 import { timeAgo } from '@/lib/time';
+import { useActiveWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
+import { canManage } from '@/lib/workspace';
+import { ConnectWhatsApp } from './connect-whatsapp';
 
 const healthKey = ['whatsapp', 'health'] as const;
 
@@ -40,6 +43,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 /** The connected number as Meta reports it now: status, quality, limit, reviews, webhooks. */
 export function WhatsAppHealthCard() {
+  const manager = canManage(useActiveWorkspace().role);
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: healthKey,
@@ -83,6 +87,7 @@ export function WhatsAppHealthCard() {
           <p className="text-sm text-destructive">Could not check the number.</p>
         ) : (
           <>
+            {!data.connected && manager && <ConnectWhatsApp />}
             {data.problems.length === 0 ? (
               <p className="flex items-center gap-2 text-sm text-success">
                 <CircleCheck className="size-4" />

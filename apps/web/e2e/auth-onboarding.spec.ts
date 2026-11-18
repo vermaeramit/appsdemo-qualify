@@ -37,6 +37,8 @@ test('a new user can sign up, create a workspace and sign back in', async ({ pag
   await page.getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByText('WhatsApp number', { exact: true })).toBeVisible();
   await expect(page.getByText('No WhatsApp number is connected yet.')).toBeVisible();
+  // Without META_ES_CONFIG_ID the owner is told how the number gets connected.
+  await expect(page.getByText(/Connecting from here needs Meta/)).toBeVisible();
 
   // The platform admin page is for PLATFORM_ADMIN_EMAILS only.
   await expect(page.getByRole('link', { name: 'Platform admin' })).toHaveCount(0);

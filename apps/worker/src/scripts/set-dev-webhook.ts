@@ -26,7 +26,11 @@ const callbackUrl = `${base}/api/webhooks/meta`;
 // One callback for both: WhatsApp messages (WABA, incl. Coexistence echoes) and lead forms (Page
 // leadgen). If Meta refuses smb_message_echoes for this app, messages alone are subscribed.
 for (const [object, fields, fallback] of [
-  ['whatsapp_business_account', 'messages,smb_message_echoes', 'messages'],
+  [
+    'whatsapp_business_account',
+    'messages,smb_message_echoes,history,smb_app_state_sync,account_update',
+    'messages',
+  ],
   ['page', 'leadgen', null],
 ] as const) {
   const subscribe = (list: string) =>

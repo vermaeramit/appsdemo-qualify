@@ -62,7 +62,13 @@ stored Meta tokens and webhook secrets can't be decrypted, even from a backup.
    `docker compose run --rm worker node dist/scripts/set-dev-webhook.js https://<APP_DOMAIN>`
    (needs `META_APP_ID`, `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN` in `.env`).
 2. Sign up at `https://<APP_DOMAIN>`, create the client's workspace (pick its business type).
-3. Until Embedded Signup ships (M6), connect the client's number and Page with the scripts in the
+3. Connect the number. With Embedded Signup configured (`META_APP_ID`, `META_APP_SECRET`,
+   `META_ES_CONFIG_ID`: a Facebook Login for Business configuration for WhatsApp Embedded Signup
+   v4, with the app's domain allowed), the client's owner opens Settings → WhatsApp number →
+   **Connect WhatsApp** and picks "My WhatsApp Business app number" (Coexistence) or "A number
+   only for the API" (PIN). Coexistence numbers must finish within 24 h for the contacts/history
+   sync. Requires Tech Provider access on the Meta app.
+   Without it, connect the client's number and Page with the scripts in the
    worker image, with the client's system-user token in `.env` (`WHATSAPP_DEV_WABA_ID`,
    `WHATSAPP_DEV_PHONE_NUMBER_ID`, `WHATSAPP_SYSTEM_USER_TOKEN`, `META_PAGES_TOKEN`):
    `docker compose run --rm worker node dist/scripts/connect-dev-number.js <workspace-slug>` and

@@ -13,6 +13,7 @@ import {
   publishPlaybookVersion,
 } from './playbooks.ts';
 import { resolveTenantByPageId, resolveTenantByPhoneNumberId } from './routing.ts';
+import { saveWhatsAppConnection } from './whatsapp-connect.ts';
 import type { PlaybookConfig } from '@qualify/shared';
 import {
   apiKeys,
@@ -373,5 +374,32 @@ describe('Lead form tables and Page routing (connected as qualify_app)', () => {
       }),
     );
     await expect(spoof).rejects.toSatisfy((error) => /row-level security/.test(errorText(error)));
+  });
+
+  it('refuses to connect a WhatsApp account that belongs to another tenant', async () => {
+    const connection = (tenantId: string) => ({
+      tenantId,
+      wabaId: 'waba_shared_test',
+      onboardingType: 'coexistence' as const,
+      accessTokenEnc: 'enc',
+      phone: {
+        phoneNumberId: 'pn_shared_test',
+        displayPhone: '+91 3',
+        displayName: 'Shared',
+        qualityRating: 'GREEN',
+      },
+    });
+    const saved = await withTenant(app.db, 'org_a', (tx) =>
+      saveWhatsAppConnection(tx, connection('org_a')),
+    );
+    expect(saved.phoneId).toBeTruthy();
+    // Connecting again in the same tenant refreshes the token.
+    await withTenant(app.db, 'org_a', (tx) => saveWhatsAppConnection(tx, connection('org_a')));
+    const takeover = withTenant(app.db, 'org_b', (tx) =>
+      saveWhatsAppConnection(tx, connection('org_b')),
+    );
+    await expect(takeover).rejects.toSatisfy((error) =>
+      /row-level security/.test(errorText(error)),
+    );
   });
 });

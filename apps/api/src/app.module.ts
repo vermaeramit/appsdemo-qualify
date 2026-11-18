@@ -20,6 +20,8 @@ import { WhatsAppHealthController } from './whatsapp/whatsapp-health.controller'
 import { AdminController } from './admin/admin.controller';
 import { LiveController } from './live/live.controller';
 import { LiveService } from './live/live.service';
+import { OnboardingController } from './whatsapp/onboarding.controller';
+import { OnboardingService } from './whatsapp/onboarding.service';
 import { WebhooksOutService } from './webhooks-out/webhooks-out.service';
 import { MessageTemplateService } from './playbook/message-template.service';
 import { PlaybookController } from './playbook/playbook.controller';
@@ -83,6 +85,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
     WhatsAppHealthController,
     AdminController,
     LiveController,
+    OnboardingController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: OriginGuard },
@@ -94,6 +97,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
     FormMappingService,
     SimulatorService,
     LiveService,
+    OnboardingService,
     WebhooksOutService,
   ],
 })

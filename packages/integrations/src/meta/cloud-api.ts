@@ -96,6 +96,41 @@ function requireMessageId(result: { messages?: { id: string }[] }): string {
   return messageId;
 }
 
+/**
+ * Embedded Signup: trades the code from the customer's popup (5-minute lifetime) for a business
+ * token for their WhatsApp account. Server-to-server, with the app secret.
+ */
+export async function exchangeSignupCode(input: {
+  appId: string;
+  appSecret: string;
+  code: string;
+  graphVersion?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<string> {
+  const url = new URL(
+    `https://graph.facebook.com/${input.graphVersion ?? DEFAULT_GRAPH_VERSION}/oauth/access_token`,
+  );
+  url.search = new URLSearchParams({
+    client_id: input.appId,
+    client_secret: input.appSecret,
+    code: input.code,
+  }).toString();
+  const response = await (input.fetchImpl ?? fetch)(url, { method: 'GET' });
+  const json = (await response.json().catch(() => ({}))) as {
+    access_token?: string;
+    error?: { message?: string; code?: number };
+  };
+  if (!response.ok || !json.access_token) {
+    throw new MetaApiError(
+      response.status,
+      json.error?.message ?? 'Meta did not return a token for this sign-up code',
+      json.error?.code,
+      json,
+    );
+  }
+  return json.access_token;
+}
+
 export class WhatsAppClient {
   private readonly baseUrl: string;
   private readonly accessToken: string;
@@ -390,6 +425,36 @@ export class WhatsAppClient {
   /** Subscribes the token's app to the WABA's webhooks. */
   async subscribeApp(wabaId: string): Promise<void> {
     await this.request('POST', `/${wabaId}/subscribed_apps`);
+  }
+
+  /** Phone numbers of a WhatsApp account (Embedded Signup may return only the account id). */
+  async listPhoneNumbers(wabaId: string): Promise<{ data: PhoneNumberInfo[] }> {
+    return this.request<{ data: PhoneNumberInfo[] }>(
+      'GET',
+      `/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,platform_type`,
+    );
+  }
+
+  /** Registers a Cloud API number with a 6-digit two-step PIN. Never for Coexistence numbers. */
+  async registerPhoneNumber(phoneNumberId: string, pin: string): Promise<void> {
+    await this.request('POST', `/${phoneNumberId}/register`, {
+      messaging_product: 'whatsapp',
+      pin,
+    });
+  }
+
+  /**
+   * Coexistence: asks Meta to send the business app's contacts (`smb_app_state_sync`) or its
+   * message history (`history`) as webhooks. Each can run once, within 24 h of onboarding.
+   */
+  async syncBusinessAppData(
+    phoneNumberId: string,
+    syncType: 'smb_app_state_sync' | 'history',
+  ): Promise<{ request_id?: string }> {
+    return this.request<{ request_id?: string }>('POST', `/${phoneNumberId}/smb_app_data`, {
+      messaging_product: 'whatsapp',
+      sync_type: syncType,
+    });
   }
 
   private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {

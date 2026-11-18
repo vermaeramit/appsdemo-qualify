@@ -1,15 +1,7 @@
 // Connects our own development WhatsApp number (D-034) to a workspace.
 //   pnpm --filter @qualify/worker connect-dev-number [workspace-slug]
 // Production tenants connect through Embedded Signup instead (M6).
-import {
-  createDb,
-  eq,
-  organization,
-  phoneNumbers,
-  sql,
-  whatsappAccounts,
-  withTenant,
-} from '@qualify/db';
+import { createDb, organization, saveWhatsAppConnection, withTenant } from '@qualify/db';
 import { encryptSecret, parseMasterKey, WhatsAppClient } from '@qualify/integrations';
 
 function required(name: string): string {
@@ -66,47 +58,20 @@ try {
   console.log(`✓ apps subscribed to the WABA now: ${JSON.stringify(after.data)}`);
 
   // 4. Store the account + number in the workspace (token encrypted).
-  await withTenant(db, workspace.id, async (tx) => {
-    const [account] = await tx
-      .insert(whatsappAccounts)
-      .values({
-        tenantId: workspace.id,
-        wabaId,
-        onboardingType: 'dev',
-        accessTokenEnc: encryptSecret(token, masterKey),
-      })
-      .onConflictDoUpdate({
-        target: whatsappAccounts.wabaId,
-        set: { accessTokenEnc: encryptSecret(token, masterKey), status: 'active' },
-      })
-      .returning({ id: whatsappAccounts.id });
-
-    await tx
-      .insert(phoneNumbers)
-      .values({
-        tenantId: workspace.id,
-        whatsappAccountId: account!.id,
+  await withTenant(db, workspace.id, (tx) =>
+    saveWhatsAppConnection(tx, {
+      tenantId: workspace.id,
+      wabaId,
+      onboardingType: 'dev',
+      accessTokenEnc: encryptSecret(token, masterKey),
+      phone: {
         phoneNumberId,
         displayPhone: info.display_phone_number,
         displayName: info.verified_name ?? null,
         qualityRating: info.quality_rating ?? null,
-      })
-      .onConflictDoUpdate({
-        target: phoneNumbers.phoneNumberId,
-        set: {
-          displayPhone: sql`excluded.display_phone`,
-          displayName: sql`excluded.display_name`,
-          qualityRating: sql`excluded.quality_rating`,
-          status: 'active',
-        },
-      });
-
-    const [saved] = await tx
-      .select({ id: phoneNumbers.id })
-      .from(phoneNumbers)
-      .where(eq(phoneNumbers.phoneNumberId, phoneNumberId));
-    if (!saved) throw new Error('Phone number was not saved');
-  });
+      },
+    }),
+  );
 
   console.log(`✓ Connected ${info.display_phone_number} to workspace "${workspace.name}"`);
 } catch (error) {
