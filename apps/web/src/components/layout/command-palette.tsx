@@ -81,7 +81,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             </CommandItem>
             <CommandItem onSelect={() => run(() => navigate({ to: '/agent' }))}>
               <Bot />
-              AI agent (questions, opening, knowledge base)
+              AI agents (questions, opening, routing)
             </CommandItem>
             <CommandItem onSelect={() => run(() => navigate({ to: '/templates' }))}>
               <MessageSquareText />

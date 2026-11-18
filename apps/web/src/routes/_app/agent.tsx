@@ -1,8 +1,11 @@
+import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
+import { ArrowLeft } from 'lucide-react';
 import { z } from 'zod';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AgentBar } from '@/features/agent/agent-bar';
+import { AgentRoutingBar } from '@/features/agent/agent-routing-bar';
+import { AgentsOverview } from '@/features/agent/agents-overview';
 import { PlaybookEditor } from '@/features/agent/playbook-editor';
 import {
   AgentIdContext,
@@ -14,7 +17,7 @@ import { useActiveWorkspace } from '@/lib/use-workspace';
 import { canManage } from '@/lib/workspace';
 
 export const Route = createFileRoute('/_app/agent')({
-  // ?agent=<id> picks a non-default agent (D-086).
+  // No ?agent: the overview of all agents. ?agent=<id>: that agent's editor (D-086, D-087).
   validateSearch: z.object({ agent: z.uuid().optional().catch(undefined) }),
   component: AgentPage,
 });
@@ -23,46 +26,114 @@ function AgentPage() {
   const workspace = useActiveWorkspace();
   const { agent: agentId } = Route.useSearch();
   const agents = useQuery(agentsQueryOptions);
-  const playbook = useQuery(agentPlaybookQueryOptions(agentId));
-  const current =
-    agents.data?.agents.find((agent) => agent.id === agentId) ??
-    agents.data?.agents.find((agent) => agent.isDefault);
+  const canEdit = canManage(workspace.role);
 
-  if (playbook.isPending || agents.isPending) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-9 w-96" />
-        {Array.from({ length: 5 }, (_, index) => (
-          <Skeleton key={index} className="h-14 w-full" />
-        ))}
+  if (agents.isPending) {
+    return agentId ? (
+      <EditorSkeleton />
+    ) : (
+      <div className="space-y-5">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-4 w-full max-w-xl" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 3 }, (_, index) => (
+            <Skeleton key={index} className="h-44 rounded-xl" />
+          ))}
+        </div>
       </div>
     );
   }
-  if (playbook.isError || !current) {
+  if (agents.isError) {
+    return <p className="text-sm text-destructive">Could not load the agents.</p>;
+  }
+  const list = agents.data.agents;
+  if (!agentId) return <AgentsOverview agents={list} canEdit={canEdit} />;
+
+  const current = list.find((agent) => agent.id === agentId);
+  if (!current) {
+    return (
+      <div className="space-y-3">
+        <BackLink />
+        <p className="text-sm text-muted-foreground">This agent no longer exists.</p>
+      </div>
+    );
+  }
+  return (
+    <AgentEditor
+      // The default agent uses the plain endpoints, so its caches are shared with other pages.
+      agentId={current.isDefault ? undefined : current.id}
+      title={current.name}
+      banner={<AgentRoutingBar agent={current} agentCount={list.length} canEdit={canEdit} />}
+      canEdit={canEdit}
+    />
+  );
+}
+
+function AgentEditor({
+  agentId,
+  title,
+  banner,
+  canEdit,
+}: {
+  agentId: string | undefined;
+  title: string;
+  banner: ReactNode;
+  canEdit: boolean;
+}) {
+  const playbook = useQuery(agentPlaybookQueryOptions(agentId));
+  if (playbook.isPending) return <EditorSkeleton />;
+  if (playbook.isError) {
     const missing = playbook.error instanceof ApiError && playbook.error.status === 404;
     return (
-      <p className="text-sm text-destructive">
-        {missing
-          ? 'This workspace has no agent configuration yet.'
-          : 'Could not load the agent configuration.'}
-      </p>
+      <div className="space-y-3">
+        <BackLink />
+        <p className="text-sm text-destructive">
+          {missing
+            ? 'This agent has no configuration yet.'
+            : 'Could not load the agent configuration.'}
+        </p>
+      </div>
     );
   }
   return (
     <AgentIdContext.Provider value={agentId}>
-      <div className="space-y-4">
-        <AgentBar
-          agents={agents.data?.agents ?? []}
-          current={current}
-          canEdit={canManage(workspace.role)}
-        />
+      <div className="space-y-3">
+        <BackLink />
         <PlaybookEditor
           key={playbook.data.versionId}
           playbook={playbook.data}
-          canEdit={canManage(workspace.role)}
+          canEdit={canEdit}
+          title={title}
+          banner={banner}
         />
       </div>
     </AgentIdContext.Provider>
+  );
+}
+
+function BackLink() {
+  return (
+    <Link
+      to="/agent"
+      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <ArrowLeft className="size-4" />
+      All agents
+    </Link>
+  );
+}
+
+function EditorSkeleton() {
+  return (
+    <div className="space-y-4">
+      <Skeleton className="h-4 w-24" />
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-11 w-full" />
+      {Array.from({ length: 5 }, (_, index) => (
+        <Skeleton key={index} className="h-14 w-full" />
+      ))}
+    </div>
   );
 }

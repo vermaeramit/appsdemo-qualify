@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { type PlaybookResponse, playbookResponseSchema } from '@qualify/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useBlocker } from '@tanstack/react-router';
@@ -37,9 +37,15 @@ const TABS = [
 export function PlaybookEditor({
   playbook,
   canEdit,
+  title,
+  banner,
 }: {
   playbook: PlaybookResponse;
   canEdit: boolean;
+  /** The agent's name (D-087). */
+  title: string;
+  /** Shown under the header: which leads this agent handles. */
+  banner?: ReactNode;
 }) {
   const queryClient = useQueryClient();
   const defaults = useMemo(() => toEditorConfig(playbook.config), [playbook.config]);
@@ -118,9 +124,9 @@ export function PlaybookEditor({
     <FormProvider {...form}>
       <form onSubmit={onPublish} noValidate className="space-y-5 pb-24">
         <div className="flex flex-wrap items-start gap-3">
-          <div className="min-w-0 flex-1">
+          <div className="w-full min-w-0 sm:w-auto sm:flex-1">
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">AI agent</h1>
+              <h1 className="truncate text-2xl font-semibold tracking-tight">{title}</h1>
               <Badge variant="outline" className="border-success/30 bg-success/10 text-success">
                 Live · v{playbook.versionNo}
               </Badge>
@@ -170,6 +176,8 @@ export function PlaybookEditor({
             </Badge>
           )}
         </div>
+
+        {banner}
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">

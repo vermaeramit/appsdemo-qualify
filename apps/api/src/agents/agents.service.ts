@@ -217,9 +217,20 @@ export class AgentsService {
       })
       .from(playbooks)
       .orderBy(playbooks.createdAt);
+    // Leads per agent over the last 30 days (range scan on leads_tenant_created_idx).
+    const recent = (
+      await tx.execute<{ playbook_id: string; leads: number; hot: number }>(sql`
+        select v.playbook_id, count(*)::int as leads,
+               count(*) filter (where l.grade = 'hot')::int as hot
+        from leads l
+        join playbook_versions v on v.id = l.playbook_version_id
+        where l.created_at >= now() - interval '30 days'
+        group by v.playbook_id`)
+    ).rows;
     const agents: AgentSummary[] = [];
     for (const row of rows) {
       const latest = await getLatestPublishedVersion(tx, row.id);
+      const stats = recent.find((item) => item.playbook_id === row.id);
       agents.push({
         id: row.id,
         name: row.name,
@@ -228,6 +239,8 @@ export class AgentsService {
         versionNo: latest?.versionNo ?? 0,
         questions: latest?.config.fields.length ?? 0,
         routes: row.routes,
+        recentLeads: stats?.leads ?? 0,
+        recentHot: stats?.hot ?? 0,
       });
     }
     agents.sort((a, b) => Number(b.isDefault) - Number(a.isDefault));

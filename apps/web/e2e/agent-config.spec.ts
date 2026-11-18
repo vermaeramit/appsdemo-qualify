@@ -21,9 +21,16 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   const unique = Date.now().toString(36);
   await signUpWithWorkspace(page, unique);
 
-  // The new workspace starts with the real estate template (v1).
-  await page.getByRole('link', { name: 'AI agent' }).click();
-  await expect(page.getByRole('heading', { name: 'AI agent' })).toBeVisible();
+  // The AI agents page lists the agents as cards (D-087); the new workspace has one, from
+  // the real estate template (v1). Its card opens the editor.
+  await page.getByRole('link', { name: 'AI agents' }).click();
+  await expect(page.getByRole('heading', { name: 'AI agents' })).toBeVisible();
+  const defaultCard = page.getByRole('link', { name: /Real estate/ });
+  await expect(defaultCard).toContainText('Default');
+  await expect(defaultCard).toContainText('Every lead');
+  await defaultCard.click();
+  await expect(page).toHaveURL(/agent=/);
+  await expect(page.getByRole('heading', { name: 'Real estate' })).toBeVisible();
   await expect(page.getByText('Live · v1')).toBeVisible();
   await expect(page.getByText('Property type').first()).toBeVisible();
   // Other templates are one click away.
@@ -134,6 +141,9 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await page.getByRole('button', { name: 'Discard' }).click();
 
   // A second agent for one campaign (D-086): its own questions, routed by the lead's source.
+  // It is created from the "New agent" card on the overview.
+  await page.getByRole('link', { name: 'All agents' }).click();
+  await expect(page.getByRole('heading', { name: 'AI agents' })).toBeVisible();
   await page.getByRole('button', { name: 'New agent' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Premium projects');
   await page.getByRole('button', { name: 'Create agent' }).click();
@@ -146,6 +156,12 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Agent saved')).toBeVisible();
   await expect(page.getByText('Handles leads from Premium.')).toBeVisible();
+  // Back on the overview, both cards show who they handle.
+  await page.getByRole('link', { name: 'All agents' }).click();
+  await expect(page.getByRole('link', { name: /Premium projects/ })).toContainText('Premium');
+  await expect(page.getByRole('link', { name: /Real estate/ })).toContainText(
+    'Every lead no rule sends elsewhere',
+  );
 
   // Add a lead like a lead form would; it opens in Conversations.
   await page.getByRole('link', { name: 'Conversations' }).click();

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { PLAYBOOK_TEMPLATES } from '@qualify/core';
+import { type ReactNode, useState } from 'react';
+import { DEFAULT_TEMPLATE_KEY, PLAYBOOK_TEMPLATES } from '@qualify/core';
 import {
   type AgentSummary,
   agentListSchema,
@@ -7,8 +7,7 @@ import {
   type PlaybookRoute,
 } from '@qualify/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
-import { Loader2, Plus, Route as RouteIcon, Settings2, Trash2, X } from 'lucide-react';
+import { Loader2, Settings2, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -35,129 +34,67 @@ import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
 import { apiDelete, apiSend, errorMessage } from '@/lib/api';
 import { routeOptionsQueryOptions } from './queries';
+import { ROUTE_TYPES, routeText } from './routing';
 
-const ROUTE_TYPES: { type: PlaybookRoute['type']; label: string; hint: string }[] = [
-  { type: 'form', label: 'Meta lead forms', hint: 'Leads from these forms' },
-  { type: 'ad', label: 'Ads', hint: 'Leads from these ads (lead form or Click-to-WhatsApp)' },
-  { type: 'campaign', label: 'API campaigns', hint: 'API leads with this "campaign" value' },
-];
-
-const routeText = (route: PlaybookRoute) => route.label ?? route.value;
-
-/** Which agent is being edited, and managing agents and their routing rules (D-086). */
-export function AgentBar({
+/** Creates an agent from a copy of another one or from a template (D-086, D-087). */
+export function NewAgentDialog({
   agents,
-  current,
-  canEdit,
+  onCreated,
+  children,
 }: {
   agents: AgentSummary[];
-  current: AgentSummary;
-  canEdit: boolean;
-}) {
-  const navigate = useNavigate();
-  const go = (agent: AgentSummary) =>
-    void navigate({ to: '/agent', search: agent.isDefault ? {} : { agent: agent.id } });
-
-  return (
-    <div className="space-y-2 rounded-xl border bg-card p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Label htmlFor="agent-switcher" className="text-sm text-muted-foreground">
-          Agent
-        </Label>
-        <Select
-          value={current.id}
-          onValueChange={(id) => {
-            const next = agents.find((agent) => agent.id === id);
-            if (next) go(next);
-          }}
-        >
-          <SelectTrigger id="agent-switcher" className="h-8 w-64">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {agents.map((agent) => (
-              <SelectItem key={agent.id} value={agent.id}>
-                {agent.name}
-                {agent.isDefault ? ' (default)' : ''}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {canEdit && <NewAgentDialog current={current} onCreated={go} />}
-        {canEdit && (
-          <AgentSettingsDialog
-            agent={current}
-            onDeleted={() => {
-              const fallback = agents.find((agent) => agent.isDefault);
-              if (fallback) go(fallback);
-            }}
-          />
-        )}
-      </div>
-      <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-        <RouteIcon className="mt-px size-3.5 shrink-0" />
-        {current.isDefault ? (
-          agents.length > 1 ? (
-            'Default agent: handles every lead that no rule sends to another agent.'
-          ) : (
-            'Handles every lead. Add another agent to give some campaigns or forms their own questions.'
-          )
-        ) : current.routes.length ? (
-          <span>
-            Handles leads from {current.routes.map((route) => routeText(route)).join(', ')}. Others
-            go to the default agent.
-          </span>
-        ) : (
-          'No rules yet: this agent gets no leads. Open the agent settings to add forms, ads or campaigns.'
-        )}
-      </p>
-    </div>
-  );
-}
-
-function NewAgentDialog({
-  current,
-  onCreated,
-}: {
-  current: AgentSummary;
   onCreated: (agent: AgentSummary) => void;
+  /** The trigger (a button or a card). */
+  children: ReactNode;
 }) {
   const queryClient = useQueryClient();
+  const defaultAgent = agents.find((agent) => agent.isDefault) ?? agents[0];
+  const initialSource = defaultAgent
+    ? `copy:${defaultAgent.id}`
+    : `template:${DEFAULT_TEMPLATE_KEY}`;
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
-  const [source, setSource] = useState('copy');
+  const [source, setSource] = useState(initialSource);
   const create = useMutation({
-    mutationFn: () =>
-      apiSend(
+    mutationFn: () => {
+      const [kind, value] = source.split(':') as ['copy' | 'template', string];
+      return apiSend(
         'POST',
         '/api/agents',
-        source === 'copy' ? { name, copyFrom: current.id } : { name, template: source },
+        kind === 'copy' ? { name, copyFrom: value } : { name, template: value },
         agentSummarySchema,
-      ),
+      );
+    },
     onSuccess: async (agent) => {
       await queryClient.invalidateQueries({ queryKey: ['agents'] });
       toast.success(`Created “${agent.name}”`, {
         description: 'Add its routing rules in the agent settings, then review and publish.',
       });
       setOpen(false);
-      setName('');
       onCreated(agent);
     },
   });
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
-          <Plus data-icon="inline-start" />
-          New agent
-        </Button>
-      </DialogTrigger>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) {
+          setName('');
+          setSource(initialSource);
+          create.reset();
+        }
+      }}
+    >
+      <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>New agent</DialogTitle>
@@ -166,13 +103,20 @@ function NewAgentDialog({
             leads it handles; the rest stay with the default agent.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (name.trim() && !create.isPending) create.mutate();
+          }}
+        >
           <div className="space-y-1.5">
             <Label htmlFor="agent-name">Name</Label>
             <Input
               id="agent-name"
-              placeholder="e.g. International tours"
+              placeholder="e.g. Premium enquiries"
               maxLength={60}
+              autoFocus
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
@@ -184,12 +128,24 @@ function NewAgentDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="copy">A copy of “{current.name}”</SelectItem>
-                {PLAYBOOK_TEMPLATES.map((template) => (
-                  <SelectItem key={template.key} value={template.key}>
-                    Template: {template.name}
-                  </SelectItem>
-                ))}
+                {agents.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>Copy an agent</SelectLabel>
+                    {agents.map((agent) => (
+                      <SelectItem key={agent.id} value={`copy:${agent.id}`}>
+                        A copy of “{agent.name}”
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+                <SelectGroup>
+                  <SelectLabel>Start from a template</SelectLabel>
+                  {PLAYBOOK_TEMPLATES.map((template) => (
+                    <SelectItem key={template.key} value={`template:${template.key}`}>
+                      Template: {template.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
@@ -199,22 +155,24 @@ function NewAgentDialog({
             </p>
           )}
           <div className="flex justify-end">
-            <Button
-              type="button"
-              disabled={!name.trim() || create.isPending}
-              onClick={() => create.mutate()}
-            >
+            <Button type="submit" disabled={!name.trim() || create.isPending}>
               {create.isPending && <Loader2 className="animate-spin" data-icon="inline-start" />}
               Create agent
             </Button>
           </div>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
 }
 
-function AgentSettingsDialog({ agent, onDeleted }: { agent: AgentSummary; onDeleted: () => void }) {
+export function AgentSettingsDialog({
+  agent,
+  onDeleted,
+}: {
+  agent: AgentSummary;
+  onDeleted: () => void;
+}) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(agent.name);
@@ -224,8 +182,10 @@ function AgentSettingsDialog({ agent, onDeleted }: { agent: AgentSummary; onDele
   const save = useMutation({
     mutationFn: (body: { name?: string; routes?: PlaybookRoute[]; isDefault?: true }) =>
       apiSend('PATCH', `/api/agents/${agent.id}`, body, agentListSchema),
-    onSuccess: async () => {
+    onSuccess: async (_list, body) => {
       await queryClient.invalidateQueries({ queryKey: ['agents'] });
+      // A new default agent changes what the default-agent queries return.
+      if (body.isDefault) await queryClient.invalidateQueries({ queryKey: ['playbook'] });
       toast.success('Agent saved');
       setOpen(false);
     },

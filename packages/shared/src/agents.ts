@@ -22,6 +22,9 @@ export const agentSummarySchema = z.object({
   versionNo: z.number().int(),
   questions: z.number().int(),
   routes: playbookRoutesSchema,
+  /** Leads this agent took in the last 30 days, and how many of them are Hot. */
+  recentLeads: z.number().int(),
+  recentHot: z.number().int(),
 });
 export type AgentSummary = z.infer<typeof agentSummarySchema>;
 

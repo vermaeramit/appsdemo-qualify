@@ -46,7 +46,7 @@ const navLinks = [
   { to: '/leads', label: 'Leads', icon: Users, exact: false },
   { to: '/conversations', label: 'Conversations', icon: MessagesSquare, exact: false },
   { to: '/meta-leads', label: 'Meta leads', icon: FileInput, exact: false },
-  { to: '/agent', label: 'AI agent', icon: Bot, exact: false },
+  { to: '/agent', label: 'AI agents', icon: Bot, exact: false },
   { to: '/templates', label: 'Templates', icon: MessageSquareText, exact: false },
   { to: '/integrations', label: 'Integrations', icon: Webhook, exact: false, managerOnly: true },
   { to: '/costs', label: 'Costs', icon: Wallet, exact: false, managerOnly: true },
