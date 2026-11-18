@@ -9,6 +9,7 @@ import {
 } from '@qualify/integrations';
 import {
   CONTACT_QUEUE,
+  type ContactJob,
   contactJobSchema,
   FOLLOW_UP_QUEUE,
   type FollowUpJob,
@@ -72,6 +73,17 @@ logger.info(
 
 const respondQueue = new Queue<RespondJob>(RESPOND_QUEUE, { connection });
 const followUpQueue = new Queue<FollowUpJob>(FOLLOW_UP_QUEUE, { connection });
+const contactQueue = new Queue<ContactJob>(CONTACT_QUEUE, { connection });
+
+/** Opening message for a lead from a Meta lead form (same job the api queues for API leads). */
+async function enqueueContact(job: ContactJob): Promise<void> {
+  await contactQueue.add('contact', job, {
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 3_000 },
+    removeOnComplete: 1_000,
+    removeOnFail: 5_000,
+  });
+}
 
 /** One delayed job per follow-up step; completed jobs are removed so ids can be reused. */
 const followUps: FollowUpScheduler = {
@@ -126,6 +138,14 @@ const metaEventsWorker = new Worker(
       isProduction,
       enqueueRespond: (respondJob) => enqueueRespond(respondJob),
       followUps,
+      leadForms: {
+        masterKey,
+        createClient: whatsapp,
+        llm,
+        model: env.AI_MODEL_CHAT,
+        reasoningEffort: env.AI_REASONING_EFFORT,
+        enqueueContact,
+      },
     });
   },
   { connection, concurrency: 10 },
@@ -224,7 +244,7 @@ async function shutdown(signal: string): Promise<void> {
     contactWorker.close(),
     followUpWorker.close(),
   ]);
-  await Promise.all([respondQueue.close(), followUpQueue.close()]);
+  await Promise.all([respondQueue.close(), followUpQueue.close(), contactQueue.close()]);
   await pool.end();
   connection.disconnect();
   process.exit(0);

@@ -64,6 +64,7 @@ Full-stack TypeScript, pnpm 12 monorepo, Node.js 26 LTS, TypeScript 6.0 (don't u
 - Playwright's `getByLabel('Password')` also matches the "Show password" button, so use `{ exact: true }`.
 - Drizzle gotcha: in single-table selects `${table.column}` renders as a bare `"column"`. In correlated subqueries, reference the outer table explicitly in raw SQL (e.g. `m.lead_id = leads.id`).
 - Webhook routing: `resolveTenantByPhoneNumberId()` from `@qualify/db`. Never query `phone_numbers` outside `withTenant()`.
+- Connect a Facebook Page (lead forms): `pnpm --filter @qualify/worker connect-dev-page [workspace-slug] [page-id-or-name]` (needs a token with pages_show_list, pages_read_engagement, pages_manage_metadata, leads_retrieval: `META_PAGES_TOKEN` or the system-user token). `set-dev-webhook` subscribes both WhatsApp messages and Page leadgen.
 - Connect our dev number: `pnpm --filter @qualify/worker connect-dev-number [workspace-slug]`. It is connected to the owner's "Appsdemo" workspace. Meta app = **appsdemo_api** (App ID, secret and system-user token are all from it).
 - Live webhooks in dev: run `"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --no-autoupdate --url http://localhost:5173`, then `pnpm --filter @qualify/worker set-dev-webhook https://<host>.trycloudflare.com`. The quick-tunnel URL changes on every restart.
 - Agent eval: `pnpm --filter @qualify/worker eval -- --models gpt-5.4-mini` (~$0.5 per model; spends API credits, so ask first). Install the template in a workspace: `pnpm --filter @qualify/worker install-playbook [slug]`.

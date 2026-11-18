@@ -9,6 +9,7 @@ import {
   withTenant,
 } from '@qualify/db';
 import {
+  extractLeadgenChanges,
   extractMessageChanges,
   inboundText,
   isAllowedRecipient,
@@ -19,6 +20,7 @@ import {
 } from '@qualify/integrations';
 import type { RespondJob } from '@qualify/shared';
 import type { FollowUpScheduler } from '../agent/follow-up.ts';
+import { handleLeadgen, type LeadFormDeps } from './lead-forms.ts';
 import type { Logger } from '../logger.ts';
 
 export interface ProcessorDeps {
@@ -31,6 +33,8 @@ export interface ProcessorDeps {
   enqueueRespond: (job: RespondJob) => Promise<void>;
   /** A reply from the lead cancels pending follow-ups. */
   followUps?: FollowUpScheduler;
+  /** Meta lead form submissions (Page leadgen webhooks). */
+  leadForms?: Omit<LeadFormDeps, 'db' | 'logger'>;
 }
 
 const STATUS_RANK: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3 };
@@ -54,8 +58,10 @@ export async function processMetaEvent(eventId: string, deps: ProcessorDeps): Pr
   if (!event || event.processedAt) return;
 
   let changes;
+  let leadgen;
   try {
     changes = extractMessageChanges(event.payload);
+    leadgen = extractLeadgenChanges(event.payload);
   } catch (error) {
     logger.warn({ eventId, err: error }, 'Unparseable Meta webhook payload');
     await markProcessed(db, eventId, 'invalid payload');
@@ -78,6 +84,15 @@ export async function processMetaEvent(eventId: string, deps: ProcessorDeps): Pr
     for (const status of change.value.statuses ?? []) {
       await handleStatus(db, tenantId, status);
     }
+  }
+
+  for (const submission of leadgen) {
+    if (!deps.leadForms) {
+      logger.warn({ eventId }, 'Lead form webhook received but lead forms are not configured');
+      break;
+    }
+    const outcome = await handleLeadgen({ db, logger, ...deps.leadForms }, submission);
+    logger.info({ eventId, leadgenId: submission.leadgen_id, outcome }, 'Lead form run');
   }
 
   await markProcessed(db, eventId, null);

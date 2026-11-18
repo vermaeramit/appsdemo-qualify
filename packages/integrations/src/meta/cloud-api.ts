@@ -27,6 +27,27 @@ export interface WhatsAppClientOptions {
   fetchImpl?: typeof fetch;
 }
 
+export interface MetaLead {
+  id: string;
+  created_time?: string;
+  field_data: { name: string; values: string[] }[];
+  form_id?: string;
+  ad_id?: string;
+  campaign_id?: string;
+  platform?: string;
+}
+
+export interface MetaLeadForm {
+  id: string;
+  name?: string;
+  questions?: {
+    key: string;
+    label?: string;
+    type?: string;
+    options?: { key: string; value: string }[];
+  }[];
+}
+
 export interface PricingAnalyticsPoint {
   /** Unix seconds. */
   start: number;
@@ -265,6 +286,38 @@ export class WhatsAppClient {
       pricing_analytics?: { data?: { data_points?: PricingAnalyticsPoint[] }[] };
     }>('GET', `/${wabaId}?fields=${encodeURIComponent(field)}`);
     return (result.pricing_analytics?.data ?? []).flatMap((entry) => entry.data_points ?? []);
+  }
+
+  /** A lead form submission's answers (needs a Page token with leads_retrieval). */
+  async getLead(leadgenId: string): Promise<MetaLead> {
+    return this.request<MetaLead>(
+      'GET',
+      `/${leadgenId}?fields=id,created_time,field_data,form_id,ad_id,campaign_id,platform`,
+    );
+  }
+
+  /** A lead form's name and questions (labels and options), to map answers to the playbook. */
+  async getLeadForm(formId: string): Promise<MetaLeadForm> {
+    return this.request<MetaLeadForm>('GET', `/${formId}?fields=id,name,questions`);
+  }
+
+  /** Lead forms of a Page. */
+  async listLeadForms(
+    pageId: string,
+  ): Promise<{ data: { id: string; name: string; status: string }[] }> {
+    return this.request('GET', `/${pageId}/leadgen_forms?fields=id,name,status&limit=100`);
+  }
+
+  /** Pages the token can manage, with their Page tokens (never log the result). */
+  async listPages(): Promise<{
+    data: { id: string; name: string; access_token?: string; tasks?: string[] }[];
+  }> {
+    return this.request('GET', '/me/accounts?fields=id,name,access_token,tasks&limit=100');
+  }
+
+  /** Subscribes our app to a Page's leadgen webhooks (call with that Page's token). */
+  async subscribeAppToPage(pageId: string): Promise<void> {
+    await this.request('POST', `/${pageId}/subscribed_apps?subscribed_fields=leadgen`);
   }
 
   /** The WABA's billing currency (e.g. "INR"). */

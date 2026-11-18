@@ -1,12 +1,11 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { normaliseFieldValue, resolveScoring, scoreLead } from '@qualify/core';
+import { leadScoreColumns, localToday, normaliseFieldValue } from '@qualify/core';
 import {
   auditLogs,
   type DbHandle,
-  eq,
   getDefaultPublishedPlaybook,
-  leads,
   tenants,
+  upsertLeadFromIntake,
   withTenant,
 } from '@qualify/db';
 import { toE164 } from '@qualify/integrations';
@@ -62,72 +61,30 @@ export class LeadIntakeService {
         else accepted[key] = normalised;
       }
 
-      const [existing] = await tx
-        .select({
-          id: leads.id,
-          fields: leads.fields,
-          name: leads.name,
-          status: leads.status,
-          signals: leads.signals,
-          scoreDetails: leads.scoreDetails,
-        })
-        .from(leads)
-        .where(eq(leads.phoneE164, phone))
-        .limit(1);
       const [tenant] = await tx.select({ timezone: tenants.timezone }).from(tenants).limit(1);
+      const today = localToday(tenant?.timezone ?? 'Asia/Kolkata');
 
-      // A first score from the form answers (the AI adds intent once the lead replies).
-      const fields = { ...(existing?.fields ?? {}), ...accepted };
-      const scored = playbook
-        ? (() => {
-            const result = scoreLead({
-              definitions,
-              scoring: resolveScoring(playbook.config),
-              fields,
-              signals: existing?.signals ?? null,
-              status: existing?.status ?? 'new',
-              today: new Intl.DateTimeFormat('en-CA', {
-                timeZone: tenant?.timezone ?? 'Asia/Kolkata',
-                dateStyle: 'short',
-              }).format(new Date()),
-            });
-            return {
-              score: result.score,
-              grade: result.grade,
-              scoreDetails: {
-                ...result.details,
+      // One lead per phone; a first score from the answers (the AI adds intent on reply).
+      const { leadId, isNewLead } = await upsertLeadFromIntake(tx, {
+        tenantId: workspace.tenantId,
+        phoneE164: phone,
+        name: input.name ?? null,
+        source: input.source,
+        fields: accepted,
+        score: (lead) =>
+          playbook
+            ? leadScoreColumns({
+                config: playbook.config,
+                fields: lead.fields,
+                signals: lead.signals,
+                status: lead.status,
+                today,
                 final: false,
-                ...(existing?.scoreDetails?.summaryUsage
-                  ? { summaryUsage: existing.scoreDetails.summaryUsage }
-                  : {}),
-              },
-              scoredAt: new Date(),
-            };
-          })()
-        : {};
-
-      let leadId: string;
-      if (existing) {
-        // A repeat enquiry: one lead, one timeline. New answers overwrite old ones.
-        await tx
-          .update(leads)
-          .set({ name: input.name ?? existing.name, fields, ...scored })
-          .where(eq(leads.id, existing.id));
-        leadId = existing.id;
-      } else {
-        const [created] = await tx
-          .insert(leads)
-          .values({
-            tenantId: workspace.tenantId,
-            phoneE164: phone,
-            name: input.name ?? null,
-            source: input.source,
-            fields: accepted,
-            ...scored,
-          })
-          .returning({ id: leads.id });
-        leadId = created!.id;
-      }
+                now: new Date(),
+                previous: lead.scoreDetails,
+              })
+            : null,
+      });
       await tx.insert(auditLogs).values({
         tenantId: workspace.tenantId,
         actorUserId: workspace.userId,
@@ -135,7 +92,7 @@ export class LeadIntakeService {
         target: leadId,
         metadata: { source: input.source, campaign: input.campaign ?? null, ignoredFields },
       });
-      return { leadId, isNewLead: !existing, ignoredFields };
+      return { leadId, isNewLead, ignoredFields };
     });
 
     await this.contactQueue.add(

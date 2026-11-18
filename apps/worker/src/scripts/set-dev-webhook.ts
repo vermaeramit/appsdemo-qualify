@@ -1,4 +1,4 @@
-// Points the Meta app's WhatsApp webhook at a (new) dev tunnel URL.
+// Points the Meta app's webhooks (WhatsApp messages + Page lead forms) at a (new) dev tunnel URL.
 //   pnpm --filter @qualify/worker set-dev-webhook https://<name>.trycloudflare.com
 // Quick-tunnel URLs change on every restart, so run this after starting cloudflared.
 
@@ -23,19 +23,27 @@ const url = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION ?? 'v24
 const callbackUrl = `${base}/api/webhooks/meta`;
 
 // Meta calls the callback (GET handshake) before saving, so the dev stack must be running.
-const response = await fetch(url, {
-  method: 'POST',
-  body: new URLSearchParams({
-    object: 'whatsapp_business_account',
-    callback_url: callbackUrl,
-    verify_token: required('META_WEBHOOK_VERIFY_TOKEN'),
-    fields: 'messages',
-    access_token: appToken,
-  }),
-});
-const result = (await response.json()) as { success?: boolean; error?: { message?: string } };
-if (!result.success) {
-  console.error(`✗ Meta rejected the webhook: ${result.error?.message ?? response.status}`);
-  process.exit(1);
+// One callback for both: WhatsApp messages (WABA) and lead forms (Page leadgen).
+for (const [object, fields] of [
+  ['whatsapp_business_account', 'messages'],
+  ['page', 'leadgen'],
+] as const) {
+  const response = await fetch(url, {
+    method: 'POST',
+    body: new URLSearchParams({
+      object,
+      callback_url: callbackUrl,
+      verify_token: required('META_WEBHOOK_VERIFY_TOKEN'),
+      fields,
+      access_token: appToken,
+    }),
+  });
+  const result = (await response.json()) as { success?: boolean; error?: { message?: string } };
+  if (!result.success) {
+    console.error(
+      `✗ Meta rejected the ${object} webhook: ${result.error?.message ?? response.status}`,
+    );
+    process.exit(1);
+  }
+  console.log(`✓ Webhook set to ${callbackUrl} (${object}: ${fields})`);
 }
-console.log(`✓ Webhook set to ${callbackUrl} (field: messages)`);

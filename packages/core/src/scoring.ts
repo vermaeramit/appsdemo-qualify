@@ -191,3 +191,45 @@ export function maxRulePoints(scoring: PlaybookScoring): number {
     }, 0) + scoring.completePoints
   );
 }
+
+/** The score columns stored on a lead (keeps the summary's usage record across rescoring). */
+export function leadScoreColumns(input: {
+  config: PlaybookConfig;
+  fields: LeadFields;
+  signals: LeadSignals | null;
+  status: string;
+  /** "YYYY-MM-DD" in the business's time zone. */
+  today: string;
+  final: boolean;
+  now: Date;
+  previous?: LeadScoreDetails | null;
+}): {
+  score: number;
+  grade: LeadGrade;
+  scoreDetails: LeadScoreDetails;
+  scoredAt: Date;
+} {
+  const result = scoreLead({
+    definitions: input.config.fields,
+    scoring: resolveScoring(input.config),
+    fields: input.fields,
+    signals: input.signals,
+    status: input.status,
+    today: input.today,
+  });
+  return {
+    score: result.score,
+    grade: result.grade,
+    scoreDetails: {
+      ...result.details,
+      final: input.final,
+      ...(input.previous?.summaryUsage ? { summaryUsage: input.previous.summaryUsage } : {}),
+    },
+    scoredAt: input.now,
+  };
+}
+
+/** Today's date ("YYYY-MM-DD") in a time zone. */
+export function localToday(timeZone: string, now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, dateStyle: 'short' }).format(now);
+}

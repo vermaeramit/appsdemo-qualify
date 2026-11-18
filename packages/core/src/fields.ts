@@ -11,6 +11,20 @@ export interface MergeResult {
 const EMPTY_VALUES = new Set(['', 'unknown', 'null', 'none', 'n/a', 'na', 'not specified', '-']);
 const YES = new Set(['yes', 'y', 'haan', 'han', 'ha', 'ji', 'true', 'ready', 'हाँ', 'हां']);
 const NO = new Set(['no', 'n', 'nahi', 'nahin', 'na', 'false', 'नहीं']);
+const MONTHS = [
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
+];
 
 /** Normalises one extracted value for its field type. Returns null when it is not usable. */
 export function normaliseFieldValue(field: PlaybookField, raw: string): string | null {
@@ -40,8 +54,13 @@ export function normaliseFieldValue(field: PlaybookField, raw: string): string |
       return digits ? String(Number(digits[0])) : null;
     }
     case 'date_month': {
-      if (value.toLowerCase() === 'flexible') return 'flexible';
-      return /^\d{4}-(0[1-9]|1[0-2])$/.test(value) ? value : null;
+      const lower = value.toLowerCase();
+      if (/^(flexible|not (sure|decided)( yet)?|undecided|later)$/.test(lower)) return 'flexible';
+      if (/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) return value;
+      // "December 2026", "dec 2026" (e.g. a lead form option).
+      const named = /^([a-z]{3,9})\.?\s+(\d{4})$/.exec(lower);
+      const month = named ? MONTHS.findIndex((name) => name.startsWith(named[1]!.slice(0, 3))) : -1;
+      return named && month >= 0 ? `${named[2]}-${String(month + 1).padStart(2, '0')}` : null;
     }
     case 'range':
     case 'text':

@@ -12,11 +12,14 @@ import {
   getDefaultPublishedPlaybook,
   publishPlaybookVersion,
 } from './playbooks.ts';
-import { resolveTenantByPhoneNumberId } from './routing.ts';
+import { resolveTenantByPageId, resolveTenantByPhoneNumberId } from './routing.ts';
 import type { PlaybookConfig } from '@qualify/shared';
 import {
   apiKeys,
   auditLogs,
+  facebookPages,
+  leadFormMappings,
+  leadFormSubmissions,
   leads,
   messages,
   organization,
@@ -270,5 +273,63 @@ describe('Playbooks and API keys (connected as qualify_app)', () => {
       tx.update(apiKeys).set({ revokedAt: new Date() }).where(eq(apiKeys.id, created.id)),
     );
     expect(await resolveTenantByApiKey(app.db, created.key)).toBeNull();
+  });
+});
+
+describe('Lead form tables and Page routing (connected as qualify_app)', () => {
+  it('routes a Page to its tenant without exposing other tenants', async () => {
+    await withTenant(app.db, 'org_a', (tx) =>
+      tx.insert(facebookPages).values({
+        tenantId: 'org_a',
+        pageId: 'page_a',
+        name: 'Page A',
+        accessTokenEnc: 'enc-a',
+      }),
+    );
+    expect(await resolveTenantByPageId(app.db, 'page_a')).toBe('org_a');
+    expect(await resolveTenantByPageId(app.db, 'page_unknown')).toBeNull();
+    expect(await app.db.select().from(facebookPages)).toEqual([]);
+    expect(await withTenant(app.db, 'org_b', (tx) => tx.select().from(facebookPages))).toEqual([]);
+  });
+
+  it('isolates submissions and mappings, and dedupes leadgen ids', async () => {
+    await withTenant(app.db, 'org_a', async (tx) => {
+      await tx.insert(leadFormSubmissions).values({
+        tenantId: 'org_a',
+        leadgenId: 'lg_1',
+        pageId: 'page_a',
+        formId: 'form_1',
+        fieldData: [{ name: 'full_name', values: ['Rahul'] }],
+      });
+      await tx
+        .insert(leadFormMappings)
+        .values({ tenantId: 'org_a', formId: 'form_1', mapping: {}, source: 'auto' });
+    });
+    expect(
+      await withTenant(app.db, 'org_b', (tx) => tx.select().from(leadFormSubmissions)),
+    ).toEqual([]);
+    expect(await withTenant(app.db, 'org_b', (tx) => tx.select().from(leadFormMappings))).toEqual(
+      [],
+    );
+    const spoof = withTenant(app.db, 'org_b', (tx) =>
+      tx.insert(leadFormSubmissions).values({
+        tenantId: 'org_a',
+        leadgenId: 'lg_spoof',
+        pageId: 'page_a',
+        formId: 'form_1',
+        fieldData: [],
+      }),
+    );
+    await expect(spoof).rejects.toSatisfy((error) => /row-level security/.test(errorText(error)));
+    const retry = withTenant(app.db, 'org_a', (tx) =>
+      tx.insert(leadFormSubmissions).values({
+        tenantId: 'org_a',
+        leadgenId: 'lg_1',
+        pageId: 'page_a',
+        formId: 'form_1',
+        fieldData: [],
+      }),
+    );
+    await expect(retry).rejects.toSatisfy((error) => /duplicate key/.test(errorText(error)));
   });
 });

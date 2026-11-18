@@ -3,6 +3,7 @@
 export { and, asc, count, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 export * from './api-keys.ts';
 export * from './client.ts';
+export * from './leads.ts';
 export * from './migrate.ts';
 export * from './playbooks.ts';
 export * from './routing.ts';

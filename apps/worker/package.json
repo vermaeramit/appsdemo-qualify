@@ -16,7 +16,8 @@
     "eval": "node src/evals/run-eval.ts",
     "create-api-key": "node src/scripts/create-api-key.ts",
     "opening-template": "node src/scripts/opening-template.ts",
-    "rescore-leads": "node src/scripts/rescore-leads.ts"
+    "rescore-leads": "node src/scripts/rescore-leads.ts",
+    "connect-dev-page": "node src/scripts/connect-dev-page.ts"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^12.2.1",

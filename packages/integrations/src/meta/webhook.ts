@@ -103,3 +103,27 @@ export function inboundText(message: WaInboundMessage): string | null {
   if (message.button) return message.button.text;
   return null;
 }
+
+/** A Page `leadgen` change: someone submitted a lead form (the answers are fetched separately). */
+export const leadgenValueSchema = z.looseObject({
+  leadgen_id: z.coerce.string(),
+  page_id: z.coerce.string(),
+  form_id: z.coerce.string(),
+  ad_id: z.coerce.string().optional(),
+  created_time: z.number().optional(),
+});
+export type LeadgenValue = z.infer<typeof leadgenValueSchema>;
+
+/** Extracts lead form submissions from a Page webhook delivery; other fields are skipped. */
+export function extractLeadgenChanges(payload: unknown): LeadgenValue[] {
+  const parsed = waWebhookSchema.parse(payload);
+  if (parsed.object !== 'page') return [];
+  return parsed.entry.flatMap((entry) =>
+    entry.changes
+      .filter((change) => change.field === 'leadgen')
+      .flatMap((change) => {
+        const value = leadgenValueSchema.safeParse(change.value);
+        return value.success ? [value.data] : [];
+      }),
+  );
+}

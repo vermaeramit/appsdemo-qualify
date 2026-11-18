@@ -15,3 +15,11 @@ export async function resolveTenantByPhoneNumberId(
   );
   return result.rows[0]?.tenant_id ?? null;
 }
+
+/** Finds which tenant owns a Facebook Page (leadgen webhook routing, migration 0012). */
+export async function resolveTenantByPageId(db: Database, pageId: string): Promise<string | null> {
+  const result = await db.execute<{ tenant_id: string | null }>(
+    sql`select resolve_tenant_by_page_id(${pageId}) as tenant_id`,
+  );
+  return result.rows[0]?.tenant_id ?? null;
+}

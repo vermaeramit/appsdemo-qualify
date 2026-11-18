@@ -1,47 +1,11 @@
-import { buildSummaryRequest, type HistoryMessage, resolveScoring, scoreLead } from '@qualify/core';
+import { buildSummaryRequest, type HistoryMessage, leadScoreColumns } from '@qualify/core';
 import { type Database, eq, leads, withTenant } from '@qualify/db';
 import type { LlmClient, ReasoningEffort } from '@qualify/integrations';
-import type { LeadScoreDetails, LeadSignals, PlaybookConfig } from '@qualify/shared';
+import type { LeadScoreDetails, PlaybookConfig } from '@qualify/shared';
 import type { Logger } from '../logger.ts';
 
-export interface ScoreColumns {
-  score: number;
-  grade: 'hot' | 'warm' | 'cold' | 'disqualified';
-  scoreDetails: LeadScoreDetails;
-  scoredAt: Date;
-}
-
-/** The lead's score columns for its current answers, AI signals and status. */
-export function scoreColumns(input: {
-  config: PlaybookConfig;
-  fields: Record<string, string>;
-  signals: LeadSignals | null;
-  status: string;
-  today: string;
-  final: boolean;
-  now: Date;
-  /** The lead's current details: the summary's usage record is kept. */
-  previous?: LeadScoreDetails | null;
-}): ScoreColumns {
-  const result = scoreLead({
-    definitions: input.config.fields,
-    scoring: resolveScoring(input.config),
-    fields: input.fields,
-    signals: input.signals,
-    status: input.status,
-    today: input.today,
-  });
-  return {
-    score: result.score,
-    grade: result.grade,
-    scoreDetails: {
-      ...result.details,
-      final: input.final,
-      ...(input.previous?.summaryUsage ? { summaryUsage: input.previous.summaryUsage } : {}),
-    },
-    scoredAt: input.now,
-  };
-}
+/** The lead's score columns (see leadScoreColumns in core). */
+export const scoreColumns = leadScoreColumns;
 
 /** A conversation is final when the lead is qualified, handed off, not a fit or not replying. */
 export const FINAL_STATUSES = new Set(['qualified', 'handoff', 'disqualified', 'unresponsive']);

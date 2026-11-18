@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   aiCostUsd,
   applyAgentTurn,
+  guessFormMapping,
+  readFormAnswers,
+  sanitizeFormMapping,
+  normaliseFieldValue,
   countPeople,
   defaultScoring,
   maxRulePoints,
@@ -172,6 +176,77 @@ describe('scoring', () => {
     const generic = defaultScoring([fields[0]!]);
     expect(generic).toMatchObject({ rules: [], completePoints: 70, aiMaxPoints: 30 });
     expect(maxRulePoints(scoring)).toBe(70);
+  });
+});
+
+describe('lead forms', () => {
+  // The test form suggested to the owner (travel playbook).
+  const questions = [
+    { key: 'full_name', label: 'Full name' },
+    { key: 'phone_number', label: 'Phone number' },
+    { key: 'where_do_you_want_to_travel?', label: 'Where do you want to travel?' },
+    { key: 'when_are_you_planning_to_travel?', label: 'When are you planning to travel?' },
+    { key: 'what_kind_of_trip_is_this?', label: 'What kind of trip is this?' },
+    { key: 'what_is_your_budget_per_person?', label: 'What is your budget per person?' },
+  ];
+
+  it('reads month options and "not decided" for month questions', () => {
+    const month = fields.find((field) => field.key === 'travel_month')!;
+    expect(normaliseFieldValue(month, 'December 2026')).toBe('2026-12');
+    expect(normaliseFieldValue(month, 'jan 2027')).toBe('2027-01');
+    expect(normaliseFieldValue(month, 'Not decided yet')).toBe('flexible');
+    expect(normaliseFieldValue(month, 'December')).toBeNull();
+  });
+
+  it('guesses a mapping by wording when no AI is available', () => {
+    const mapping = guessFormMapping(questions, fields);
+    expect(mapping['when_are_you_planning_to_travel?']).toBe('travel_month');
+    expect(mapping['what_kind_of_trip_is_this?']).toBe('trip_type');
+    expect(mapping).not.toHaveProperty('full_name');
+  });
+
+  it('keeps only one-to-one mappings to existing questions', () => {
+    const clean = sanitizeFormMapping(
+      {
+        'where_do_you_want_to_travel?': 'destination',
+        'when_are_you_planning_to_travel?': 'destination',
+        'what_kind_of_trip_is_this?': 'made_up',
+      },
+      questions,
+      fields,
+    );
+    expect(clean['where_do_you_want_to_travel?']).toBe('destination');
+    expect(clean['when_are_you_planning_to_travel?']).toBeNull();
+    expect(clean['what_kind_of_trip_is_this?']).toBeNull();
+  });
+
+  it('turns field data into name, phone, normalised answers and other answers', () => {
+    const answers = readFormAnswers({
+      fieldData: [
+        { name: 'full_name', values: ['Amit Kumar'] },
+        { name: 'phone_number', values: ['+918529983656'] },
+        { name: 'where_do_you_want_to_travel?', values: ['Dubai'] },
+        { name: 'when_are_you_planning_to_travel?', values: ['december_2026'] },
+        { name: 'what_kind_of_trip_is_this?', values: ['family'] },
+        { name: 'what_is_your_budget_per_person?', values: ['₹25,000–50,000'] },
+      ],
+      questions,
+      mapping: {
+        'where_do_you_want_to_travel?': 'destination',
+        'when_are_you_planning_to_travel?': 'travel_month',
+        'what_kind_of_trip_is_this?': 'trip_type',
+        'what_is_your_budget_per_person?': null,
+      },
+      definitions: fields,
+    });
+    expect(answers).toMatchObject({
+      name: 'Amit Kumar',
+      phone: '+918529983656',
+      fields: { destination: 'Dubai', travel_month: '2026-12', trip_type: 'Family' },
+    });
+    expect(answers.other).toEqual([
+      { label: 'What is your budget per person?', value: '₹25,000–50,000' },
+    ]);
   });
 });
 

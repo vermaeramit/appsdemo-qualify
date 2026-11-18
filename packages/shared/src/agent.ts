@@ -47,3 +47,9 @@ export const leadSignalsSchema = z.object({
   note: z.string(),
 });
 export type LeadSignals = z.infer<typeof leadSignalsSchema>;
+
+/** LLM output: which playbook question (key) each lead form question answers, or null. */
+export const formMappingOutputSchema = z.object({
+  mappings: z.array(z.object({ formKey: z.string(), fieldKey: z.string().nullable() })),
+});
+export type FormMappingOutput = z.infer<typeof formMappingOutputSchema>;
