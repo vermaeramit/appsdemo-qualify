@@ -10,6 +10,9 @@ import {
 import {
   CONTACT_QUEUE,
   contactJobSchema,
+  FOLLOW_UP_QUEUE,
+  type FollowUpJob,
+  followUpJobSchema,
   metaEventJobSchema,
   QUEUES,
   RESPOND_QUEUE,
@@ -19,6 +22,13 @@ import {
 import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { ContactBusyError, processContact } from './agent/contact.ts';
+import {
+  allFollowUpJobIds,
+  FollowUpBusyError,
+  type FollowUpScheduler,
+  followUpJobId,
+  processFollowUp,
+} from './agent/follow-up.ts';
 import { LeadBusyError, processRespond } from './agent/respond.ts';
 import { loadWorkerEnv } from './env.ts';
 import { createRedisLock } from './lock.ts';
@@ -61,6 +71,28 @@ logger.info(
 );
 
 const respondQueue = new Queue<RespondJob>(RESPOND_QUEUE, { connection });
+const followUpQueue = new Queue<FollowUpJob>(FOLLOW_UP_QUEUE, { connection });
+
+/** One delayed job per follow-up step; completed jobs are removed so ids can be reused. */
+const followUps: FollowUpScheduler = {
+  async schedule(job, dueAt) {
+    const jobId = followUpJobId(job.leadId, job.kind, job.step);
+    await followUpQueue.remove(jobId).catch(() => 0);
+    await followUpQueue.add(job.kind, job, {
+      jobId,
+      delay: Math.max(0, dueAt.getTime() - Date.now()),
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 30_000 },
+      removeOnComplete: true,
+      removeOnFail: true,
+    });
+  },
+  async cancel(leadId) {
+    await Promise.all(
+      allFollowUpJobIds(leadId).map((jobId) => followUpQueue.remove(jobId).catch(() => 0)),
+    );
+  },
+};
 
 /**
  * Debounced enqueue: every new message replaces the pending job and restarts the quiet period,
@@ -93,6 +125,7 @@ const metaEventsWorker = new Worker(
       allowlist,
       isProduction,
       enqueueRespond: (respondJob) => enqueueRespond(respondJob),
+      followUps,
     });
   },
   { connection, concurrency: 10 },
@@ -113,6 +146,7 @@ const respondWorker = new Worker(
       isProduction,
       lock: createRedisLock(connection),
       enqueueRespond,
+      followUps,
     });
     if (outcome !== 'replied') logger.info({ leadId: job.data.leadId, outcome }, 'Respond run');
   },
@@ -130,8 +164,30 @@ const contactWorker = new Worker(
       allowlist,
       isProduction,
       lock: createRedisLock(connection),
+      followUps,
     });
     logger.info({ leadId: job.data.leadId, outcome }, 'Contact run');
+  },
+  { connection, concurrency: 10 },
+);
+
+const followUpWorker = new Worker(
+  FOLLOW_UP_QUEUE,
+  async (job) => {
+    const outcome = await processFollowUp(followUpJobSchema.parse(job.data), {
+      db,
+      logger,
+      llm,
+      model: env.AI_MODEL_CHAT,
+      reasoningEffort: env.AI_REASONING_EFFORT,
+      masterKey,
+      createClient: whatsapp,
+      allowlist,
+      isProduction,
+      lock: createRedisLock(connection),
+      scheduler: followUps,
+    });
+    logger.info({ leadId: job.data.leadId, kind: job.data.kind, outcome }, 'Follow-up run');
   },
   { connection, concurrency: 10 },
 );
@@ -140,9 +196,14 @@ for (const [name, worker] of [
   ['meta-events', metaEventsWorker],
   ['respond', respondWorker],
   ['contact', contactWorker],
+  ['follow-up', followUpWorker],
 ] as const) {
   worker.on('failed', (job, error) => {
-    if (error instanceof LeadBusyError || error instanceof ContactBusyError) return; // retried shortly
+    const busy =
+      error instanceof LeadBusyError ||
+      error instanceof ContactBusyError ||
+      error instanceof FollowUpBusyError;
+    if (busy) return; // retried shortly
     logger.error(
       { queue: name, jobId: job?.id, attempts: job?.attemptsMade, err: error },
       'Job failed',
@@ -150,12 +211,20 @@ for (const [name, worker] of [
   });
 }
 
-logger.info({ queues: [QUEUES.metaEvents, RESPOND_QUEUE, CONTACT_QUEUE] }, 'Worker started');
+logger.info(
+  { queues: [QUEUES.metaEvents, RESPOND_QUEUE, CONTACT_QUEUE, FOLLOW_UP_QUEUE] },
+  'Worker started',
+);
 
 async function shutdown(signal: string): Promise<void> {
   logger.info(`Received ${signal}, shutting down`);
-  await Promise.all([metaEventsWorker.close(), respondWorker.close(), contactWorker.close()]);
-  await respondQueue.close();
+  await Promise.all([
+    metaEventsWorker.close(),
+    respondWorker.close(),
+    contactWorker.close(),
+    followUpWorker.close(),
+  ]);
+  await Promise.all([respondQueue.close(), followUpQueue.close()]);
   await pool.end();
   connection.disconnect();
   process.exit(0);

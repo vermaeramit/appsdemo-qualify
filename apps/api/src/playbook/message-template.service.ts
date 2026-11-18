@@ -4,14 +4,28 @@ import {
   Injectable,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { openingExampleParams, openingTemplateName, resolveOpening } from '@qualify/core';
+import {
+  followUpTemplateName,
+  openingExampleParams,
+  openingTemplateName,
+  resolveFollowUps,
+  resolveOpening,
+} from '@qualify/core';
 import { auditLogs, type DbHandle, withTenant } from '@qualify/db';
 import { MetaApiError } from '@qualify/integrations';
-import type { OpeningTemplateState, OpeningTemplateStatus } from '@qualify/shared';
+import type {
+  OpeningTemplateState,
+  OpeningTemplateStatus,
+  PlaybookConfig,
+  PlaybookOpening,
+} from '@qualify/shared';
 import type { WorkspaceContext } from '../auth/workspace.guard';
 import { DB } from '../tokens';
 import { type WhatsAppAccess, WhatsAppAccessService } from '../whatsapp/whatsapp-access.service';
 import { PlaybookService } from './playbook.service';
+
+/** The playbook's business-initiated messages that need an approved Meta template. */
+export type TemplateKind = 'opening' | 'followup';
 
 const STATES: Record<string, OpeningTemplateState> = {
   APPROVED: 'approved',
@@ -27,24 +41,48 @@ const STATES: Record<string, OpeningTemplateState> = {
 
 type Connected = Extract<WhatsAppAccess, { ok: true }>;
 
+/** Where each kind lives in the config, its template name, and how to store an approval. */
+const KINDS: Record<
+  TemplateKind,
+  {
+    read: (config: PlaybookConfig) => PlaybookOpening;
+    name: (message: PlaybookOpening) => string;
+    write: (config: PlaybookConfig, message: PlaybookOpening) => PlaybookConfig;
+  }
+> = {
+  opening: {
+    read: resolveOpening,
+    name: openingTemplateName,
+    write: (config, message) => ({ ...config, opening: message }),
+  },
+  followup: {
+    read: (config) => resolveFollowUps(config).template,
+    name: followUpTemplateName,
+    write: (config, message) => ({
+      ...config,
+      followUps: { ...resolveFollowUps(config), template: message },
+    }),
+  },
+};
+
 /**
- * The approved template behind the opening message (business-initiated chats need one).
- * Its name is derived from the published opening text, so every text gets its own review.
+ * Approved templates behind the opening and follow-up messages (business-initiated chats need
+ * one). Each name is derived from the published text, so every text gets its own review.
  */
 @Injectable()
-export class OpeningTemplateService {
+export class MessageTemplateService {
   constructor(
     @Inject(DB) private readonly handle: DbHandle,
     @Inject(PlaybookService) private readonly playbooks: PlaybookService,
     @Inject(WhatsAppAccessService) private readonly whatsapp: WhatsAppAccessService,
   ) {}
 
-  async status(tenantId: string): Promise<OpeningTemplateStatus> {
-    const { opening } = await this.current(tenantId);
-    const name = opening.templateName ?? openingTemplateName(opening);
+  async status(tenantId: string, kind: TemplateKind): Promise<OpeningTemplateStatus> {
+    const { message } = await this.current(tenantId, kind);
+    const name = message.templateName ?? KINDS[kind].name(message);
     const base = {
       name,
-      language: opening.templateLanguage,
+      language: message.templateLanguage,
       active: false,
       rejectedReason: null,
       message: null,
@@ -52,29 +90,29 @@ export class OpeningTemplateService {
     const access = await this.whatsapp.forTenant(tenantId);
     if (!access.ok) return { ...base, state: 'not_connected', message: access.reason };
 
-    const template = await this.find(access, name, opening.templateLanguage);
+    const template = await this.find(access, name, message.templateLanguage);
     if (!template) return { ...base, state: 'not_submitted' };
     const state = STATES[template.status] ?? 'pending';
     const reason = template.rejected_reason;
     return {
       ...base,
       state,
-      active: opening.templateName === name && state === 'approved',
+      active: message.templateName === name && state === 'approved',
       rejectedReason: state === 'rejected' && reason && reason !== 'NONE' ? reason : null,
     };
   }
 
-  /** Submits the published opening text to Meta for review. Safe to call twice. */
-  async submit(workspace: WorkspaceContext): Promise<OpeningTemplateStatus> {
-    const { config, opening } = await this.current(workspace.tenantId);
-    if (opening.templateName) return this.status(workspace.tenantId);
+  /** Submits the published text to Meta for review. Safe to call twice. */
+  async submit(workspace: WorkspaceContext, kind: TemplateKind): Promise<OpeningTemplateStatus> {
+    const { config, message } = await this.current(workspace.tenantId, kind);
+    if (message.templateName) return this.status(workspace.tenantId, kind);
     const access = await this.requireAccess(workspace.tenantId);
-    const name = openingTemplateName(opening);
+    const name = KINDS[kind].name(message);
 
-    const existing = await this.find(access, name, opening.templateLanguage);
+    const existing = await this.find(access, name, message.templateLanguage);
     if (existing?.status === 'REJECTED') {
       throw new BadRequestException(
-        'Meta rejected this text. Change the opening text, publish, and submit again.',
+        'Meta rejected this text. Change the text, publish, and submit again.',
       );
     }
     if (!existing) {
@@ -82,37 +120,41 @@ export class OpeningTemplateService {
         access.client.createTemplate({
           wabaId: access.wabaId,
           name,
-          language: opening.templateLanguage,
+          language: message.templateLanguage,
           category: 'MARKETING',
-          bodyText: opening.bodyText,
-          bodyExample: openingExampleParams(opening, config.business.name),
-          quickReplies: opening.buttons,
+          bodyText: message.bodyText,
+          bodyExample: openingExampleParams(message, config.business.name),
+          quickReplies: message.buttons,
         }),
       );
-      await this.audit(workspace, 'opening_template.submitted', name);
+      await this.audit(workspace, `${kind}_template.submitted`, name);
     }
-    return this.status(workspace.tenantId);
+    return this.status(workspace.tenantId, kind);
   }
 
-  /** Uses the approved template for openings (publishes a new playbook version). */
-  async activate(workspace: WorkspaceContext): Promise<OpeningTemplateStatus> {
-    const { config, opening } = await this.current(workspace.tenantId);
-    const status = await this.status(workspace.tenantId);
+  /** Uses the approved template (publishes a new playbook version). */
+  async activate(workspace: WorkspaceContext, kind: TemplateKind): Promise<OpeningTemplateStatus> {
+    const { config, message } = await this.current(workspace.tenantId, kind);
+    const status = await this.status(workspace.tenantId, kind);
     if (status.active) return status;
     if (status.state !== 'approved') {
       throw new BadRequestException('The template is not approved yet.');
     }
-    await this.playbooks.publish(workspace, {
-      ...config,
-      opening: { ...opening, templateName: status.name, templateLanguage: status.language },
-    });
-    await this.audit(workspace, 'opening_template.activated', status.name);
-    return this.status(workspace.tenantId);
+    await this.playbooks.publish(
+      workspace,
+      KINDS[kind].write(config, {
+        ...message,
+        templateName: status.name,
+        templateLanguage: status.language,
+      }),
+    );
+    await this.audit(workspace, `${kind}_template.activated`, status.name);
+    return this.status(workspace.tenantId, kind);
   }
 
-  private async current(tenantId: string) {
+  private async current(tenantId: string, kind: TemplateKind) {
     const playbook = await this.playbooks.get(tenantId);
-    return { config: playbook.config, opening: resolveOpening(playbook.config) };
+    return { config: playbook.config, message: KINDS[kind].read(playbook.config) };
   }
 
   private async requireAccess(tenantId: string): Promise<Connected> {

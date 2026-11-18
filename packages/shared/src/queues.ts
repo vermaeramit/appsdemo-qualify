@@ -15,6 +15,20 @@ export const contactJobSchema = z.object({
 });
 export type ContactJob = z.infer<typeof contactJobSchema>;
 
+/** Follow-ups for leads who don't reply, and the final "No reply" check. */
+export const FOLLOW_UP_QUEUE = 'lead-followup';
+
+export const followUpJobSchema = z.object({
+  tenantId: z.string().min(1),
+  leadId: z.uuid(),
+  kind: z.enum(['followup', 'unresponsive']),
+  /** Index of the follow-up step (for "unresponsive": the number of follow-ups sent). */
+  step: z.number().int().min(0),
+  /** Our message it follows up on: if the lead's latest message is a different one, it is stale. */
+  afterMessageId: z.uuid(),
+});
+export type FollowUpJob = z.infer<typeof followUpJobSchema>;
+
 /** Debounced "the AI should answer this lead" jobs. */
 export const RESPOND_QUEUE = 'lead-respond';
 

@@ -36,6 +36,7 @@ import {
   type RespondJob,
 } from '@qualify/shared';
 import type { LeadLock } from '../lock.ts';
+import { type FollowUpScheduler, startFollowUps } from './follow-up.ts';
 import { type AgentMessagingClient, sendWithOptions } from './send.ts';
 import type { Logger } from '../logger.ts';
 
@@ -55,6 +56,8 @@ export interface RespondDeps {
   lock: LeadLock;
   /** Schedules another respond run (used when the lead wrote again while we were thinking). */
   enqueueRespond: (job: RespondJob, delayMs: number) => Promise<void>;
+  /** Follow-ups after a reply that waits for the lead; cancelled once the lead is done. */
+  followUps?: FollowUpScheduler;
   now?: () => Date;
   timeZone?: string;
 }
@@ -222,29 +225,32 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
   if (sent.error) logger.error({ ...log, error: sent.error }, 'Failed to send AI reply');
 
   // 8. Persist the reply and the lead's new state.
-  await withTenant(db, job.tenantId, async (tx) => {
-    await tx.insert(messages).values({
-      tenantId: job.tenantId,
-      leadId: job.leadId,
-      phoneNumberId: latestInbound.phoneNumberId,
-      direction: 'outbound',
-      sender: 'ai',
-      type: sent.type,
-      body: reply,
-      payload: {
-        options,
-        askingField: turn.askingField,
-        model: usage.model,
-        usage,
-        extracted: turn.extracted,
-        rejected: applied.rejected,
-        handoff: turn.handoff,
-        disqualified: turn.disqualified,
-      },
-      waMessageId,
-      status: waMessageId ? 'sent' : 'failed',
-      error: sent.error,
-    });
+  const stored = await withTenant(db, job.tenantId, async (tx) => {
+    const [row] = await tx
+      .insert(messages)
+      .values({
+        tenantId: job.tenantId,
+        leadId: job.leadId,
+        phoneNumberId: latestInbound.phoneNumberId,
+        direction: 'outbound',
+        sender: 'ai',
+        type: sent.type,
+        body: reply,
+        payload: {
+          options,
+          askingField: turn.askingField,
+          model: usage.model,
+          usage,
+          extracted: turn.extracted,
+          rejected: applied.rejected,
+          handoff: turn.handoff,
+          disqualified: turn.disqualified,
+        },
+        waMessageId,
+        status: waMessageId ? 'sent' : 'failed',
+        error: sent.error,
+      })
+      .returning({ id: messages.id, createdAt: messages.createdAt });
     await tx
       .update(leads)
       .set({
@@ -258,7 +264,20 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
         lastMessageAt: now(),
       })
       .where(eq(leads.id, job.leadId));
+    return row!;
   });
+
+  // Still qualifying: follow up if the lead goes quiet. Otherwise the conversation is done.
+  if (waMessageId && status === 'engaged' && !applied.aiPaused) {
+    await startFollowUps(deps.followUps, {
+      tenantId: job.tenantId,
+      leadId: job.leadId,
+      config: playbook.config,
+      message: stored,
+    });
+  } else if (status !== 'engaged' || applied.aiPaused) {
+    await deps.followUps?.cancel(job.leadId);
+  }
 
   logger.info(
     {

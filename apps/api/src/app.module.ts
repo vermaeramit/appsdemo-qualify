@@ -11,7 +11,7 @@ import { HealthController } from './health/health.controller';
 import { LeadIntakeService } from './leads/lead-intake.service';
 import { LeadsController } from './leads/leads.controller';
 import { MeController } from './me/me.controller';
-import { OpeningTemplateService } from './playbook/opening-template.service';
+import { MessageTemplateService } from './playbook/message-template.service';
 import { PlaybookController } from './playbook/playbook.controller';
 import { PlaybookService } from './playbook/playbook.service';
 import { QueueModule } from './queue/queue.module';
@@ -74,7 +74,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
     LeadIntakeService,
     PlaybookService,
     WhatsAppAccessService,
-    OpeningTemplateService,
+    MessageTemplateService,
   ],
 })
 export class AppModule {}

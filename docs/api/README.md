@@ -86,6 +86,21 @@ Example:
   "options": ["3 star", "4 star", "5 star"] }
 ```
 
+### Follow-ups
+
+```json
+"followUps": {
+  "enabled": true,
+  "steps": [{ "afterHours": 3 }, { "afterHours": 24 }],
+  "unresponsiveAfterHours": 48,
+  "quietHours": { "start": 21, "end": 9 },
+  "timezone": "Asia/Kolkata",
+  "template": { "templateName": null, "templateLanguage": "en", "bodyText": "Hi {{1}}, just checking in…", "bodyParams": ["lead.firstName"], "buttons": ["Yes, still planning", "Not now"] }
+}
+```
+
+Each step counts hours after the previous message of ours that the lead didn't answer. Inside the 24-hour window the AI writes the reminder; outside it the approved follow-up template is sent (submit it in AI agent → Follow-ups).
+
 ### Opening
 
 ```json

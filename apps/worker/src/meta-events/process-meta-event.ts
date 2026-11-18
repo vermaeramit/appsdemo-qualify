@@ -18,6 +18,7 @@ import {
   type WaValue,
 } from '@qualify/integrations';
 import type { RespondJob } from '@qualify/shared';
+import type { FollowUpScheduler } from '../agent/follow-up.ts';
 import type { Logger } from '../logger.ts';
 
 export interface ProcessorDeps {
@@ -28,6 +29,8 @@ export interface ProcessorDeps {
   isProduction: boolean;
   /** Debounced: several quick messages from a lead produce one AI reply. */
   enqueueRespond: (job: RespondJob) => Promise<void>;
+  /** A reply from the lead cancels pending follow-ups. */
+  followUps?: FollowUpScheduler;
 }
 
 const STATUS_RANK: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3 };
@@ -154,6 +157,7 @@ async function handleInboundMessage(
     );
     return;
   }
+  await deps.followUps?.cancel(stored.leadId);
   await deps.enqueueRespond({ tenantId, leadId: stored.leadId });
 }
 

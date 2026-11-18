@@ -62,6 +62,16 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await expect(page.getByText('For a lead named Rahul Sharma.')).toBeVisible();
   await expect(page.getByText('Not connected')).toBeVisible();
 
+  // Follow-ups are configurable: change the first reminder and publish.
+  await page.getByRole('tab', { name: 'Follow-ups' }).click();
+  await expect(page.getByText('Follow-up template')).toBeVisible();
+  await page.getByLabel('Hours before follow-up 1').fill('2');
+  await page.getByRole('button', { name: 'Publish v3' }).click();
+  await expect(page.getByText('Published version 3')).toBeVisible();
+  await page.reload();
+  await page.getByRole('tab', { name: 'Follow-ups' }).click();
+  await expect(page.getByLabel('Hours before follow-up 1')).toHaveValue('2');
+
   // Add a lead like a lead form would; it opens in Conversations.
   await page.getByRole('link', { name: 'Conversations' }).click();
   await page.getByRole('button', { name: 'Add lead' }).click();

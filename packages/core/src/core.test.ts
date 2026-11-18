@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   aiCostUsd,
   applyAgentTurn,
+  defaultFollowUps,
+  followUpTemplateName,
+  outsideQuietHours,
+  planNextFollowUp,
   chooseReplyOptions,
   openingExampleParams,
   openingTemplateName,
@@ -33,6 +37,70 @@ describe('aiCostUsd', () => {
     expect(aiCostUsd({ model: 'gpt-5.4-mini', ...usage })).toBeCloseTo(0.93, 6);
     expect(aiCostUsd({ model: 'gpt-5.4-mini-2026-03-05', ...usage })).toBeCloseTo(0.93, 6);
     expect(aiCostUsd({ model: 'unknown-model', ...usage })).toBeNull();
+  });
+});
+
+describe('follow-ups', () => {
+  const settings = defaultFollowUps();
+  const ist = (iso: string) => new Date(`${iso}+05:30`);
+
+  it('moves a follow-up due in quiet hours to the end of them', () => {
+    const quiet = { start: 21, end: 9 };
+    expect(outsideQuietHours(ist('2026-11-18T15:00:00'), quiet, 'Asia/Kolkata')).toEqual(
+      ist('2026-11-18T15:00:00'),
+    );
+    expect(outsideQuietHours(ist('2026-11-18T22:30:00'), quiet, 'Asia/Kolkata')).toEqual(
+      ist('2026-11-19T09:00:00'),
+    );
+    expect(outsideQuietHours(ist('2026-11-19T02:15:00'), quiet, 'Asia/Kolkata')).toEqual(
+      ist('2026-11-19T09:00:00'),
+    );
+    // Same-day quiet window (13 → 14) and no quiet hours at all.
+    expect(
+      outsideQuietHours(ist('2026-11-18T13:20:00'), { start: 13, end: 14 }, 'Asia/Kolkata'),
+    ).toEqual(ist('2026-11-18T14:00:00'));
+    expect(
+      outsideQuietHours(ist('2026-11-18T23:00:00'), { start: 0, end: 0 }, 'Asia/Kolkata'),
+    ).toEqual(ist('2026-11-18T23:00:00'));
+  });
+
+  it('plans each follow-up, then the "No reply" check, then nothing when disabled', () => {
+    const from = ist('2026-11-18T10:00:00');
+    expect(planNextFollowUp(settings, 0, from)).toEqual({
+      kind: 'followup',
+      step: 0,
+      dueAt: ist('2026-11-18T13:00:00'),
+    });
+    // 24 h after 19:30 is 19:30 next day: outside quiet hours, unchanged.
+    expect(planNextFollowUp(settings, 1, ist('2026-11-18T19:30:00'))?.dueAt).toEqual(
+      ist('2026-11-19T19:30:00'),
+    );
+    expect(planNextFollowUp(settings, 2, from)).toEqual({
+      kind: 'unresponsive',
+      step: 2,
+      dueAt: ist('2026-11-20T10:00:00'),
+    });
+    expect(planNextFollowUp({ ...settings, enabled: false }, 0, from)).toBeNull();
+  });
+
+  it('names follow-up templates after their text', () => {
+    expect(followUpTemplateName(settings.template)).toMatch(/^qualify_followup_[0-9a-f]{8}$/);
+    expect(
+      followUpTemplateName({ ...settings.template, bodyText: 'Different text {{1}}' }),
+    ).not.toBe(followUpTemplateName(settings.template));
+  });
+
+  it('asks for a short nudge instead of an answer when the lead went quiet', () => {
+    const note = buildStateNote({
+      today: '2026-11-18',
+      fields: {},
+      definitions: fields,
+      status: 'engaged',
+      leadName: 'Rahul',
+      followUp: { step: 0, hoursSilent: 3.2 },
+    });
+    expect(note).toContain('has not replied for about 3 hours (follow-up 1)');
+    expect(note).not.toContain("reply to the lead's latest message");
   });
 });
 

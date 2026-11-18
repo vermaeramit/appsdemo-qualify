@@ -1,4 +1,5 @@
 import type { PlaybookConfig } from '@qualify/shared';
+import { defaultFollowUps } from '../follow-ups.ts';
 
 export const TRAVEL_TEMPLATE_KEY = 'travel-packages';
 
@@ -163,6 +164,17 @@ Prices are "starting from", per person, on twin sharing, excluding flights unles
         "Hi {{1}}! 👋 Thanks for your enquiry with {{2}}. I'm Riya, your travel advisor. Can I ask you 2–3 quick questions to share the best options?",
       bodyParams: ['lead.firstName', 'business.name'],
       buttons: ['Yes, sure', 'Not now'],
+    },
+    followUps: {
+      ...defaultFollowUps(),
+      template: {
+        templateName: null,
+        templateLanguage: 'en',
+        bodyText:
+          "Hi {{1}}, just checking in 😊 Are you still planning your trip? Reply here and I'll share the best options for you.",
+        bodyParams: ['lead.firstName'],
+        buttons: ['Yes, still planning', 'Not now'],
+      },
     },
   };
 }

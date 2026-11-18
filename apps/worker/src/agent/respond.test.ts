@@ -6,6 +6,7 @@ import type { AgentTurn, RespondJob } from '@qualify/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
 import { createMemoryLock } from '../lock.ts';
+import type { FollowUpScheduler } from './follow-up.ts';
 import { ALLOWED, PHONE_NUMBER_ID, startTestDb, TENANT, type TestDb } from '../test/test-db.ts';
 import {
   type AgentMessagingClient,
@@ -25,6 +26,7 @@ let client: {
   markRead: ReturnType<typeof vi.fn>;
 };
 let enqueueRespond: ReturnType<typeof vi.fn<(job: RespondJob, delayMs: number) => Promise<void>>>;
+let followUps: { schedule: ReturnType<typeof vi.fn>; cancel: ReturnType<typeof vi.fn> };
 const lock = createMemoryLock();
 
 function turn(overrides: Partial<AgentTurn> = {}): AgentTurn {
@@ -71,10 +73,18 @@ function deps(overrides: Partial<RespondDeps> = {}): RespondDeps {
     reasoningEffort: 'low',
     masterKey,
     createClient: () => client as unknown as AgentMessagingClient,
-    allowlist: [ALLOWED, '919800000002', '919800000003', '919800000004', '919800000005'],
+    allowlist: [
+      ALLOWED,
+      '919800000002',
+      '919800000003',
+      '919800000004',
+      '919800000005',
+      '919800000008',
+    ],
     isProduction: false,
     lock,
     enqueueRespond,
+    followUps: followUps as unknown as FollowUpScheduler,
     now: () => new Date(),
     ...overrides,
   };
@@ -141,6 +151,7 @@ beforeEach(() => {
   onGenerate = undefined;
   nextTurn = turn();
   enqueueRespond = vi.fn(async () => undefined);
+  followUps = { schedule: vi.fn(async () => undefined), cancel: vi.fn(async () => undefined) };
   client = {
     sendText: vi.fn(async () => ({ messageId: `wamid.out.${Math.random()}` })),
     sendButtons: vi.fn(async () => ({ messageId: `wamid.out.${Math.random()}` })),
@@ -224,6 +235,22 @@ describe('processRespond', () => {
     const lead = await getLead(leadId);
     expect(lead.status).toBe('qualified');
     expect(lead.qualifiedAt).not.toBeNull();
+    // Qualified: no follow-ups.
+    expect(followUps.cancel).toHaveBeenCalledWith(leadId);
+    expect(followUps.schedule).not.toHaveBeenCalled();
+  });
+
+  it('follows up after a reply that waits for the lead', async () => {
+    const id = await createLead('919800000008', 'Hi, Bali trip');
+    expect(await processRespond({ tenantId: TENANT, leadId: id }, deps())).toBe('replied');
+    const [reply] = await getOutbound(id);
+    expect(followUps.schedule).toHaveBeenCalledOnce();
+    expect(followUps.schedule.mock.calls[0]![0]).toMatchObject({
+      leadId: id,
+      kind: 'followup',
+      step: 0,
+      afterMessageId: reply!.id,
+    });
   });
 
   it('hands off to a human and then stays silent', async () => {

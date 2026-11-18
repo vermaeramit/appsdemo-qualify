@@ -29,7 +29,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiSend, errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { openingTemplateQueryOptions, playbookQueryOptions } from './queries';
+import { playbookQueryOptions, templateQueryOptions } from './queries';
+
+export type TemplateKind = 'opening' | 'followup';
+
+const LABEL: Record<TemplateKind, string> = { opening: 'opening', followup: 'follow-up' };
 
 const STATE_VIEW: Record<
   OpeningTemplateStatus['state'],
@@ -80,16 +84,25 @@ const STATE_VIEW: Record<
 };
 
 /** Meta review state of the opening template, with submit / activate actions. */
-export function OpeningTemplateCard({ readOnly, dirty }: { readOnly: boolean; dirty: boolean }) {
+export function TemplateStatusCard({
+  kind,
+  readOnly,
+  dirty,
+}: {
+  kind: TemplateKind;
+  readOnly: boolean;
+  dirty: boolean;
+}) {
+  const options = templateQueryOptions(kind);
   const queryClient = useQueryClient();
-  const status = useQuery(openingTemplateQueryOptions);
+  const status = useQuery(options);
 
   const onStatus = (data: OpeningTemplateStatus) =>
-    queryClient.setQueryData(openingTemplateQueryOptions.queryKey, data);
+    queryClient.setQueryData(options.queryKey, data);
 
   const submit = useMutation({
     mutationFn: () =>
-      apiSend('POST', '/api/playbook/opening-template', undefined, openingTemplateStatusSchema),
+      apiSend('POST', `/api/playbook/templates/${kind}`, undefined, openingTemplateStatusSchema),
     onSuccess: (data) => {
       onStatus(data);
       toast.success('Submitted to Meta for review');
@@ -101,13 +114,13 @@ export function OpeningTemplateCard({ readOnly, dirty }: { readOnly: boolean; di
     mutationFn: () =>
       apiSend(
         'POST',
-        '/api/playbook/opening-template/activate',
+        `/api/playbook/templates/${kind}/activate`,
         undefined,
         openingTemplateStatusSchema,
       ),
     onSuccess: async (data) => {
       onStatus(data);
-      toast.success('The approved template is now used for openings');
+      toast.success(`The approved template is now used for ${LABEL[kind]} messages`);
       await queryClient.invalidateQueries({ queryKey: playbookQueryOptions.queryKey });
     },
     onError: (error) => toast.error(errorMessage(error, 'Could not activate the template.')),
@@ -165,9 +178,9 @@ export function OpeningTemplateCard({ readOnly, dirty }: { readOnly: boolean; di
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Submit the opening for review?</AlertDialogTitle>
+                    <AlertDialogTitle>Submit the {LABEL[kind]} text for review?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      The published opening text and buttons are sent to Meta as a Marketing
+                      The published {LABEL[kind]} text and buttons are sent to Meta as a Marketing
                       template on your WhatsApp account. Once approved, it is used for leads outside
                       the 24-hour window.
                     </AlertDialogDescription>
@@ -218,7 +231,7 @@ export function OpeningTemplateCard({ readOnly, dirty }: { readOnly: boolean; di
     <Card>
       <CardHeader>
         <CardTitle className="text-sm">WhatsApp template</CardTitle>
-        <CardDescription>Meta’s approval for the opening text.</CardDescription>
+        <CardDescription>Meta’s approval for the {LABEL[kind]} text.</CardDescription>
       </CardHeader>
       <CardContent>{body}</CardContent>
     </Card>

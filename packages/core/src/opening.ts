@@ -82,8 +82,16 @@ function fnv1a(text: string): string {
 export function openingTemplateName(
   opening: Pick<PlaybookOpening, 'bodyText' | 'buttons' | 'templateLanguage'>,
 ): string {
-  const content = [opening.templateLanguage, opening.bodyText, ...opening.buttons].join('\u0000');
-  return `qualify_opening_${fnv1a(content)}`;
+  return messageTemplateName('qualify_opening', opening);
+}
+
+/** "<prefix>_<hash of language, text and buttons>": one Meta template per distinct text. */
+export function messageTemplateName(
+  prefix: string,
+  message: Pick<PlaybookOpening, 'bodyText' | 'buttons' | 'templateLanguage'>,
+): string {
+  const content = [message.templateLanguage, message.bodyText, ...message.buttons].join('\u0000');
+  return `${prefix}_${fnv1a(content)}`;
 }
 
 /** Example values Meta requires for each {{n}} when a template is submitted for review. */

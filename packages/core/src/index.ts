@@ -1,5 +1,6 @@
 export * from './ai-pricing.ts';
 export * from './fields.ts';
+export * from './follow-ups.ts';
 export * from './history.ts';
 export * from './interactive.ts';
 export * from './opening.ts';

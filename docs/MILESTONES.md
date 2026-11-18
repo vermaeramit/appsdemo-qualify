@@ -113,11 +113,11 @@
 - **API docs** page with generated Postman collection (D-054). Opening template `qualify_opening_f65bb9d1` approved by Meta and active in "Appsdemo" (2026-11-18). Fixes: repeat enquiries use the current playbook (D-052), `allowOther` answers are stored (D-053).
 - **Dashboard with real data** (D-055): period filter, KPIs, leads per hour/day, pipeline, sources, recent leads, WhatsApp health. Sample data removed.
 - **Costs page** (D-058): WhatsApp charges from Meta's pricing analytics, AI cost from token usage, paid messages per lead.
+- **Follow-ups** (D-059): configurable steps, quiet hours, AI nudge inside 24 h, follow-up template outside it, "No reply" at the end. The follow-up template still needs Meta approval in "Appsdemo".
 
 **Remaining:**
 - Page connect + `leadgen` webhook + lead fetch + field mapping (tested with the Lead Ads Testing Tool)
 - CTWA referral capture + routing rules
-- Follow-up sequence for leads who don't reply (BullMQ delayed jobs, templates outside 24 h) → `unresponsive` (the opening template is approved and live, 2026-11-18)
 - Hybrid scoring engine, final score, reason, summary, status machine
 - Undeliverable detection
 

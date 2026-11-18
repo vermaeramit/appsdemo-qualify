@@ -1,11 +1,16 @@
-import { openingTemplateName, resolveOpening, travelPlaybookTemplate } from '@qualify/core';
+import {
+  followUpTemplateName,
+  openingTemplateName,
+  resolveOpening,
+  travelPlaybookTemplate,
+} from '@qualify/core';
 import type { DbHandle } from '@qualify/db';
 import type { WhatsAppClient } from '@qualify/integrations';
 import type { PlaybookConfig, PlaybookResponse } from '@qualify/shared';
 import { describe, expect, it, vi } from 'vitest';
 import type { WorkspaceContext } from '../auth/workspace.guard';
 import type { WhatsAppAccess, WhatsAppAccessService } from '../whatsapp/whatsapp-access.service';
-import { OpeningTemplateService } from './opening-template.service';
+import { MessageTemplateService } from './message-template.service';
 import type { PlaybookService } from './playbook.service';
 
 const workspace: WorkspaceContext = { tenantId: 't1', userId: 'u1', role: 'owner' };
@@ -54,7 +59,7 @@ function setup(options: { templates?: Template[]; connected?: boolean } = {}) {
     db: { transaction: (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) },
   } as unknown as DbHandle;
 
-  const service = new OpeningTemplateService(
+  const service = new MessageTemplateService(
     handle,
     playbooks as unknown as PlaybookService,
     whatsapp as unknown as WhatsAppAccessService,
@@ -62,23 +67,23 @@ function setup(options: { templates?: Template[]; connected?: boolean } = {}) {
   return { service, client, playbooks, templates, getConfig: () => config };
 }
 
-describe('OpeningTemplateService', () => {
+describe('MessageTemplateService', () => {
   const expectedName = openingTemplateName(
     resolveOpening(travelPlaybookTemplate('Sunrise Holidays')),
   );
 
   it('reports not connected without a WhatsApp number', async () => {
     const { service } = setup({ connected: false });
-    const status = await service.status('t1');
+    const status = await service.status('t1', 'opening');
     expect(status.state).toBe('not_connected');
     expect(status.message).toContain('No WhatsApp number');
   });
 
   it('submits the published text once, under a name derived from it', async () => {
     const { service, client } = setup();
-    expect((await service.status('t1')).state).toBe('not_submitted');
+    expect((await service.status('t1', 'opening')).state).toBe('not_submitted');
 
-    const status = await service.submit(workspace);
+    const status = await service.submit(workspace, 'opening');
     expect(status).toMatchObject({ name: expectedName, state: 'pending', active: false });
     expect(client.createTemplate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -90,7 +95,7 @@ describe('OpeningTemplateService', () => {
     );
 
     // Submitting again doesn't create a duplicate.
-    await service.submit(workspace);
+    await service.submit(workspace, 'opening');
     expect(client.createTemplate).toHaveBeenCalledTimes(1);
   });
 
@@ -100,26 +105,29 @@ describe('OpeningTemplateService', () => {
         { name: expectedName, status: 'REJECTED', language: 'en', rejected_reason: 'PROMOTIONAL' },
       ],
     });
-    expect(await service.status('t1')).toMatchObject({
+    expect(await service.status('t1', 'opening')).toMatchObject({
       state: 'rejected',
       rejectedReason: 'PROMOTIONAL',
     });
-    await expect(service.submit(workspace)).rejects.toThrow(/Change the opening text/);
+    await expect(service.submit(workspace, 'opening')).rejects.toThrow(/Meta rejected this text/);
   });
 
   it('activates an approved template by publishing it in the playbook', async () => {
     const { service, playbooks, getConfig } = setup({
       templates: [{ name: expectedName, status: 'APPROVED', language: 'en' }],
     });
-    expect(await service.status('t1')).toMatchObject({ state: 'approved', active: false });
+    expect(await service.status('t1', 'opening')).toMatchObject({
+      state: 'approved',
+      active: false,
+    });
 
-    const status = await service.activate(workspace);
+    const status = await service.activate(workspace, 'opening');
     expect(status.active).toBe(true);
     expect(getConfig().opening?.templateName).toBe(expectedName);
     expect(playbooks.publish).toHaveBeenCalledTimes(1);
 
     // Already active: nothing to do.
-    await service.activate(workspace);
+    await service.activate(workspace, 'opening');
     expect(playbooks.publish).toHaveBeenCalledTimes(1);
   });
 
@@ -127,6 +135,24 @@ describe('OpeningTemplateService', () => {
     const { service } = setup({
       templates: [{ name: expectedName, status: 'PENDING', language: 'en' }],
     });
-    await expect(service.activate(workspace)).rejects.toThrow(/not approved/);
+    await expect(service.activate(workspace, 'opening')).rejects.toThrow(/not approved/);
+  });
+
+  it('handles the follow-up template the same way, stored under followUps', async () => {
+    const followName = followUpTemplateName(
+      travelPlaybookTemplate('Sunrise Holidays').followUps!.template,
+    );
+    const { service, client, getConfig } = setup({
+      templates: [{ name: followName, status: 'APPROVED', language: 'en' }],
+    });
+    expect(await service.status('t1', 'followup')).toMatchObject({
+      name: followName,
+      state: 'approved',
+      active: false,
+    });
+    await service.activate(workspace, 'followup');
+    expect(getConfig().followUps?.template.templateName).toBe(followName);
+    expect(getConfig().opening?.templateName ?? null).toBeNull();
+    expect(client.createTemplate).not.toHaveBeenCalled();
   });
 });

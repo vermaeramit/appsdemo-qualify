@@ -12,13 +12,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ApiError, apiSend, errorMessage } from '@/lib/api';
 import { BehaviourEditor, KnowledgeEditor } from './behaviour-editor';
 import { type EditorConfig, editorResolver, tabWithError, toEditorConfig } from './form-helpers';
+import { FollowUpsEditor } from './follow-ups-editor';
 import { OpeningEditor } from './opening-editor';
-import { openingTemplateQueryOptions, playbookQueryOptions } from './queries';
+import { playbookQueryOptions } from './queries';
 import { QuestionsEditor } from './questions-editor';
 
 const TABS = [
   { value: 'questions', label: 'Questions' },
   { value: 'opening', label: 'Opening' },
+  { value: 'followups', label: 'Follow-ups' },
   { value: 'behaviour', label: 'Behaviour' },
   { value: 'knowledge', label: 'Knowledge base' },
 ] as const;
@@ -61,7 +63,7 @@ export function PlaybookEditor({
       apiSend('PUT', '/api/playbook', config, playbookResponseSchema),
     onSuccess: async (published) => {
       queryClient.setQueryData(playbookQueryOptions.queryKey, published);
-      await queryClient.invalidateQueries({ queryKey: openingTemplateQueryOptions.queryKey });
+      await queryClient.invalidateQueries({ queryKey: ['playbook', 'template'] });
       toast.success(`Published version ${published.versionNo}`, {
         description: 'New conversations use it. Running ones keep their version.',
       });
@@ -90,6 +92,7 @@ export function PlaybookEditor({
   const tabHasError: Record<string, boolean> = {
     questions: Boolean(errors.fields),
     opening: Boolean(errors.opening),
+    followups: Boolean(errors.followUps),
     behaviour: Boolean(
       errors.persona ??
       errors.business ??
@@ -158,6 +161,9 @@ export function PlaybookEditor({
           </TabsContent>
           <TabsContent value="opening" className="mt-4">
             <OpeningEditor readOnly={readOnly} dirty={isDirty} />
+          </TabsContent>
+          <TabsContent value="followups" className="mt-4">
+            <FollowUpsEditor readOnly={readOnly} dirty={isDirty} />
           </TabsContent>
           <TabsContent value="behaviour" className="mt-4">
             <BehaviourEditor readOnly={readOnly} />

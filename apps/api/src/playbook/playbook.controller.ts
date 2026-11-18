@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Inject, Post, Put, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Post,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
 import {
   type OpeningTemplateStatus,
   playbookConfigSchema,
@@ -7,8 +17,13 @@ import {
 import { requireManager } from '../auth/roles';
 import { CurrentWorkspace, type WorkspaceContext, WorkspaceGuard } from '../auth/workspace.guard';
 import { parseBody } from '../common/zod-body';
-import { OpeningTemplateService } from './opening-template.service';
+import { MessageTemplateService, type TemplateKind } from './message-template.service';
 import { PlaybookService } from './playbook.service';
+
+function parseKind(value: string): TemplateKind {
+  if (value === 'opening' || value === 'followup') return value;
+  throw new BadRequestException('Unknown template kind');
+}
 
 /** Agent configuration in the dashboard (AI agent page). Everyone reads; managers publish. */
 @Controller('playbook')
@@ -16,7 +31,7 @@ import { PlaybookService } from './playbook.service';
 export class PlaybookController {
   constructor(
     @Inject(PlaybookService) private readonly playbooks: PlaybookService,
-    @Inject(OpeningTemplateService) private readonly templates: OpeningTemplateService,
+    @Inject(MessageTemplateService) private readonly templates: MessageTemplateService,
   ) {}
 
   @Get()
@@ -33,23 +48,31 @@ export class PlaybookController {
     return this.playbooks.publish(workspace, parseBody(playbookConfigSchema, body));
   }
 
-  @Get('opening-template')
-  templateStatus(@CurrentWorkspace() workspace: WorkspaceContext): Promise<OpeningTemplateStatus> {
-    return this.templates.status(workspace.tenantId);
-  }
-
-  /** Submits the published opening text to Meta for review (an outward action). */
-  @Post('opening-template')
-  submitTemplate(@CurrentWorkspace() workspace: WorkspaceContext): Promise<OpeningTemplateStatus> {
-    requireManager(workspace);
-    return this.templates.submit(workspace);
-  }
-
-  @Post('opening-template/activate')
-  activateTemplate(
+  /** Meta review state of the opening or follow-up template. */
+  @Get('templates/:kind')
+  templateStatus(
     @CurrentWorkspace() workspace: WorkspaceContext,
+    @Param('kind') kind: string,
+  ): Promise<OpeningTemplateStatus> {
+    return this.templates.status(workspace.tenantId, parseKind(kind));
+  }
+
+  /** Submits the published text to Meta for review (an outward action). */
+  @Post('templates/:kind')
+  submitTemplate(
+    @CurrentWorkspace() workspace: WorkspaceContext,
+    @Param('kind') kind: string,
   ): Promise<OpeningTemplateStatus> {
     requireManager(workspace);
-    return this.templates.activate(workspace);
+    return this.templates.submit(workspace, parseKind(kind));
+  }
+
+  @Post('templates/:kind/activate')
+  activateTemplate(
+    @CurrentWorkspace() workspace: WorkspaceContext,
+    @Param('kind') kind: string,
+  ): Promise<OpeningTemplateStatus> {
+    requireManager(workspace);
+    return this.templates.activate(workspace, parseKind(kind));
   }
 }

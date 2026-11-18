@@ -124,6 +124,8 @@ export interface StateNoteInput {
   leadName: string | null;
   /** Detected in code from the lead's latest message (see chooseReplyLanguage). */
   replyLanguage?: AgentLanguage;
+  /** Set when the lead stopped replying: write a short follow-up instead of an answer. */
+  followUp?: { step: number; hoursSilent: number };
 }
 
 /** Per-turn state, appended after the conversation (keeps the system prompt cacheable). */
@@ -142,5 +144,9 @@ Missing required fields (ask in this order): ${complete ? 'none' : missing.join(
 Qualification complete: ${complete ? 'YES, send the closing message (or, if already sent, only answer questions)' : 'no'}
 Lead status: ${input.status}${input.replyLanguage ? `\nReply language: ${LANGUAGE_NAMES[input.replyLanguage]}. Write the whole reply and the quick replies in this language.` : ''}
 </state>
-Write your next WhatsApp reply to the lead's latest message(s).`;
+${
+  input.followUp
+    ? `The lead has not replied for about ${Math.max(1, Math.round(input.followUp.hoursSilent))} hours (follow-up ${input.followUp.step + 1}). Write ONE short, friendly follow-up (1–2 lines): gently check in and ask the pending question again in different words. Do not repeat your previous message, do not extract new fields, and do not close or hand off the conversation.`
+    : "Write your next WhatsApp reply to the lead's latest message(s)."
+}`;
 }

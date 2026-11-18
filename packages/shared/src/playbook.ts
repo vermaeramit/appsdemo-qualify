@@ -64,6 +64,43 @@ export const playbookOpeningSchema = z.object({
 });
 export type PlaybookOpening = z.infer<typeof playbookOpeningSchema>;
 
+/** Most follow-ups a playbook may send to a lead who doesn't reply. */
+export const MAX_FOLLOW_UPS = 5;
+
+/**
+ * Follow-ups for leads who stop replying (after the opening or mid-conversation). Inside the
+ * 24 h window the AI writes a short nudge; outside it the approved follow-up template is sent.
+ */
+export const playbookFollowUpsSchema = z
+  .object({
+    enabled: z.boolean(),
+    /** Each follow-up, in order: hours after our last unanswered message. */
+    steps: z.array(z.object({ afterHours: z.number().min(0.5).max(168) })).max(MAX_FOLLOW_UPS),
+    /** The lead becomes "No reply" this many hours after the last follow-up. */
+    unresponsiveAfterHours: z.number().min(1).max(336),
+    /** No follow-ups between these local hours (start → end, e.g. 21 → 9). Equal = none. */
+    quietHours: z.object({
+      start: z.number().int().min(0).max(23),
+      end: z.number().int().min(0).max(23),
+    }),
+    /** IANA time zone for quiet hours, e.g. "Asia/Kolkata". */
+    timezone: z.string().min(1).max(64),
+    /** Approved template for follow-ups outside the 24 h window (same shape as the opening). */
+    template: playbookOpeningSchema,
+  })
+  .refine(
+    (value) => {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: value.timezone });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Unknown time zone', path: ['timezone'] },
+  );
+export type PlaybookFollowUps = z.infer<typeof playbookFollowUpsSchema>;
+
 /** Hybrid playbook (D-007): structured fields + free-text rules + knowledge base. */
 export const playbookConfigSchema = z.object({
   persona: z.object({
@@ -93,6 +130,8 @@ export const playbookConfigSchema = z.object({
   }),
   /** Optional for playbooks created before M4; a default opening is used when missing. */
   opening: playbookOpeningSchema.optional(),
+  /** Optional for playbooks created before follow-ups; defaults apply when missing. */
+  followUps: playbookFollowUpsSchema.optional(),
 });
 export type PlaybookConfig = z.infer<typeof playbookConfigSchema>;
 

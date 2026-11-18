@@ -14,6 +14,7 @@ import {
 import { decryptSecret, isAllowedRecipient, toWaId } from '@qualify/integrations';
 import type { ContactJob } from '@qualify/shared';
 import type { LeadLock } from '../lock.ts';
+import { type FollowUpScheduler, startFollowUps } from './follow-up.ts';
 import type { Logger } from '../logger.ts';
 import {
   type AgentMessagingClient,
@@ -30,6 +31,8 @@ export interface ContactDeps {
   allowlist: readonly string[];
   isProduction: boolean;
   lock: LeadLock;
+  /** Starts the follow-up sequence after a delivered opening. */
+  followUps?: FollowUpScheduler;
   now?: () => Date;
 }
 
@@ -182,25 +185,29 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
     outcome = 'no_template';
   }
 
-  await withTenant(db, job.tenantId, async (tx) => {
-    await tx.insert(messages).values({
-      tenantId: job.tenantId,
-      leadId: job.leadId,
-      phoneNumberId: number.phoneNumberId,
-      direction: 'outbound',
-      sender: 'system',
-      type: sent.type,
-      body: rendered.text,
-      payload: {
-        kind: 'opening',
-        mode: outcome === 'skipped_not_allowed' ? 'blocked' : windowOpen ? 'freeform' : 'template',
-        templateName: windowOpen ? null : opening.templateName,
-        buttons: opening.buttons,
-      },
-      waMessageId: sent.waMessageId,
-      status: sent.waMessageId ? 'sent' : 'failed',
-      error: sent.error,
-    });
+  const stored = await withTenant(db, job.tenantId, async (tx) => {
+    const [row] = await tx
+      .insert(messages)
+      .values({
+        tenantId: job.tenantId,
+        leadId: job.leadId,
+        phoneNumberId: number.phoneNumberId,
+        direction: 'outbound',
+        sender: 'system',
+        type: sent.type,
+        body: rendered.text,
+        payload: {
+          kind: 'opening',
+          mode:
+            outcome === 'skipped_not_allowed' ? 'blocked' : windowOpen ? 'freeform' : 'template',
+          templateName: windowOpen ? null : opening.templateName,
+          buttons: opening.buttons,
+        },
+        waMessageId: sent.waMessageId,
+        status: sent.waMessageId ? 'sent' : 'failed',
+        error: sent.error,
+      })
+      .returning({ id: messages.id, createdAt: messages.createdAt });
     await tx
       .update(leads)
       .set({
@@ -209,8 +216,17 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
         lastMessageAt: now(),
       })
       .where(eq(leads.id, job.leadId));
+    return row!;
   });
 
+  if (sent.waMessageId) {
+    await startFollowUps(deps.followUps, {
+      tenantId: job.tenantId,
+      leadId: job.leadId,
+      config: playbook.config,
+      message: stored,
+    });
+  }
   if (sent.error) logger.warn({ ...log, outcome, error: sent.error }, 'Opening not delivered');
   else logger.info({ ...log, outcome }, 'Opening sent');
   return outcome;

@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { type EditorConfig, friendlyError, placeholderCount } from './form-helpers';
-import { OpeningTemplateCard } from './opening-template-card';
+import { type TemplateKind, TemplateStatusCard } from './template-status-card';
 import { WhatsAppBubble } from './whatsapp-preview';
 
 const LEAD_SOURCES = [
@@ -60,36 +60,56 @@ function templateWarnings(text: string): string[] {
   return warnings;
 }
 
+/** Where a template-backed message lives in the editor form. */
+type MessageBase = 'opening' | 'followUps.template';
+
+interface TemplateMessageEditorProps {
+  base: MessageBase;
+  kind: TemplateKind;
+  title: string;
+  description: string;
+  readOnly: boolean;
+  dirty: boolean;
+}
+
 /**
- * The first message to a lead from a form or the API. Outside WhatsApp's 24-hour window it
+ * A business-initiated message (opening or follow-up). Outside WhatsApp's 24-hour window it
  * must be an approved template, so an approved text is locked until you choose to change it.
  */
-export function OpeningEditor({ readOnly, dirty }: { readOnly: boolean; dirty: boolean }) {
+export function TemplateMessageEditor({
+  base,
+  kind,
+  title,
+  description,
+  readOnly,
+  dirty,
+}: TemplateMessageEditorProps) {
   const { control, register, setValue, getValues, formState } = useFormContext<EditorConfig>();
-  const opening = useWatch({ control, name: 'opening' });
+  const message = useWatch({ control, name: base });
   const fields = useWatch({ control, name: 'fields' });
   const businessName = useWatch({ control, name: 'business.name' });
-  const errors = formState.errors.opening;
+  const errors =
+    base === 'opening' ? formState.errors.opening : formState.errors.followUps?.template;
   const textRef = useRef<HTMLTextAreaElement | null>(null);
-  const locked = opening.templateName !== null;
-  const count = placeholderCount(opening.bodyText);
-  const bodyField = register('opening.bodyText');
+  const locked = message.templateName !== null;
+  const count = placeholderCount(message.bodyText);
+  const bodyField = register(`${base}.bodyText`);
 
   const setParam = (index: number, spec: string) => {
-    const params = [...getValues('opening.bodyParams')];
+    const params = [...getValues(`${base}.bodyParams`)];
     while (params.length <= index) params.push('lead.firstName');
     params[index] = spec;
-    setValue('opening.bodyParams', params, { shouldDirty: true });
+    setValue(`${base}.bodyParams`, params, { shouldDirty: true });
   };
 
   const insertVariable = (spec: string) => {
     const next = count + 1;
     const token = `{{${next}}}`;
     const element = textRef.current;
-    const text = getValues('opening.bodyText');
+    const text = getValues(`${base}.bodyText`);
     const start = element?.selectionStart ?? text.length;
     const end = element?.selectionEnd ?? text.length;
-    setValue('opening.bodyText', text.slice(0, start) + token + text.slice(end), {
+    setValue(`${base}.bodyText`, text.slice(0, start) + token + text.slice(end), {
       shouldDirty: true,
       shouldValidate: formState.isSubmitted,
     });
@@ -101,14 +121,14 @@ export function OpeningEditor({ readOnly, dirty }: { readOnly: boolean; dirty: b
   };
 
   const preview = renderOpening(
-    { ...opening, bodyParams: opening.bodyParams.slice(0, count) },
+    { ...message, bodyParams: message.bodyParams.slice(0, count) },
     {
       leadName: 'Rahul Sharma',
       fields: Object.fromEntries(fields.map((field) => [field.key, field.label || field.key])),
       businessName: businessName || 'your business',
     },
   );
-  const warnings = templateWarnings(opening.bodyText);
+  const warnings = templateWarnings(message.bodyText);
   const editable = !readOnly && !locked;
 
   return (
@@ -116,11 +136,8 @@ export function OpeningEditor({ readOnly, dirty }: { readOnly: boolean; dirty: b
       <div className="min-w-0 space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle>Opening message</CardTitle>
-            <CardDescription>
-              Sent first to leads from forms and the API. Inside the 24-hour window it goes as
-              normal text with buttons; outside it, WhatsApp only allows the approved template.
-            </CardDescription>
+            <CardTitle>{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             {locked && (
@@ -128,7 +145,7 @@ export function OpeningEditor({ readOnly, dirty }: { readOnly: boolean; dirty: b
                 <Lock className="size-4 shrink-0 text-success" />
                 <p className="flex-1">
                   This text is an approved template (
-                  <span className="font-mono text-xs">{opening.templateName}</span>). Changing it
+                  <span className="font-mono text-xs">{message.templateName}</span>). Changing it
                   needs a new approval from Meta.
                 </p>
                 {!readOnly && (
@@ -140,7 +157,7 @@ export function OpeningEditor({ readOnly, dirty }: { readOnly: boolean; dirty: b
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Change the approved opening?</AlertDialogTitle>
+                        <AlertDialogTitle>Change the approved text?</AlertDialogTitle>
                         <AlertDialogDescription>
                           After you publish, leads who haven’t messaged you in the last 24 hours
                           can’t be contacted until the new text is approved by Meta.
@@ -150,7 +167,7 @@ export function OpeningEditor({ readOnly, dirty }: { readOnly: boolean; dirty: b
                         <AlertDialogCancel>Keep the approved text</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={() =>
-                            setValue('opening.templateName', null, { shouldDirty: true })
+                            setValue(`${base}.templateName`, null, { shouldDirty: true })
                           }
                         >
                           Change text
@@ -163,13 +180,13 @@ export function OpeningEditor({ readOnly, dirty }: { readOnly: boolean; dirty: b
             )}
 
             <FormField
-              id="opening-text"
+              id={`${kind}-text`}
               label="Message"
               error={friendlyError(errors?.bodyText?.message)}
               hint="Variables like {{1}} are filled for each lead"
             >
               <Textarea
-                id="opening-text"
+                id={`${kind}-text`}
                 rows={4}
                 readOnly={!editable}
                 {...bodyField}
@@ -214,7 +231,7 @@ export function OpeningEditor({ readOnly, dirty }: { readOnly: boolean; dirty: b
                 <Label>Variables</Label>
                 <div className="space-y-2">
                   {Array.from({ length: count }, (_, index) => {
-                    const spec = opening.bodyParams[index] ?? 'lead.firstName';
+                    const spec = message.bodyParams[index] ?? 'lead.firstName';
                     const [source = 'lead.firstName', fallback = ''] = spec.split('|');
                     const isField = source.startsWith('field:');
                     return (
@@ -270,13 +287,13 @@ export function OpeningEditor({ readOnly, dirty }: { readOnly: boolean; dirty: b
             )}
 
             <div className="space-y-1.5">
-              <Label htmlFor="opening-buttons">Reply buttons</Label>
+              <Label htmlFor={`${kind}-buttons`}>Reply buttons</Label>
               <Controller
                 control={control}
-                name="opening.buttons"
+                name={`${base}.buttons`}
                 render={({ field }) => (
                   <StringListInput
-                    id="opening-buttons"
+                    id={`${kind}-buttons`}
                     value={field.value}
                     onChange={field.onChange}
                     placeholder="e.g. Yes, sure"
@@ -291,13 +308,13 @@ export function OpeningEditor({ readOnly, dirty }: { readOnly: boolean; dirty: b
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="opening-language">Template language</Label>
+              <Label htmlFor={`${kind}-language`}>Template language</Label>
               <Controller
                 control={control}
-                name="opening.templateLanguage"
+                name={`${base}.templateLanguage`}
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange} disabled={!editable}>
-                    <SelectTrigger id="opening-language" className="w-full sm:w-60">
+                    <SelectTrigger id={`${kind}-language`} className="w-full sm:w-60">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -323,14 +340,28 @@ export function OpeningEditor({ readOnly, dirty }: { readOnly: boolean; dirty: b
           </CardHeader>
           <CardContent>
             <div className="rounded-lg bg-muted/60 p-3">
-              <WhatsAppBubble buttons={opening.buttons.filter((button) => button.trim())}>
+              <WhatsAppBubble buttons={message.buttons.filter((button) => button.trim())}>
                 {preview.text}
               </WhatsAppBubble>
             </div>
           </CardContent>
         </Card>
-        <OpeningTemplateCard readOnly={readOnly} dirty={dirty} />
+        <TemplateStatusCard kind={kind} readOnly={readOnly} dirty={dirty} />
       </div>
     </div>
+  );
+}
+
+/** The first message to a lead from a form or the API. */
+export function OpeningEditor({ readOnly, dirty }: { readOnly: boolean; dirty: boolean }) {
+  return (
+    <TemplateMessageEditor
+      base="opening"
+      kind="opening"
+      title="Opening message"
+      description="Sent first to leads from forms and the API. Inside the 24-hour window it goes as normal text with buttons; outside it, WhatsApp only allows the approved template."
+      readOnly={readOnly}
+      dirty={dirty}
+    />
   );
 }

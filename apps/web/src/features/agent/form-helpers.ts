@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { resolveOpening } from '@qualify/core';
+import { resolveFollowUps, resolveOpening } from '@qualify/core';
 import {
   type FieldType,
   type PlaybookConfig,
@@ -8,11 +8,14 @@ import {
 } from '@qualify/shared';
 import type { FieldErrors, Resolver } from 'react-hook-form';
 
-/** The editor always works on a config with an explicit opening. */
-export type EditorConfig = PlaybookConfig & { opening: NonNullable<PlaybookConfig['opening']> };
+/** The editor always works on a config with an explicit opening and follow-up settings. */
+export type EditorConfig = PlaybookConfig & {
+  opening: NonNullable<PlaybookConfig['opening']>;
+  followUps: NonNullable<PlaybookConfig['followUps']>;
+};
 
 export function toEditorConfig(config: PlaybookConfig): EditorConfig {
-  return { ...config, opening: resolveOpening(config) };
+  return { ...config, opening: resolveOpening(config), followUps: resolveFollowUps(config) };
 }
 
 /** How the lead answers, as the editor groups the field types. */
@@ -69,9 +72,13 @@ export function placeholderCount(text: string): number {
  * text → omitted, options only for option questions, one variable per {{n}}.
  */
 export function cleanConfig(values: EditorConfig): EditorConfig {
-  const used = placeholderCount(values.opening.bodyText);
-  const params = values.opening.bodyParams.slice(0, used);
-  while (params.length < used) params.push('lead.firstName');
+  // One variable per {{n}} in each template-backed text.
+  const paramsFor = (message: { bodyText: string; bodyParams: string[] }) => {
+    const used = placeholderCount(message.bodyText);
+    const params = message.bodyParams.slice(0, used);
+    while (params.length < used) params.push('lead.firstName');
+    return params;
+  };
   return {
     ...values,
     fields: values.fields.map((field, index) => {
@@ -86,7 +93,16 @@ export function cleanConfig(values: EditorConfig): EditorConfig {
         ...(isChoice && allowOther ? { allowOther: true } : {}),
       };
     }),
-    opening: { ...values.opening, bodyParams: params },
+    opening: { ...values.opening, bodyParams: paramsFor(values.opening) },
+    followUps: {
+      ...values.followUps,
+      steps: values.followUps.steps.map((step) => ({ afterHours: Number(step.afterHours) })),
+      unresponsiveAfterHours: Number(values.followUps.unresponsiveAfterHours),
+      template: {
+        ...values.followUps.template,
+        bodyParams: paramsFor(values.followUps.template),
+      },
+    },
   };
 }
 
@@ -119,6 +135,7 @@ export function friendlyError(message: string | undefined): string | undefined {
 export function tabWithError(errors: FieldErrors<EditorConfig>): string | null {
   if (errors.fields) return 'questions';
   if (errors.opening) return 'opening';
+  if (errors.followUps) return 'followups';
   if (errors.persona || errors.business || errors.goal || errors.rules) return 'behaviour';
   if (errors.handoff || errors.closing) return 'behaviour';
   if (errors.knowledgeBase) return 'knowledge';
