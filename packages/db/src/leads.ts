@@ -32,6 +32,8 @@ export async function upsertLeadFromIntake(
     fields: Record<string, string>;
     /** Where this enquiry came from; replaces the previous one (last touch). */
     attribution: LeadAttribution;
+    /** The agent version that handles this enquiry (routing, D-086). */
+    playbookVersionId?: string | null;
     score: (lead: LeadForScoring) => LeadScoreColumns | null;
   },
 ): Promise<{ leadId: string; isNewLead: boolean }> {
@@ -60,7 +62,13 @@ export async function upsertLeadFromIntake(
   if (existing) {
     await tx
       .update(leads)
-      .set({ name: input.name ?? existing.name, fields, attribution: input.attribution, ...score })
+      .set({
+        name: input.name ?? existing.name,
+        fields,
+        attribution: input.attribution,
+        ...(input.playbookVersionId ? { playbookVersionId: input.playbookVersionId } : {}),
+        ...score,
+      })
       .where(eq(leads.id, existing.id));
     return { leadId: existing.id, isNewLead: false };
   }
@@ -73,6 +81,7 @@ export async function upsertLeadFromIntake(
       source: input.source,
       fields,
       attribution: input.attribution,
+      playbookVersionId: input.playbookVersionId ?? null,
       ...score,
     })
     .returning({ id: leads.id });

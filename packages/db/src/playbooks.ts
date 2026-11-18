@@ -1,4 +1,4 @@
-import type { PlaybookConfig } from '@qualify/shared';
+import type { LeadAttribution, PlaybookConfig, PlaybookRoute } from '@qualify/shared';
 import { and, desc, eq } from 'drizzle-orm';
 import { playbooks, playbookVersions } from './schema/index.ts';
 import type { Transaction } from './tenant.ts';
@@ -118,4 +118,61 @@ export async function createPublishedPlaybook(
     })
     .returning({ id: playbookVersions.id });
   return { playbookId: playbook!.id, versionId: version!.id, versionNo: 1, config: input.config };
+}
+
+/** True when a lead with this attribution belongs to an agent with these routes (D-086). */
+export function matchesRoute(
+  routes: readonly PlaybookRoute[],
+  attribution: LeadAttribution | null | undefined,
+): boolean {
+  if (!attribution) return false;
+  return routes.some((route) => {
+    if (route.type === 'form') return attribution.formId === route.value;
+    if (route.type === 'ad') return attribution.adId === route.value;
+    return attribution.campaign?.trim().toLowerCase() === route.value.trim().toLowerCase();
+  });
+}
+
+/** The latest published version of one playbook (call inside withTenant). */
+export async function getLatestPublishedVersion(
+  tx: Transaction,
+  playbookId: string,
+): Promise<PublishedPlaybook | null> {
+  const [row] = await tx
+    .select({
+      playbookId: playbookVersions.playbookId,
+      versionId: playbookVersions.id,
+      versionNo: playbookVersions.versionNo,
+      config: playbookVersions.config,
+    })
+    .from(playbookVersions)
+    .where(
+      and(eq(playbookVersions.playbookId, playbookId), eq(playbookVersions.status, 'published')),
+    )
+    .orderBy(desc(playbookVersions.versionNo))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * The agent for a new enquiry: the first non-default agent whose routes match where the lead
+ * came from (form, ad, campaign), else the default agent (call inside withTenant).
+ */
+export async function resolvePlaybookForAttribution(
+  tx: Transaction,
+  attribution: LeadAttribution | null | undefined,
+): Promise<PublishedPlaybook | null> {
+  if (attribution) {
+    const candidates = await tx
+      .select({ id: playbooks.id, routes: playbooks.routes })
+      .from(playbooks)
+      .where(eq(playbooks.isDefault, false))
+      .orderBy(playbooks.createdAt);
+    const match = candidates.find((candidate) => matchesRoute(candidate.routes, attribution));
+    if (match) {
+      const version = await getLatestPublishedVersion(tx, match.id);
+      if (version) return version;
+    }
+  }
+  return getDefaultPublishedPlaybook(tx);
 }

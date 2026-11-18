@@ -11,8 +11,8 @@ import {
   type Database,
   desc,
   eq,
-  getDefaultPublishedPlaybook,
   getPlaybookVersion,
+  resolvePlaybookForAttribution,
   leads,
   messages,
   phoneNumbers,
@@ -127,7 +127,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
     const [tenant] = await tx.select().from(tenants).limit(1);
     const playbook = lead.playbookVersionId
       ? await getPlaybookVersion(tx, lead.playbookVersionId)
-      : await getDefaultPublishedPlaybook(tx);
+      : await resolvePlaybookForAttribution(tx, lead.attribution);
     const history = await tx
       .select()
       .from(messages)

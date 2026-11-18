@@ -1,0 +1,1 @@
+ALTER TABLE "playbooks" ADD COLUMN "routes" jsonb DEFAULT '[]'::jsonb NOT NULL;

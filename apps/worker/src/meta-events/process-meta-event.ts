@@ -7,6 +7,7 @@ import {
   isNull,
   leads,
   messages,
+  resolvePlaybookForAttribution,
   resolveTenantByPhoneNumberId,
   sql,
   withTenant,
@@ -163,6 +164,7 @@ async function handleInboundMessage(
   const attribution = message.referral ? ctwaAttribution(message.referral, sentAt) : null;
 
   const stored = await withTenant(db, tenantId, async (tx) => {
+    const routed = attribution ? await resolvePlaybookForAttribution(tx, attribution) : null;
     const [lead] = await tx
       .insert(leads)
       .values({
@@ -171,6 +173,7 @@ async function handleInboundMessage(
         name: profileName ?? null,
         source: message.referral ? 'ctwa' : 'whatsapp_inbound',
         attribution,
+        playbookVersionId: routed?.versionId ?? null,
         lastMessageAt: sentAt,
         lastInboundAt: sentAt,
       })
@@ -181,6 +184,7 @@ async function handleInboundMessage(
           lastInboundAt: sentAt,
           name: sql`coalesce(${leads.name}, excluded.name)`,
           ...(attribution ? { attribution } : {}),
+          ...(routed ? { playbookVersionId: routed.versionId } : {}),
         },
       })
       .returning({ id: leads.id, created: sql<boolean>`(xmax = 0)` });

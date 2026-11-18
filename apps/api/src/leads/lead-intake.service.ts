@@ -3,7 +3,7 @@ import { leadScoreColumns, localToday, normaliseFieldValue } from '@qualify/core
 import {
   auditLogs,
   type DbHandle,
-  getDefaultPublishedPlaybook,
+  resolvePlaybookForAttribution,
   tenants,
   upsertLeadFromIntake,
   withTenant,
@@ -51,8 +51,14 @@ export class LeadIntakeService {
       });
     }
 
+    const attribution = {
+      channel: input.source,
+      at: new Date().toISOString(),
+      ...(input.campaign ? { campaign: input.campaign.slice(0, 200) } : {}),
+    };
     const result = await withTenant(this.handle.db, workspace.tenantId, async (tx) => {
-      const playbook = await getDefaultPublishedPlaybook(tx);
+      // The agent this campaign routes to (D-086), else the default agent.
+      const playbook = await resolvePlaybookForAttribution(tx, attribution);
       const definitions = playbook?.config.fields ?? [];
       const accepted: Record<string, string> = {};
       const ignoredFields: string[] = [];
@@ -73,11 +79,8 @@ export class LeadIntakeService {
         name: input.name ?? null,
         source: input.source,
         fields: accepted,
-        attribution: {
-          channel: input.source,
-          at: new Date().toISOString(),
-          ...(input.campaign ? { campaign: input.campaign.slice(0, 200) } : {}),
-        },
+        attribution,
+        playbookVersionId: playbook?.versionId ?? null,
         score: (lead) =>
           playbook
             ? leadScoreColumns({

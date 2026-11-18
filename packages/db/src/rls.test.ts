@@ -11,6 +11,7 @@ import {
   createPublishedPlaybook,
   getDefaultPublishedPlaybook,
   publishPlaybookVersion,
+  resolvePlaybookForAttribution,
 } from './playbooks.ts';
 import { resolveTenantByPageId, resolveTenantByPhoneNumberId } from './routing.ts';
 import { getMediaAsset, saveMediaAsset } from './media.ts';
@@ -438,5 +439,49 @@ describe('Lead form tables and Page routing (connected as qualify_app)', () => {
       }),
     );
     await expect(spoof).rejects.toSatisfy((error) => /row-level security/.test(errorText(error)));
+  });
+
+  it('routes a new enquiry to the matching agent, else the default (D-086)', async () => {
+    const config = (name: string) => ({ persona: { name } }) as unknown as PlaybookConfig;
+    const routed = await withTenant(app.db, 'org_a', async (tx) => {
+      const intl = await createPublishedPlaybook(tx, {
+        tenantId: 'org_a',
+        name: 'International',
+        templateKey: null,
+        config: config('Intl'),
+        isDefault: false,
+      });
+      await tx
+        .update(playbooks)
+        .set({
+          routes: [
+            { type: 'form', value: 'form_intl' },
+            { type: 'ad', value: 'ad_9' },
+            { type: 'campaign', value: 'Europe Summer' },
+          ],
+        })
+        .where(eq(playbooks.id, intl!.playbookId));
+      return intl!;
+    });
+    const resolve = (
+      tenantId: string,
+      attribution: Parameters<typeof resolvePlaybookForAttribution>[1],
+    ) => withTenant(app.db, tenantId, (tx) => resolvePlaybookForAttribution(tx, attribution));
+    const at = new Date().toISOString();
+    expect(
+      (await resolve('org_a', { channel: 'meta_form', at, formId: 'form_intl' }))?.playbookId,
+    ).toBe(routed.playbookId);
+    expect((await resolve('org_a', { channel: 'ctwa', at, adId: 'ad_9' }))?.playbookId).toBe(
+      routed.playbookId,
+    );
+    expect(
+      (await resolve('org_a', { channel: 'api', at, campaign: ' europe summer ' }))?.playbookId,
+    ).toBe(routed.playbookId);
+    const fallback = await resolve('org_a', { channel: 'api', at, campaign: 'Other' });
+    expect(fallback?.playbookId).not.toBe(routed.playbookId);
+    expect(fallback).not.toBeNull();
+    // Another workspace never sees these routes.
+    const elsewhere = await resolve('org_b', { channel: 'meta_form', at, formId: 'form_intl' });
+    expect(elsewhere?.playbookId).not.toBe(routed.playbookId);
   });
 });

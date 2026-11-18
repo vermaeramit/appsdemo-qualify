@@ -1,4 +1,4 @@
-import type { PlaybookConfig } from '@qualify/shared';
+import type { PlaybookConfig, PlaybookRoute } from '@qualify/shared';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -24,6 +24,8 @@ export const playbooks = pgTable(
     /** Template it was created from (e.g. "travel-packages"), for upgrades/analytics. */
     templateKey: text('template_key'),
     isDefault: boolean('is_default').notNull().default(false),
+    /** Which leads this agent handles (form / ad / campaign; D-086). Empty = only by default. */
+    routes: jsonb('routes').$type<PlaybookRoute[]>().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()

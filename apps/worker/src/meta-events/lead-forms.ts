@@ -15,6 +15,7 @@ import {
   eq,
   facebookPages,
   getDefaultPublishedPlaybook,
+  resolvePlaybookForAttribution,
   leadFormMappings,
   leadFormSubmissions,
   resolveTenantByPageId,
@@ -117,7 +118,15 @@ export async function handleLeadgen(
   const questions: FormQuestion[] = form.questions?.length
     ? form.questions
     : lead.field_data.map((item) => ({ key: item.name, label: item.name.replace(/_/g, ' ') }));
-  const definitions = context.playbook.config.fields;
+  // The agent this form (or its ad) routes to (D-086), else the default agent.
+  const playbook =
+    (await withTenant(db, tenantId, (tx) =>
+      resolvePlaybookForAttribution(
+        tx,
+        formAttribution(value, form.name ?? null, value.ad_id ?? lead.ad_id ?? null),
+      ),
+    )) ?? context.playbook;
+  const definitions = playbook.config.fields;
 
   let mapping = context.stored?.mapping;
   if (!mapping) {
@@ -176,9 +185,10 @@ export async function handleLeadgen(
       source: 'meta_form',
       fields: answers.fields,
       attribution: formAttribution(value, form.name ?? null, value.ad_id ?? lead.ad_id ?? null),
+      playbookVersionId: playbook.versionId,
       score: (current) =>
         leadScoreColumns({
-          config: context.playbook!.config,
+          config: playbook.config,
           fields: current.fields,
           signals: current.signals,
           status: current.status,

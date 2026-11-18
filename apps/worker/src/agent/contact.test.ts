@@ -2,10 +2,12 @@
 import { randomBytes } from 'node:crypto';
 import { travelPlaybookTemplate } from '@qualify/core';
 import {
+  createPublishedPlaybook,
   eq,
   getDefaultPublishedPlaybook,
   leads,
   messages,
+  playbooks,
   playbookVersions,
   publishPlaybookVersion,
   saveMediaAsset,
@@ -312,5 +314,53 @@ describe('opening with an image header (D-084)', () => {
         header: { kind: 'IMAGE', mediaId: 'wa-media-1', fileName: 'offer.jpg' },
       }),
     );
+  });
+});
+
+describe('routing to another agent (D-086)', () => {
+  it('opens with the agent the campaign routes to and pins the lead to it', async () => {
+    const intl = await withTenant(testDb.app.db, TENANT, async (tx) => {
+      const config = travelPlaybookTemplate('Sunrise Holidays');
+      const created = await createPublishedPlaybook(tx, {
+        tenantId: TENANT,
+        name: 'International',
+        templateKey: null,
+        config: {
+          ...config,
+          opening: {
+            ...config.opening!,
+            bodyText: 'Hi {{1}}! Ready to explore the world?',
+            bodyParams: ['lead.firstName'],
+            templateName: 'qualify_opening_intl',
+          },
+        },
+        isDefault: false,
+      });
+      await tx
+        .update(playbooks)
+        .set({ routes: [{ type: 'campaign', value: 'Europe' }] })
+        .where(eq(playbooks.id, created!.playbookId));
+      return created!;
+    });
+    const [lead] = await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx
+        .insert(leads)
+        .values({
+          tenantId: TENANT,
+          phoneE164: '+919800000061',
+          name: 'Meera Iyer',
+          source: 'api',
+          attribution: { channel: 'api', at: new Date().toISOString(), campaign: 'europe' },
+        })
+        .returning({ id: leads.id }),
+    );
+
+    expect(
+      await processContact({ tenantId: TENANT, leadId: lead!.id }, deps({ allowlist: ['*'] })),
+    ).toBe('sent_template');
+    expect(client.sendTemplate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ templateName: 'qualify_opening_intl', bodyParams: ['Meera'] }),
+    );
+    expect((await getLead(lead!.id)).playbookVersionId).toBe(intl.versionId);
   });
 });
