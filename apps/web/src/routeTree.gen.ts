@@ -18,6 +18,7 @@ import { Route as AppAgentRouteImport } from './routes/_app/agent'
 import { Route as AppApiDocsRouteImport } from './routes/_app/api-docs'
 import { Route as AppConversationsRouteImport } from './routes/_app/conversations'
 import { Route as AppCostsRouteImport } from './routes/_app/costs'
+import { Route as AppIntegrationsRouteImport } from './routes/_app/integrations'
 import { Route as AppLeadsRouteImport } from './routes/_app/leads'
 import { Route as AppMetaLeadsRouteImport } from './routes/_app/meta-leads'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
@@ -66,6 +67,11 @@ const AppCostsRoute = AppCostsRouteImport.update({
   path: '/costs',
   getParentRoute: () => AppRoute,
 } as any)
+const AppIntegrationsRoute = AppIntegrationsRouteImport.update({
+  id: '/integrations',
+  path: '/integrations',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppLeadsRoute = AppLeadsRouteImport.update({
   id: '/leads',
   path: '/leads',
@@ -91,6 +97,7 @@ export interface FileRoutesByFullPath {
   '/api-docs': typeof AppApiDocsRoute
   '/conversations': typeof AppConversationsRoute
   '/costs': typeof AppCostsRoute
+  '/integrations': typeof AppIntegrationsRoute
   '/leads': typeof AppLeadsRoute
   '/meta-leads': typeof AppMetaLeadsRoute
   '/settings': typeof AppSettingsRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   '/api-docs': typeof AppApiDocsRoute
   '/conversations': typeof AppConversationsRoute
   '/costs': typeof AppCostsRoute
+  '/integrations': typeof AppIntegrationsRoute
   '/leads': typeof AppLeadsRoute
   '/meta-leads': typeof AppMetaLeadsRoute
   '/settings': typeof AppSettingsRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   '/_app/api-docs': typeof AppApiDocsRoute
   '/_app/conversations': typeof AppConversationsRoute
   '/_app/costs': typeof AppCostsRoute
+  '/_app/integrations': typeof AppIntegrationsRoute
   '/_app/leads': typeof AppLeadsRoute
   '/_app/meta-leads': typeof AppMetaLeadsRoute
   '/_app/settings': typeof AppSettingsRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
     | '/api-docs'
     | '/conversations'
     | '/costs'
+    | '/integrations'
     | '/leads'
     | '/meta-leads'
     | '/settings'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/api-docs'
     | '/conversations'
     | '/costs'
+    | '/integrations'
     | '/leads'
     | '/meta-leads'
     | '/settings'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/_app/api-docs'
     | '/_app/conversations'
     | '/_app/costs'
+    | '/_app/integrations'
     | '/_app/leads'
     | '/_app/meta-leads'
     | '/_app/settings'
@@ -238,6 +250,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCostsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/integrations': {
+      id: '/_app/integrations'
+      path: '/integrations'
+      fullPath: '/integrations'
+      preLoaderRoute: typeof AppIntegrationsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/leads': {
       id: '/_app/leads'
       path: '/leads'
@@ -267,6 +286,7 @@ interface AppRouteChildren {
   AppApiDocsRoute: typeof AppApiDocsRoute
   AppConversationsRoute: typeof AppConversationsRoute
   AppCostsRoute: typeof AppCostsRoute
+  AppIntegrationsRoute: typeof AppIntegrationsRoute
   AppLeadsRoute: typeof AppLeadsRoute
   AppMetaLeadsRoute: typeof AppMetaLeadsRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -278,6 +298,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppApiDocsRoute: AppApiDocsRoute,
   AppConversationsRoute: AppConversationsRoute,
   AppCostsRoute: AppCostsRoute,
+  AppIntegrationsRoute: AppIntegrationsRoute,
   AppLeadsRoute: AppLeadsRoute,
   AppMetaLeadsRoute: AppMetaLeadsRoute,
   AppSettingsRoute: AppSettingsRoute,

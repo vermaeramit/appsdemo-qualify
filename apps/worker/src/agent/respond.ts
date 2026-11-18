@@ -41,10 +41,13 @@ import { type FollowUpScheduler, startFollowUps } from './follow-up.ts';
 import { FINAL_STATUSES, scoreColumns, writeSummary } from './scoring.ts';
 import { type AgentMessagingClient, sendWithOptions } from './send.ts';
 import type { Logger } from '../logger.ts';
+import { type EmitLeadEvent, STATUS_EVENTS } from '../webhooks/webhooks.ts';
 
 export type { AgentMessagingClient } from './send.ts';
 
 export interface RespondDeps {
+  /** Lead events for webhooks (M7). */
+  emitLeadEvent?: EmitLeadEvent;
   db: Database;
   logger: Pick<Logger, 'info' | 'warn' | 'error'>;
   /** Null when no AI provider is configured: the agent stays silent. */
@@ -303,6 +306,11 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
       fields: applied.fields,
       scoreDetails: scored.scoreDetails,
     });
+  }
+
+  const event = STATUS_EVENTS[status];
+  if (event && (status !== lead.status || applied.becameQualified)) {
+    await deps.emitLeadEvent?.({ tenantId: job.tenantId, leadId: job.leadId, type: event });
   }
 
   // Still qualifying: follow up if the lead goes quiet. Otherwise the conversation is done.

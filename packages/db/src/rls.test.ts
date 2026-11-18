@@ -28,6 +28,8 @@ import {
   playbooks,
   playbookVersions,
   tenants,
+  webhookDeliveries,
+  webhookEndpoints,
   whatsappAccounts,
 } from './schema/index.ts';
 import { withTenant } from './tenant.ts';
@@ -331,5 +333,45 @@ describe('Lead form tables and Page routing (connected as qualify_app)', () => {
       }),
     );
     await expect(retry).rejects.toSatisfy((error) => /duplicate key/.test(errorText(error)));
+  });
+
+  it('isolates webhook endpoints and deliveries', async () => {
+    const [endpoint] = await withTenant(app.db, 'org_a', (tx) =>
+      tx
+        .insert(webhookEndpoints)
+        .values({
+          tenantId: 'org_a',
+          url: 'https://example.com/hook',
+          secretEnc: 'enc',
+          secretHint: 'whsec_ab',
+          events: ['lead.qualified'],
+        })
+        .returning(),
+    );
+    await withTenant(app.db, 'org_a', (tx) =>
+      tx.insert(webhookDeliveries).values({
+        tenantId: 'org_a',
+        endpointId: endpoint!.id,
+        eventId: '00000000-0000-4000-8000-000000000001',
+        eventType: 'lead.qualified',
+        payload: {},
+      }),
+    );
+    expect(await withTenant(app.db, 'org_b', (tx) => tx.select().from(webhookEndpoints))).toEqual(
+      [],
+    );
+    expect(await withTenant(app.db, 'org_b', (tx) => tx.select().from(webhookDeliveries))).toEqual(
+      [],
+    );
+    const spoof = withTenant(app.db, 'org_b', (tx) =>
+      tx.insert(webhookEndpoints).values({
+        tenantId: 'org_a',
+        url: 'https://evil.example/hook',
+        secretEnc: 'enc',
+        secretHint: 'whsec_xx',
+        events: ['lead.created'],
+      }),
+    );
+    await expect(spoof).rejects.toSatisfy((error) => /row-level security/.test(errorText(error)));
   });
 });

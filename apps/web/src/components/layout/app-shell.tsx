@@ -34,7 +34,6 @@ interface AppShellProps {
 
 const upcoming: { label: string; icon: LucideIcon }[] = [
   { label: 'Templates', icon: MessageSquareText },
-  { label: 'Integrations', icon: Webhook },
 ];
 
 const navItemClass =
@@ -46,6 +45,7 @@ const navLinks = [
   { to: '/conversations', label: 'Conversations', icon: MessagesSquare, exact: false },
   { to: '/meta-leads', label: 'Meta leads', icon: FileInput, exact: false },
   { to: '/agent', label: 'AI agent', icon: Bot, exact: false },
+  { to: '/integrations', label: 'Integrations', icon: Webhook, exact: false, managerOnly: true },
   { to: '/costs', label: 'Costs', icon: Wallet, exact: false, managerOnly: true },
   { to: '/api-docs', label: 'API docs', icon: BookOpen, exact: false },
   { to: '/settings', label: 'Settings', icon: Settings, exact: false },

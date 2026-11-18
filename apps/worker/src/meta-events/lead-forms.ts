@@ -37,11 +37,14 @@ import {
   type PlaybookField,
 } from '@qualify/shared';
 import type { Logger } from '../logger.ts';
+import { type EmitLeadEvent } from '../webhooks/webhooks.ts';
 
 /** The Graph calls a lead form needs (fake in tests). */
 export type LeadFormClient = Pick<WhatsAppClient, 'getLead' | 'getLeadForm'>;
 
 export interface LeadFormDeps {
+  /** Lead events for webhooks (M7). */
+  emitLeadEvent?: EmitLeadEvent;
   db: Database;
   logger: Pick<Logger, 'info' | 'warn' | 'error'>;
   masterKey: Buffer | null;
@@ -209,6 +212,9 @@ export async function handleLeadgen(
   if (result === 'duplicate' || result === 'no_phone') {
     if (result === 'no_phone') logger.warn({ ...log, tenantId }, 'Lead form without a valid phone');
     return result;
+  }
+  if (result.isNewLead) {
+    await deps.emitLeadEvent?.({ tenantId, leadId: result.leadId, type: 'lead.created' });
   }
   await deps.enqueueContact({ tenantId, leadId: result.leadId });
   logger.info({ ...log, tenantId, leadId: result.leadId }, 'Lead received from a Meta form');

@@ -7,6 +7,8 @@ const optional = z
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  /** Public URL of the dashboard (links in webhooks and exports). */
+  APP_BASE_URL: z.url().default('http://localhost:5173'),
   APP_DATABASE_URL: z.string().min(1, 'APP_DATABASE_URL is required'),
   REDIS_URL: z.string().min(1).default('redis://localhost:6380'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),

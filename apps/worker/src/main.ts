@@ -14,6 +14,9 @@ import {
   FOLLOW_UP_QUEUE,
   type FollowUpJob,
   followUpJobSchema,
+  LEAD_EVENTS_QUEUE,
+  type LeadEventJob,
+  leadEventJobSchema,
   metaEventJobSchema,
   QUEUES,
   RESCORE_QUEUE,
@@ -21,6 +24,9 @@ import {
   RESPOND_QUEUE,
   type RespondJob,
   respondJobSchema,
+  WEBHOOK_DELIVERY_QUEUE,
+  type WebhookDeliveryJob,
+  webhookDeliveryJobSchema,
 } from '@qualify/shared';
 import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
@@ -38,6 +44,14 @@ import { loadWorkerEnv } from './env.ts';
 import { createRedisLock } from './lock.ts';
 import { createLogger } from './logger.ts';
 import { processMetaEvent } from './meta-events/process-meta-event.ts';
+import {
+  DELIVERY_ATTEMPTS,
+  DELIVERY_BACKOFF_MS,
+  DeliveryRetryError,
+  type EmitLeadEvent,
+  processLeadEvent,
+  processWebhookDelivery,
+} from './webhooks/webhooks.ts';
 
 const env = loadWorkerEnv();
 const logger = createLogger(env.LOG_LEVEL, env.NODE_ENV === 'development');
@@ -77,6 +91,31 @@ logger.info(
 const respondQueue = new Queue<RespondJob>(RESPOND_QUEUE, { connection });
 const followUpQueue = new Queue<FollowUpJob>(FOLLOW_UP_QUEUE, { connection });
 const contactQueue = new Queue<ContactJob>(CONTACT_QUEUE, { connection });
+const leadEventsQueue = new Queue<LeadEventJob>(LEAD_EVENTS_QUEUE, { connection });
+const deliveryQueue = new Queue<WebhookDeliveryJob>(WEBHOOK_DELIVERY_QUEUE, { connection });
+
+/** What happened to a lead, for webhooks (fanned out by the lead-events worker). */
+const emitLeadEvent: EmitLeadEvent = async (event) => {
+  await leadEventsQueue.add(
+    'event',
+    { ...event, at: new Date().toISOString() },
+    {
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 5_000 },
+      removeOnComplete: 1_000,
+      removeOnFail: 5_000,
+    },
+  );
+};
+
+async function enqueueDelivery(job: WebhookDeliveryJob): Promise<void> {
+  await deliveryQueue.add('deliver', job, {
+    attempts: DELIVERY_ATTEMPTS,
+    backoff: { type: 'exponential', delay: DELIVERY_BACKOFF_MS },
+    removeOnComplete: 1_000,
+    removeOnFail: 5_000,
+  });
+}
 
 /** Opening message for a lead from a Meta lead form (same job the api queues for API leads). */
 async function enqueueContact(job: ContactJob): Promise<void> {
@@ -141,6 +180,7 @@ const metaEventsWorker = new Worker(
       isProduction,
       enqueueRespond: (respondJob) => enqueueRespond(respondJob),
       followUps,
+      emitLeadEvent,
       leadForms: {
         masterKey,
         createClient: whatsapp,
@@ -170,6 +210,7 @@ const respondWorker = new Worker(
       lock: createRedisLock(connection),
       enqueueRespond,
       followUps,
+      emitLeadEvent,
     });
     if (outcome !== 'replied') logger.info({ leadId: job.data.leadId, outcome }, 'Respond run');
   },
@@ -209,6 +250,7 @@ const followUpWorker = new Worker(
       isProduction,
       lock: createRedisLock(connection),
       scheduler: followUps,
+      emitLeadEvent,
     });
     logger.info({ leadId: job.data.leadId, kind: job.data.kind, outcome }, 'Follow-up run');
   },
@@ -225,12 +267,50 @@ const rescoreWorker = new Worker(
   { connection, concurrency: 2 },
 );
 
+const leadEventsWorker = new Worker(
+  LEAD_EVENTS_QUEUE,
+  async (job) => {
+    const event = leadEventJobSchema.parse(job.data);
+    const outcome = await processLeadEvent(event, {
+      db,
+      logger,
+      appBaseUrl: env.APP_BASE_URL,
+      enqueueDelivery,
+    });
+    if (typeof outcome === 'number') {
+      logger.info({ ...event, deliveries: outcome }, 'Lead event sent to webhooks');
+    }
+  },
+  { connection, concurrency: 10 },
+);
+
+const deliveryWorker = new Worker(
+  WEBHOOK_DELIVERY_QUEUE,
+  async (job) => {
+    const outcome = await processWebhookDelivery(
+      webhookDeliveryJobSchema.parse(job.data),
+      { attemptsMade: job.attemptsMade, maxAttempts: job.opts.attempts ?? 1 },
+      {
+        db,
+        logger,
+        masterKey,
+        // Development may post to a local receiver; production only to public https URLs.
+        policy: { allowPrivate: !isProduction, requireHttps: isProduction },
+      },
+    );
+    logger.info({ deliveryId: job.data.deliveryId, outcome }, 'Webhook delivery');
+  },
+  { connection, concurrency: 10 },
+);
+
 for (const [name, worker] of [
   ['meta-events', metaEventsWorker],
   ['respond', respondWorker],
   ['contact', contactWorker],
   ['follow-up', followUpWorker],
   ['rescore', rescoreWorker],
+  ['lead-events', leadEventsWorker],
+  ['webhook-delivery', deliveryWorker],
 ] as const) {
   worker.on('failed', (job, error) => {
     const busy =
@@ -238,6 +318,10 @@ for (const [name, worker] of [
       error instanceof ContactBusyError ||
       error instanceof FollowUpBusyError;
     if (busy) return; // retried shortly
+    if (error instanceof DeliveryRetryError) {
+      logger.warn({ jobId: job?.id, attempts: job?.attemptsMade, err: error }, 'Webhook retry');
+      return;
+    }
     logger.error(
       { queue: name, jobId: job?.id, attempts: job?.attemptsMade, err: error },
       'Job failed',
@@ -246,7 +330,17 @@ for (const [name, worker] of [
 }
 
 logger.info(
-  { queues: [QUEUES.metaEvents, RESPOND_QUEUE, CONTACT_QUEUE, FOLLOW_UP_QUEUE, RESCORE_QUEUE] },
+  {
+    queues: [
+      QUEUES.metaEvents,
+      RESPOND_QUEUE,
+      CONTACT_QUEUE,
+      FOLLOW_UP_QUEUE,
+      RESCORE_QUEUE,
+      LEAD_EVENTS_QUEUE,
+      WEBHOOK_DELIVERY_QUEUE,
+    ],
+  },
   'Worker started',
 );
 
@@ -258,8 +352,16 @@ async function shutdown(signal: string): Promise<void> {
     contactWorker.close(),
     followUpWorker.close(),
     rescoreWorker.close(),
+    leadEventsWorker.close(),
+    deliveryWorker.close(),
   ]);
-  await Promise.all([respondQueue.close(), followUpQueue.close(), contactQueue.close()]);
+  await Promise.all([
+    respondQueue.close(),
+    followUpQueue.close(),
+    contactQueue.close(),
+    leadEventsQueue.close(),
+    deliveryQueue.close(),
+  ]);
   await pool.end();
   connection.disconnect();
   process.exit(0);

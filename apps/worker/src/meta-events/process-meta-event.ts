@@ -25,6 +25,7 @@ import type { LeadAttribution, RespondJob } from '@qualify/shared';
 import type { FollowUpScheduler } from '../agent/follow-up.ts';
 import { handleLeadgen, type LeadFormDeps } from './lead-forms.ts';
 import type { Logger } from '../logger.ts';
+import type { EmitLeadEvent } from '../webhooks/webhooks.ts';
 
 export interface ProcessorDeps {
   db: Database;
@@ -37,7 +38,9 @@ export interface ProcessorDeps {
   /** A reply from the lead cancels pending follow-ups. */
   followUps?: FollowUpScheduler;
   /** Meta lead form submissions (Page leadgen webhooks). */
-  leadForms?: Omit<LeadFormDeps, 'db' | 'logger'>;
+  leadForms?: Omit<LeadFormDeps, 'db' | 'logger' | 'emitLeadEvent'>;
+  /** Lead events for webhooks (M7). */
+  emitLeadEvent?: EmitLeadEvent;
 }
 
 const STATUS_RANK: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3 };
@@ -123,7 +126,10 @@ export async function processMetaEvent(eventId: string, deps: ProcessorDeps): Pr
       logger.warn({ eventId }, 'Lead form webhook received but lead forms are not configured');
       break;
     }
-    const outcome = await handleLeadgen({ db, logger, ...deps.leadForms }, submission);
+    const outcome = await handleLeadgen(
+      { db, logger, ...deps.leadForms, emitLeadEvent: deps.emitLeadEvent },
+      submission,
+    );
     logger.info({ eventId, leadgenId: submission.leadgen_id, outcome }, 'Lead form run');
   }
 
@@ -173,7 +179,7 @@ async function handleInboundMessage(
           ...(attribution ? { attribution } : {}),
         },
       })
-      .returning({ id: leads.id });
+      .returning({ id: leads.id, created: sql<boolean>`(xmax = 0)` });
 
     const inserted = await tx
       .insert(messages)
@@ -195,8 +201,11 @@ async function handleInboundMessage(
       .onConflictDoNothing({ target: messages.waMessageId })
       .returning({ id: messages.id });
 
-    return { leadId: lead!.id, isNew: inserted.length > 0 };
+    return { leadId: lead!.id, isNew: inserted.length > 0, leadCreated: lead!.created };
   });
+  if (stored.leadCreated) {
+    await deps.emitLeadEvent?.({ tenantId, leadId: stored.leadId, type: 'lead.created' });
+  }
 
   // Meta retries deliveries: a message we already stored must not trigger another reply.
   if (!stored.isNew || NO_REPLY_TYPES.has(message.type)) return;
@@ -292,6 +301,11 @@ async function handleStatus(
 
   if (undeliverableLeadId) {
     await deps.followUps?.cancel(undeliverableLeadId);
+    await deps.emitLeadEvent?.({
+      tenantId,
+      leadId: undeliverableLeadId,
+      type: 'lead.undeliverable',
+    });
     deps.logger.info(
       { tenantId, leadId: undeliverableLeadId },
       'Lead is undeliverable on WhatsApp',

@@ -25,3 +25,4 @@ export * from './playbooks.ts';
 export * from './routing.ts';
 export * from './schema/index.ts';
 export * from './tenant.ts';
+export * from './webhook-payload.ts';

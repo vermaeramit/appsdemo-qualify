@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
+  Webhook,
   Users,
   FileInput,
   BookOpen,
@@ -80,6 +81,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <CommandItem onSelect={() => run(() => navigate({ to: '/agent' }))}>
               <Bot />
               AI agent (questions, opening, knowledge base)
+            </CommandItem>
+            <CommandItem onSelect={() => run(() => navigate({ to: '/integrations' }))}>
+              <Webhook />
+              Integrations (webhooks)
             </CommandItem>
             <CommandItem onSelect={() => run(() => navigate({ to: '/costs' }))}>
               <Wallet />

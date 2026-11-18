@@ -42,6 +42,7 @@ import type { LeadLock } from '../lock.ts';
 import type { Logger } from '../logger.ts';
 import { scoreColumns, writeSummary } from './scoring.ts';
 import { type AgentMessagingClient, describeSendError, sendWithOptions } from './send.ts';
+import { type EmitLeadEvent } from '../webhooks/webhooks.ts';
 
 /** Schedules and cancels a lead's follow-up jobs (BullMQ in production, in memory in tests). */
 export interface FollowUpScheduler {
@@ -91,6 +92,8 @@ export async function startFollowUps(
 }
 
 export interface FollowUpDeps {
+  /** Lead events for webhooks (M7). */
+  emitLeadEvent?: EmitLeadEvent;
   db: Database;
   logger: Pick<Logger, 'info' | 'warn' | 'error'>;
   llm: LlmClient | null;
@@ -206,6 +209,11 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
       history,
       fields: lead.fields,
       scoreDetails: scored.scoreDetails,
+    });
+    await deps.emitLeadEvent?.({
+      tenantId: job.tenantId,
+      leadId: job.leadId,
+      type: 'lead.unresponsive',
     });
     logger.info(log, 'Lead marked as not replying');
     return 'marked_unresponsive';

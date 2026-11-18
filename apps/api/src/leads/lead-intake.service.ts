@@ -18,6 +18,7 @@ import {
 import type { Queue } from 'bullmq';
 import type { WorkspaceContext } from '../auth/workspace.guard';
 import { CONTACT_QUEUE_TOKEN } from '../queue/queue.module';
+import { WebhooksOutService } from '../webhooks-out/webhooks-out.service';
 import { DB } from '../tokens';
 
 /**
@@ -30,6 +31,7 @@ export class LeadIntakeService {
   constructor(
     @Inject(DB) private readonly handle: DbHandle,
     @Inject(CONTACT_QUEUE_TOKEN) private readonly contactQueue: Queue<ContactJob>,
+    @Inject(WebhooksOutService) private readonly webhooks: WebhooksOutService,
   ) {}
 
   async create(
@@ -100,6 +102,13 @@ export class LeadIntakeService {
       return { leadId, isNewLead, ignoredFields };
     });
 
+    if (result.isNewLead) {
+      await this.webhooks.emit({
+        tenantId: workspace.tenantId,
+        leadId: result.leadId,
+        type: 'lead.created',
+      });
+    }
     await this.contactQueue.add(
       'contact',
       { tenantId: workspace.tenantId, leadId: result.leadId },

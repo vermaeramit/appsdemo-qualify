@@ -55,9 +55,9 @@ export async function apiPost(url: string, body?: unknown): Promise<void> {
   if (!response.ok) throw await toApiError(response);
 }
 
-/** POST/PUT JSON and validate the response against a shared schema. */
+/** POST/PUT/PATCH JSON and validate the response against a shared schema. */
 export async function apiSend<T>(
-  method: 'POST' | 'PUT',
+  method: 'POST' | 'PUT' | 'PATCH',
   url: string,
   body: unknown,
   schema: Parser<T>,
@@ -73,6 +73,12 @@ export async function apiSend<T>(
   });
   if (!response.ok) throw await toApiError(response);
   return schema.parse(await response.json());
+}
+
+/** DELETE a resource (204 expected). */
+export async function apiDelete(url: string): Promise<void> {
+  const response = await fetch(url, { method: 'DELETE', credentials: 'same-origin' });
+  if (!response.ok) throw await toApiError(response);
 }
 
 /** Fetch JSON from our same-origin API and validate it against a shared schema. */
