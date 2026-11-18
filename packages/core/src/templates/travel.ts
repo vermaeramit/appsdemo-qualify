@@ -117,6 +117,10 @@ export function travelPlaybookTemplate(businessName: string): PlaybookConfig {
       'Ask the budget tactfully, after destination and dates.',
       'If the lead asks for a brochure or itinerary PDF, say the travel expert will share it on call/WhatsApp.',
       'Disqualify if the lead is a travel agent or vendor looking for a B2B partnership, or says it was a wrong number / not interested.',
+      'Prices are per person: mention that the final price depends on dates, hotels and availability.',
+      'If the knowledge base does not list a detail for a specific package (inclusions, itinerary, hotels), say the travel expert will share it. Never borrow details from a different package.',
+      'Flight fares and visa approval are confirmed by the travel expert (visas are decided by the embassy).',
+      "Don't comment on weather or seasons unless the knowledge base says so.",
     ],
     knowledgeBase: `## Packages (SAMPLE DATA — replace with the real packages)
 Prices are "starting from", per person, on twin sharing, excluding flights unless stated. Final price depends on dates, hotel category and availability.
@@ -175,6 +179,26 @@ Prices are "starting from", per person, on twin sharing, excluding flights unles
         bodyParams: ['lead.firstName'],
         buttons: ['Yes, still planning', 'Not now'],
       },
+    },
+    // Owner-approved travel defaults (2026-11-18).
+    scoring: {
+      rules: [
+        { field: 'travel_month', months: [25, 18, 10, 3] },
+        {
+          field: 'budget',
+          amounts: [
+            { min: 50_000, points: 20 },
+            { min: 25_000, points: 12 },
+            { min: 0, points: 5 },
+          ],
+          perPersonField: 'travelers',
+        },
+        { field: 'passport_status', options: { Ready: 10, Applied: 5, 'Not yet': 0 } },
+      ],
+      completePoints: 15,
+      aiMaxPoints: 30,
+      hotAt: 80,
+      warmAt: 50,
     },
   };
 }

@@ -48,22 +48,25 @@ export const PRICING_TYPE_LABELS: Record<string, string> = {
 export const label = (map: Record<string, string>, key: string) =>
   map[key] ?? key.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 
-const RATE_KEY = 'qualify.usdInrRate';
+const rateKey = (currency: string) => `qualify.usdRate.${currency}`;
 
-/** The viewer's USD → INR rate for showing AI costs in rupees (a per-viewer convenience). */
-export function readUsdInrRate(): number | null {
+/**
+ * The viewer's USD → billing-currency rate, to show AI costs (billed in USD) in the same
+ * currency as Meta's charges. A per-viewer convenience kept in the browser.
+ */
+export function readUsdRate(currency: string): number | null {
   try {
-    const value = Number(localStorage.getItem(RATE_KEY));
+    const value = Number(localStorage.getItem(rateKey(currency)));
     return Number.isFinite(value) && value > 0 ? value : null;
   } catch {
     return null;
   }
 }
 
-export function saveUsdInrRate(rate: number | null): void {
+export function saveUsdRate(currency: string, rate: number | null): void {
   try {
-    if (rate) localStorage.setItem(RATE_KEY, String(rate));
-    else localStorage.removeItem(RATE_KEY);
+    if (rate) localStorage.setItem(rateKey(currency), String(rate));
+    else localStorage.removeItem(rateKey(currency));
   } catch {
     // Storage blocked: the rate simply isn't remembered.
   }

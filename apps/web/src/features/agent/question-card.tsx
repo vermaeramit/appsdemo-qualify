@@ -218,7 +218,7 @@ export function QuestionCard(props: QuestionCardProps) {
                     >
                       <Input
                         id={`${row.id}-label`}
-                        placeholder="e.g. Hotel category"
+                        placeholder="e.g. Preferred plan"
                         aria-invalid={Boolean(errors?.label)}
                         {...labelField}
                         onChange={(event) => {
@@ -262,7 +262,7 @@ export function QuestionCard(props: QuestionCardProps) {
                     <Textarea
                       id={`${row.id}-question`}
                       rows={2}
-                      placeholder="e.g. Which hotel category do you prefer?"
+                      placeholder="e.g. Which plan are you interested in?"
                       {...register(`${path}.question`)}
                     />
                   </FormField>
@@ -383,7 +383,7 @@ export function QuestionCard(props: QuestionCardProps) {
                         id={`${row.id}-guidance`}
                         label="How to read answers (optional)"
                         error={friendlyError(errors?.guidance?.message)}
-                        hint='e.g. "Convert lakhs to rupees. Ask for adults and children separately."'
+                        hint='e.g. "Convert lakhs to rupees." or "Ask for the model if they know it."'
                       >
                         <Textarea
                           id={`${row.id}-guidance`}

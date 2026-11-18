@@ -10,7 +10,7 @@ export function roleLabel(role: WorkspaceRole): string {
   return roleLabels[role];
 }
 
-/** URL-safe, unique-enough slug: "Sunrise Holidays" → "sunrise-holidays-k3f9". */
+/** URL-safe, unique-enough slug: "Acme Solutions" → "acme-solutions-k3f9". */
 export function workspaceSlug(name: string): string {
   const base =
     name

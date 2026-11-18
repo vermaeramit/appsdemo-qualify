@@ -17,6 +17,7 @@ import { ScoringEditor } from './scoring-editor';
 import { OpeningEditor } from './opening-editor';
 import { playbookQueryOptions } from './queries';
 import { QuestionsEditor } from './questions-editor';
+import { TemplatePicker } from './template-picker';
 
 const TABS = [
   { value: 'questions', label: 'Questions' },
@@ -123,6 +124,19 @@ export function PlaybookEditor({
               version.
             </p>
           </div>
+          {canEdit && (
+            <TemplatePicker
+              onPick={(template) => {
+                form.reset(toEditorConfig(template.build(form.getValues('business.name'))), {
+                  keepDefaultValues: true,
+                });
+                setTab('questions');
+                toast.success(`Loaded “${template.name}”`, {
+                  description: 'Review the questions and wording, then publish to use it.',
+                });
+              }}
+            />
+          )}
           {canEdit ? (
             <Button type="submit" disabled={!isDirty || publish.isPending}>
               {publish.isPending ? (

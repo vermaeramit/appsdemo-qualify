@@ -31,6 +31,8 @@ import {
   missingRequiredFields,
   sanitizeQuickReplies,
   toModelHistory,
+  PLAYBOOK_TEMPLATES,
+  findTemplate,
   travelPlaybookTemplate,
 } from './index.ts';
 
@@ -150,7 +152,7 @@ describe('scoring', () => {
     expect(result.details.aiPoints).toBe(24);
     expect(result).toMatchObject({ score: 94, grade: 'hot' });
     expect(result.details.breakdown).toContainEqual({
-      label: 'Budget: 120000 INR total (≈ ₹60,000 per person)',
+      label: 'Budget: 120000 INR total (≈ 60,000 each)',
       points: 20,
     });
     expect(result.details.reason).toContain('Travel month: 2026-12 (within 1 month) +25');
@@ -170,6 +172,27 @@ describe('scoring', () => {
     const generic = defaultScoring([fields[0]!]);
     expect(generic).toMatchObject({ rules: [], completePoints: 70, aiMaxPoints: 30 });
     expect(maxRulePoints(scoring)).toBe(70);
+  });
+});
+
+describe('playbook templates', () => {
+  it('are all valid, with scoring that can reach Hot', () => {
+    for (const template of PLAYBOOK_TEMPLATES) {
+      const config = template.build('Acme');
+      expect(playbookConfigSchema.safeParse(config).success, template.key).toBe(true);
+      const scoring = resolveScoring(config);
+      expect(maxRulePoints(scoring) + scoring.aiMaxPoints, template.key).toBeGreaterThanOrEqual(
+        scoring.hotAt,
+      );
+      // Scoring rules only reference the template's own questions.
+      const keys = new Set(config.fields.map((field) => field.key));
+      for (const rule of scoring.rules) expect(keys.has(rule.field), rule.field).toBe(true);
+    }
+  });
+
+  it('fall back to the "any business" template', () => {
+    expect(findTemplate('unknown').key).toBe('general');
+    expect(findTemplate('travel-packages').name).toBe('Travel packages');
   });
 });
 
@@ -534,7 +557,7 @@ describe('opening message', () => {
         { ...opening, bodyParams: ['lead.firstName', 'business.name', 'field:destination'] },
         'Sunrise Holidays',
       ),
-    ).toEqual(['Rahul', 'Sunrise Holidays', 'Dubai']);
+    ).toEqual(['Rahul', 'Sunrise Holidays', 'your enquiry']);
   });
 
   it('provides a default opening for playbooks created before M4', () => {

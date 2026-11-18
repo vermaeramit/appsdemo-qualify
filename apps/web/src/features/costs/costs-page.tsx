@@ -2,7 +2,7 @@ import { type ReactNode, useState } from 'react';
 import type { CostPeriod, CostsResponse } from '@qualify/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { Bot, Calculator, IndianRupee, Loader2, MessageCircle, Unplug } from 'lucide-react';
+import { Bot, Calculator, Coins, Loader2, MessageCircle, Unplug } from 'lucide-react';
 import { motion } from 'motion/react';
 import { bucketLabel } from '@/components/charts/chart-scales';
 import { ColumnChart } from '@/components/charts/column-chart';
@@ -27,8 +27,8 @@ import {
   formatTokens,
   label,
   PRICING_TYPE_LABELS,
-  readUsdInrRate,
-  saveUsdInrRate,
+  readUsdRate,
+  saveUsdRate,
 } from './format';
 
 const PERIODS: { value: CostPeriod; label: string }[] = [
@@ -78,15 +78,17 @@ function Tile({
 export function CostsPage({ period }: { period: CostPeriod }) {
   const navigate = useNavigate();
   const costs = useQuery(costsQueryOptions(period));
-  const [rate, setRate] = useState<number | null>(() => readUsdInrRate());
-  const [rateInput, setRateInput] = useState(() => (rate ? String(rate) : ''));
+  // AI is billed in USD; Meta in the WhatsApp account's currency. Show both in the latter.
+  const currency = costs.data?.meta.currency ?? 'INR';
+  const [rateTexts, setRateTexts] = useState<Record<string, string>>({});
+  const rateText = rateTexts[currency] ?? String(readUsdRate(currency) ?? '');
+  const parsedRate = Number(rateText);
+  const rate = currency === 'USD' ? 1 : rateText.trim() && parsedRate > 0 ? parsedRate : null;
 
   const onRateChange = (text: string) => {
-    setRateInput(text);
+    setRateTexts((current) => ({ ...current, [currency]: text }));
     const value = Number(text);
-    const next = text.trim() && Number.isFinite(value) && value > 0 ? value : null;
-    setRate(next);
-    saveUsdInrRate(next);
+    saveUsdRate(currency, text.trim() && Number.isFinite(value) && value > 0 ? value : null);
   };
 
   const forbidden = costs.error instanceof ApiError && costs.error.status === 403;
@@ -131,20 +133,23 @@ export function CostsPage({ period }: { period: CostPeriod }) {
             </button>
           ))}
         </div>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          1 USD = ₹
-          <Input
-            type="number"
-            inputMode="decimal"
-            min="1"
-            step="0.01"
-            placeholder="rate"
-            value={rateInput}
-            onChange={(event) => onRateChange(event.target.value)}
-            className="h-8 w-24"
-            aria-label="US dollar to rupee rate, for AI costs"
-          />
-        </label>
+        {currency !== 'USD' && (
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            1 USD =
+            <Input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              placeholder="rate"
+              value={rateText}
+              onChange={(event) => onRateChange(event.target.value)}
+              className="h-8 w-24"
+              aria-label={`US dollar to ${currency} rate, for AI costs`}
+            />
+            {currency}
+          </label>
+        )}
         {costs.isFetching && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
       </div>
 
@@ -171,14 +176,14 @@ export function CostsPage({ period }: { period: CostPeriod }) {
         <div
           className={cn('space-y-6 transition-opacity', costs.isPlaceholderData && 'opacity-60')}
         >
-          <CostTiles data={costs.data} rate={rate} />
+          <CostTiles data={costs.data} rate={rate} currency={currency} />
           <div className="grid gap-4 lg:grid-cols-2">
             <MetaChart data={costs.data} />
             <AiChart data={costs.data} />
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <MetaBreakdown data={costs.data} />
-            <AiBreakdown data={costs.data} rate={rate} />
+            <AiBreakdown data={costs.data} rate={rate} currency={currency} />
           </div>
           <PaidMessages data={costs.data} />
         </div>
@@ -187,18 +192,21 @@ export function CostsPage({ period }: { period: CostPeriod }) {
   );
 }
 
-function CostTiles({ data, rate }: { data: CostsResponse; rate: number | null }) {
+function CostTiles({
+  data,
+  rate,
+  currency,
+}: {
+  data: CostsResponse;
+  rate: number | null;
+  currency: string;
+}) {
   const { meta, ai, leads } = data;
-  const metaCurrency = meta.currency ?? 'INR';
+  const metaCurrency = currency;
   const metaReady = meta.status === 'ok';
   const aiInr = rate ? ai.totalUsd * rate : null;
   // No connected number means no WhatsApp charges; a Meta error means the amount is unknown.
-  const metaInr =
-    meta.status === 'not_connected'
-      ? 0
-      : metaReady && metaCurrency === 'INR'
-        ? meta.totalCost
-        : null;
+  const metaInr = meta.status === 'not_connected' ? 0 : metaReady ? meta.totalCost : null;
   const total = aiInr !== null && metaInr !== null ? aiInr + metaInr : null;
 
   return (
@@ -232,7 +240,7 @@ function CostTiles({ data, rate }: { data: CostsResponse; rate: number | null })
         hint={
           <>
             {ai.replies} {ai.replies === 1 ? 'reply' : 'replies'}
-            {aiInr !== null && <> · ≈ {formatMoney(aiInr, 'INR')}</>}
+            {aiInr !== null && currency !== 'USD' && <> · ≈ {formatMoney(aiInr, currency)}</>}
           </>
         }
       />
@@ -245,7 +253,7 @@ function CostTiles({ data, rate }: { data: CostsResponse; rate: number | null })
           leads.newLeads === 0 ? (
             <span className="text-muted-foreground">—</span>
           ) : total !== null ? (
-            formatMoney(total / leads.newLeads, 'INR')
+            formatMoney(total / leads.newLeads, currency)
           ) : (
             <span className="text-xl">
               {metaReady && formatMoney(meta.totalCost / leads.newLeads, metaCurrency)}
@@ -263,21 +271,21 @@ function CostTiles({ data, rate }: { data: CostsResponse; rate: number | null })
       <Tile
         index={3}
         label="Total"
-        icon={IndianRupee}
+        icon={Coins}
         accent="text-grade-warm bg-grade-warm/10"
         value={
           total !== null ? (
-            formatMoney(total, 'INR')
+            formatMoney(total, currency)
           ) : (
             <span className="text-muted-foreground">—</span>
           )
         }
         hint={
           total !== null
-            ? `Meta ${formatMoney(metaInr ?? 0, 'INR')} + AI ${formatMoney(aiInr ?? 0, 'INR')}`
+            ? `Meta ${formatMoney(metaInr ?? 0, currency)} + AI ${formatMoney(aiInr ?? 0, currency)}`
             : !rate
-              ? 'Enter 1 USD = ₹ above to add the AI cost in rupees'
-              : 'Needs Meta numbers in rupees'
+              ? `Enter 1 USD = … ${currency} above to add the AI cost`
+              : 'Meta numbers are not available'
         }
       />
     </div>
@@ -426,7 +434,15 @@ function MetaBreakdown({ data }: { data: CostsResponse }) {
   );
 }
 
-function AiBreakdown({ data, rate }: { data: CostsResponse; rate: number | null }) {
+function AiBreakdown({
+  data,
+  rate,
+  currency,
+}: {
+  data: CostsResponse;
+  rate: number | null;
+  currency: string;
+}) {
   const { ai } = data;
   return (
     <Card>
@@ -469,9 +485,9 @@ function AiBreakdown({ data, rate }: { data: CostsResponse; rate: number | null 
                     ) : (
                       <>
                         {formatMoney(row.costUsd, 'USD')}
-                        {rate && (
+                        {rate && currency !== 'USD' && (
                           <span className="block text-xs text-muted-foreground">
-                            ≈ {formatMoney(row.costUsd * rate, 'INR')}
+                            ≈ {formatMoney(row.costUsd * rate, currency)}
                           </span>
                         )}
                       </>

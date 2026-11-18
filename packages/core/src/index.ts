@@ -9,5 +9,5 @@ export * from './policy.ts';
 export * from './prompt.ts';
 export * from './scoring.ts';
 export * from './summary.ts';
-export * from './templates/travel.ts';
+export * from './templates/index.ts';
 export * from './turn.ts';

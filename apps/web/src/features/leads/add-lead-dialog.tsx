@@ -181,7 +181,11 @@ function AddLeadForm({ onDone }: { onDone: () => void }) {
           />
         </div>
         <FormField id="lead-campaign" label="Campaign (optional)" error={errors.campaign?.message}>
-          <Input id="lead-campaign" placeholder="Dubai December" {...form.register('campaign')} />
+          <Input
+            id="lead-campaign"
+            placeholder="e.g. Summer campaign"
+            {...form.register('campaign')}
+          />
         </FormField>
       </div>
 

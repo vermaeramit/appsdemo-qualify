@@ -7,7 +7,10 @@ async function signUpWithWorkspace(page: Page, unique: string): Promise<void> {
   await page.getByLabel('Password', { exact: true }).fill('e2e-password-123');
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/\/onboarding/);
-  await page.getByLabel('Workspace name').fill(`E2E Agent Travels ${unique}`);
+  await page.getByLabel('Workspace name').fill(`E2E Agent Realty ${unique}`);
+  // The business type picks the agent's starting template.
+  await page.getByLabel('What does your business do?').click();
+  await page.getByRole('option', { name: 'Real estate' }).click();
   await page.getByRole('button', { name: 'Create workspace' }).click();
   await expect(page).toHaveURL(/\/$/);
 }
@@ -18,11 +21,16 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   const unique = Date.now().toString(36);
   await signUpWithWorkspace(page, unique);
 
-  // The new workspace starts with the travel playbook (v1).
+  // The new workspace starts with the real estate template (v1).
   await page.getByRole('link', { name: 'AI agent' }).click();
   await expect(page.getByRole('heading', { name: 'AI agent' })).toBeVisible();
   await expect(page.getByText('Live · v1')).toBeVisible();
-  await expect(page.getByText('Destination').first()).toBeVisible();
+  await expect(page.getByText('Property type').first()).toBeVisible();
+  // Other templates are one click away.
+  await page.getByRole('button', { name: 'Use a template' }).click();
+  await expect(page.getByText('Any business', { exact: true })).toBeVisible();
+  await expect(page.getByText('Clinic and healthcare', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
 
   // Add a question with options.
   await page.getByRole('button', { name: 'Add question' }).click();

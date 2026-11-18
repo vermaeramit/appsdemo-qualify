@@ -1,7 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { organization } from 'better-auth/plugins';
-import { TRAVEL_TEMPLATE_KEY, travelPlaybookTemplate } from '@qualify/core';
+import { findTemplate } from '@qualify/core';
 import {
   account,
   auditLogs,
@@ -24,6 +24,20 @@ import type { Env } from '../config/env';
  * where one organization = one tenant (workspace).
  * Keep the plugin list in sync with better-auth.cli.ts (used to generate the schema).
  */
+/** The template key from organization metadata (stored as JSON text or an object). */
+function templateKeyOf(metadata: unknown): string | null {
+  try {
+    const value: unknown = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+    if (value && typeof value === 'object' && 'template' in value) {
+      const key = (value as { template: unknown }).template;
+      return typeof key === 'string' ? key : null;
+    }
+  } catch {
+    // Not JSON: no template chosen.
+  }
+  return null;
+}
+
 export function createAuth(db: Database, env: Env) {
   return betterAuth({
     appName: 'AppsDemo Qualify',
@@ -84,13 +98,14 @@ export function createAuth(db: Database, env: Env) {
           afterCreateOrganization: async ({ organization: org, user: creator }) => {
             await withTenant(db, org.id, async (tx) => {
               await tx.insert(tenants).values({ id: org.id });
-              // Every workspace starts with a ready agent (travel template for now; the
-              // template picker arrives with the playbook builder in M5).
+              // Every workspace starts with a ready agent from the template picked at
+              // onboarding (metadata.template), or the "any business" one.
+              const template = findTemplate(templateKeyOf(org.metadata));
               await createPublishedPlaybook(tx, {
                 tenantId: org.id,
-                name: 'Travel packages',
-                templateKey: TRAVEL_TEMPLATE_KEY,
-                config: travelPlaybookTemplate(org.name),
+                name: template.name,
+                templateKey: template.key,
+                config: template.build(org.name),
                 isDefault: true,
               });
               await tx.insert(auditLogs).values({
@@ -98,7 +113,7 @@ export function createAuth(db: Database, env: Env) {
                 actorUserId: creator.id,
                 action: 'workspace.created',
                 target: org.id,
-                metadata: { name: org.name },
+                metadata: { name: org.name, template: template.key },
               });
             });
           },

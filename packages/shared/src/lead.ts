@@ -8,7 +8,7 @@ export type LeadGrade = z.infer<typeof leadGradeSchema>;
 export const leadScoreSchema = z.number().int().min(0).max(100);
 export type LeadScore = z.infer<typeof leadScoreSchema>;
 
-/** One line of a score breakdown, e.g. "Travel month: 2026-12 (within 1 month)" +25. */
+/** One line of a score breakdown, e.g. "Timeline: Within a month" +22. */
 export const scoreBreakdownItemSchema = z.object({
   label: z.string(),
   points: z.number().int(),

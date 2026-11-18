@@ -56,7 +56,7 @@ export function BehaviourEditor({ readOnly }: { readOnly: boolean }) {
             label="Agent name"
             error={friendlyError(errors.persona?.name?.message)}
           >
-            <Input id="persona-name" placeholder="Riya" {...register('persona.name')} />
+            <Input id="persona-name" placeholder="e.g. Maya" {...register('persona.name')} />
           </FormField>
           <FormField
             id="persona-role"
@@ -65,7 +65,7 @@ export function BehaviourEditor({ readOnly }: { readOnly: boolean }) {
           >
             <Input
               id="persona-role"
-              placeholder="travel advisor at Sunrise Holidays"
+              placeholder="e.g. sales advisor"
               {...register('persona.role')}
             />
           </FormField>

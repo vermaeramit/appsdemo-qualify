@@ -58,7 +58,7 @@ export const dashboardResponseSchema = z.object({
       grade: z.enum(['hot', 'warm', 'cold', 'disqualified']).nullable(),
       requiredAnswered: z.number().int(),
       requiredTotal: z.number().int(),
-      /** First answers in question order, e.g. Destination: Dubai. */
+      /** First answers in question order, e.g. Requirement: 2 BHK flat. */
       highlights: z.array(z.object({ label: z.string(), value: z.string() })),
       lastActivityAt: z.iso.datetime({ offset: true }),
     }),

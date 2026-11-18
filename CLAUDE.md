@@ -26,6 +26,7 @@ Full-stack TypeScript, pnpm 12 monorepo, Node.js 26 LTS, TypeScript 6.0 (don't u
 - **deploy:** Docker Compose + Caddy on Ubuntu
 
 ## Rules
+- **Generic product (D-061):** the engine, defaults, prompts, examples and UI copy must fit any business. Industry knowledge (questions, scoring rules, wording) goes only in `packages/core/src/templates/*`. Travel is just the first client's template.
 - **Package manager is pnpm.** TypeScript stays `strict`. Avoid `any`, and validate unknown data with Zod.
 - **`packages/shared` Zod schemas are the single source of truth** for data shapes (API contracts, JSONB columns, webhook payloads, LLM output).
 - **Tenant isolation:** every tenant table has `tenant_id` + an RLS policy (`ENABLE` + `FORCE` + `tenant_isolation` policy, in a custom migration). All tenant queries go through `withTenant()` from `packages/db`. Add a cross-tenant denial test to `packages/db/src/rls.test.ts` for every new tenant table.
@@ -66,7 +67,7 @@ Full-stack TypeScript, pnpm 12 monorepo, Node.js 26 LTS, TypeScript 6.0 (don't u
 - Connect our dev number: `pnpm --filter @qualify/worker connect-dev-number [workspace-slug]`. It is connected to the owner's "Appsdemo" workspace. Meta app = **appsdemo_api** (App ID, secret and system-user token are all from it).
 - Live webhooks in dev: run `"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --no-autoupdate --url http://localhost:5173`, then `pnpm --filter @qualify/worker set-dev-webhook https://<host>.trycloudflare.com`. The quick-tunnel URL changes on every restart.
 - Agent eval: `pnpm --filter @qualify/worker eval -- --models gpt-5.4-mini` (~$0.5 per model; spends API credits, so ask first). Install the template in a workspace: `pnpm --filter @qualify/worker install-playbook [slug]`.
-- API key for Postman: `pnpm --filter @qualify/worker create-api-key [slug] ["name"]` (printed once; the owner runs it so only they see the key). Opening template: `pnpm --filter @qualify/worker opening-template create|status [slug]` (`create` submits to Meta, so ask first). Upgrade a workspace to the latest travel template: `install-playbook [slug] --upgrade`.
+- API key for Postman: `pnpm --filter @qualify/worker create-api-key [slug] ["name"]` (printed once; the owner runs it so only they see the key). Opening template: `pnpm --filter @qualify/worker opening-template create|status [slug]` (`create` submits to Meta, so ask first). Templates: `install-playbook [slug] [--template=<key>] [--upgrade | --fill-missing]` (keys: general, travel-packages, real-estate, education, clinic).
 - For a live API check, create a temporary key in a script, never print it, and revoke it afterwards.
 - Clean test data only by exact criteria. The owner uses the dev DB too (their workspace "Appsdemo").
 - The owner's other Docker containers (e.g. `personal-assistant-*`) are separate projects. Stop or change them only when the owner asks. They were stopped on request on 2026-11-17 (restart policy `unless-stopped`, so they stay stopped).

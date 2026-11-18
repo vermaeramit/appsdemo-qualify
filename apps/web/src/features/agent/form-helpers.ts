@@ -35,12 +35,12 @@ export function answerStyleOf(type: FieldType): AnswerStyle {
 
 export const PLAIN_TYPES: { value: FieldType; label: string; hint: string }[] = [
   { value: 'text', label: 'Text', hint: 'Any answer, e.g. a city or a name' },
-  { value: 'number', label: 'Number', hint: 'e.g. number of nights' },
-  { value: 'range', label: 'Amount or range', hint: 'e.g. budget ₹50k–1L' },
+  { value: 'number', label: 'Number', hint: 'e.g. number of people' },
+  { value: 'range', label: 'Amount or range', hint: 'e.g. a budget or price range' },
   { value: 'date_month', label: 'Month or date', hint: 'e.g. December 2026' },
 ];
 
-/** Lowercase key for a new question, unique among the others: "Hotel category" → "hotel_category". */
+/** Lowercase key for a new question, unique among the others: "Preferred plan" → "preferred_plan". */
 export function keyFromLabel(label: string, taken: ReadonlySet<string>): string {
   const base =
     label

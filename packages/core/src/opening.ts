@@ -99,7 +99,7 @@ export function openingExampleParams(opening: PlaybookOpening, businessName: str
   const fields: LeadFields = {};
   for (const spec of opening.bodyParams) {
     const source = spec.split('|')[0] ?? '';
-    if (source.startsWith('field:')) fields[source.slice('field:'.length)] = 'Dubai';
+    if (source.startsWith('field:')) fields[source.slice('field:'.length)] = 'your enquiry';
   }
   return opening.bodyParams.map((spec) =>
     resolveParam(spec, { leadName: 'Rahul Sharma', fields, businessName }),

@@ -114,6 +114,7 @@
 - **Dashboard with real data** (D-055): period filter, KPIs, leads per hour/day, pipeline, sources, recent leads, WhatsApp health. Sample data removed.
 - **Costs page** (D-058): WhatsApp charges from Meta's pricing analytics, AI cost from token usage, paid messages per lead.
 - **Follow-ups** (D-059): configurable steps, quiet hours, AI nudge inside 24 h, follow-up template outside it, "No reply" at the end. The follow-up template still needs Meta approval in "Appsdemo".
+- **Generic product** (D-061): business-neutral engine and UI; templates for any business, travel, real estate, education and clinics; template picker at onboarding and on the AI agent page.
 - **Scoring** (D-060): configurable rules + AI intent, Hot/Warm/Cold, live and final scores, reason, AI summary, rescoring on publish; shown in the lead panel and dashboard.
 
 **Remaining:**

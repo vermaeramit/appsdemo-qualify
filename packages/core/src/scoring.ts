@@ -5,40 +5,15 @@ import type {
   PlaybookConfig,
   PlaybookField,
   PlaybookScoring,
-  ScoringRule,
 } from '@qualify/shared';
 import { type LeadFields, missingRequiredFields } from './fields.ts';
 
-/** Travel defaults (owner-approved 2026-11-18); a rule applies only if its question exists. */
-const TRAVEL_RULES: ScoringRule[] = [
-  { field: 'travel_month', months: [25, 18, 10, 3] },
-  {
-    field: 'budget',
-    amounts: [
-      { min: 50_000, points: 20 },
-      { min: 25_000, points: 12 },
-      { min: 0, points: 5 },
-    ],
-    perPersonField: 'travelers',
-  },
-  { field: 'passport_status', options: { Ready: 10, Applied: 5, 'Not yet': 0 } },
-];
-
-/** Defaults derived from the questions: travel rules where they fit, otherwise completeness. */
-export function defaultScoring(fields: readonly PlaybookField[]): PlaybookScoring {
-  const keys = new Set(fields.map((field) => field.key));
-  const rules = TRAVEL_RULES.filter((rule) => keys.has(rule.field)).map((rule) => {
-    if (!rule.perPersonField || keys.has(rule.perPersonField)) return rule;
-    const { perPersonField: _unused, ...rest } = rule;
-    return rest;
-  });
-  return {
-    rules,
-    completePoints: rules.length ? 15 : 70,
-    aiMaxPoints: 30,
-    hotAt: 80,
-    warmAt: 50,
-  };
+/**
+ * Default for playbooks without a scoring section: completeness + AI intent. Industry templates
+ * (see templates/) carry their own rules.
+ */
+export function defaultScoring(_fields: readonly PlaybookField[]): PlaybookScoring {
+  return { rules: [], completePoints: 70, aiMaxPoints: 30, hotAt: 80, warmAt: 50 };
 }
 
 export function resolveScoring(config: PlaybookConfig): PlaybookScoring {
@@ -57,7 +32,7 @@ const UNITS: Record<string, number> = {
   crore: 10_000_000,
 };
 
-/** Lowest amount in a budget text: "60000-70000 INR total" → 60000, "₹50k–1L" → 50000. */
+/** Lowest amount in a text: "60000-70000 INR total" → 60000, "₹50k–1L" → 50000, "1.5 lakh" → 150000. */
 export function parseAmount(text: string): number | null {
   const cleaned = text.toLowerCase().replace(/(\d),(?=\d)/g, '$1');
   const values = [
@@ -71,7 +46,7 @@ export function parseAmount(text: string): number | null {
 const PERSON_WORDS =
   /(\d+)\s*(?:adults?|kids?|child(?:ren)?|infants?|people|persons?|pax|members?|travell?ers?|log|bacche|guests?)\b/gi;
 
-/** Number of travellers in "2 adults, 1 child (5 yrs)" → 3; "couple" → 2; "4" → 4. */
+/** How many people a text names: "2 adults, 1 child (5 yrs)" → 3; "couple" → 2; "4" → 4. */
 export function countPeople(text: string): number | null {
   const counted = [...text.matchAll(PERSON_WORDS)].reduce(
     (sum, match) => sum + Number(match[1]),
@@ -101,7 +76,7 @@ function monthBand(months: number | null): number {
   return 3;
 }
 
-const rupees = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
+const amounts = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
 export interface ScoreInput {
   definitions: readonly PlaybookField[];
@@ -151,7 +126,7 @@ export function scoreLead(input: ScoreInput): LeadScoreResult {
         : null;
       if (amount !== null && people && /total/i.test(value)) {
         amount = Math.round(amount / people);
-        note = ` (≈ ₹${rupees.format(amount)} per person)`;
+        note = ` (≈ ${amounts.format(amount)} each)`;
       }
       const band =
         amount === null

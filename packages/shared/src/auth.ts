@@ -21,6 +21,8 @@ export type SignUpInput = z.infer<typeof signUpSchema>;
 
 export const createWorkspaceSchema = z.object({
   name: z.string().trim().min(2, 'Use at least 2 characters').max(60, 'Use at most 60 characters'),
+  /** Playbook template key to start from (unknown keys fall back to "any business"). */
+  template: z.string().min(1).max(40),
 });
 export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>;
 

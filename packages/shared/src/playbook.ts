@@ -106,7 +106,7 @@ const points = z.number().int().min(0).max(100);
 /**
  * Rule points for one question. Which part applies depends on the question's type:
  * - `options` for choice and yes/no questions (yes/no keys are "yes" and "no"),
- * - `months` for month questions: points if travel is within 1 / 3 / 6 months, or later/flexible,
+ * - `months` for month questions: points if the month is within 1 / 3 / 6 months, or later/flexible,
  * - `amounts` for number and range questions: the first band whose `min` the amount reaches,
  * - `points` for text questions: when the lead answered.
  */
@@ -119,7 +119,7 @@ export const scoringRuleSchema = z.object({
     .array(z.object({ min: z.number().min(0), points }))
     .max(6)
     .optional(),
-  /** For amounts: divide totals ("… total") by the number of people from this question. */
+  /** For amounts: divide totals ("… total") by the count named in this question (e.g. people). */
   perPersonField: z.string().optional(),
 });
 export type ScoringRule = z.infer<typeof scoringRuleSchema>;
