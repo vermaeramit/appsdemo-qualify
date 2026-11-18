@@ -11,9 +11,15 @@ import {
   whatsappAccounts,
   withTenant,
 } from '@qualify/db';
-import { decryptSecret, isAllowedRecipient, toWaId } from '@qualify/integrations';
+import {
+  decryptSecret,
+  isAllowedRecipient,
+  type MessageHeaderMedia,
+  toWaId,
+} from '@qualify/integrations';
 import type { ContactJob } from '@qualify/shared';
 import type { LeadLock } from '../lock.ts';
+import { headerMediaFor } from './media.ts';
 import { type FollowUpScheduler, startFollowUps } from './follow-up.ts';
 import type { Logger } from '../logger.ts';
 import {
@@ -21,6 +27,7 @@ import {
   describeSendError,
   type SendResult,
   sendWithOptions,
+  sendCaptionedMedia,
 } from './send.ts';
 
 export interface ContactDeps {
@@ -134,6 +141,21 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
       ? deps.createClient(decryptSecret(number.accessTokenEnc, deps.masterKey))
       : null;
 
+  // An image, video or PDF above the opening (D-084): uploaded to WhatsApp on demand.
+  let header: MessageHeaderMedia | null = null;
+  if (client && opening.headerMedia && client.uploadMedia) {
+    try {
+      header = await headerMediaFor(deps, {
+        tenantId: job.tenantId,
+        client: { uploadMedia: client.uploadMedia.bind(client) },
+        phoneNumberId: number.phoneNumberId,
+        media: opening.headerMedia,
+      });
+    } catch (error) {
+      logger.warn({ ...log, err: error }, 'Opening media upload failed');
+    }
+  }
+
   let sent: SendResult;
   let outcome: ContactOutcome;
   if (!client) {
@@ -149,14 +171,23 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
     };
     outcome = 'skipped_not_allowed';
   } else if (windowOpen) {
-    sent = await sendWithOptions(client, {
-      phoneNumberId: number.phoneNumberId,
-      to,
-      body: rendered.text,
-      options: opening.buttons.length
-        ? { kind: 'buttons', buttons: opening.buttons }
-        : { kind: 'none' },
-    });
+    sent =
+      header && !opening.buttons.length && client.sendMedia
+        ? await sendCaptionedMedia(client.sendMedia.bind(client), {
+            phoneNumberId: number.phoneNumberId,
+            to,
+            media: header,
+            caption: rendered.text,
+          })
+        : await sendWithOptions(client, {
+            phoneNumberId: number.phoneNumberId,
+            to,
+            body: rendered.text,
+            options: opening.buttons.length
+              ? { kind: 'buttons', buttons: opening.buttons }
+              : { kind: 'none' },
+            header,
+          });
     outcome = sent.waMessageId ? 'sent_freeform' : 'send_failed';
   } else if (opening.templateName) {
     try {
@@ -166,6 +197,7 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
         templateName: opening.templateName,
         language: opening.templateLanguage,
         bodyParams: rendered.params,
+        header: header ?? undefined,
       });
       sent = { waMessageId: result.messageId, error: null, type: 'template' };
       outcome = 'sent_template';

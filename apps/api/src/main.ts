@@ -5,6 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Logger } from 'nestjs-pino';
+import { MEDIA_MIMES } from '@qualify/shared';
 import { AppModule } from './app.module';
 import type { Auth } from './auth/auth';
 import { registerAuthRoute } from './auth/auth-route';
@@ -32,6 +33,15 @@ async function bootstrap(): Promise<void> {
   });
 
   registerAuthRoute(app.getHttpAdapter().getInstance(), auth, env.APP_BASE_URL);
+  // Template header files (POST /api/media) arrive as raw bytes, up to 16 MB (D-084).
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .addContentTypeParser(
+      MEDIA_MIMES,
+      { parseAs: 'buffer', bodyLimit: 16 * 1024 * 1024 },
+      (_request, body, done) => done(null, body),
+    );
 
   app.setGlobalPrefix('api');
   app.enableShutdownHooks();

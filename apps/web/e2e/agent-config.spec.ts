@@ -115,6 +115,24 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   );
   await page.getByRole('button', { name: 'Discard' }).click();
 
+  // Opening with an image header (D-084): uploaded to the server and shown in the preview.
+  await page.getByRole('tab', { name: 'Opening' }).click();
+  await page.getByLabel('Image, video or PDF (optional)').setInputFiles({
+    name: 'offer.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64',
+    ),
+  });
+  const headerImage = page.locator('img[src^="/api/media/"]').first();
+  await expect(headerImage).toBeVisible();
+  await expect
+    .poll(() => headerImage.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBe(1);
+  await expect(page.getByText('You have unpublished changes.')).toBeVisible();
+  await page.getByRole('button', { name: 'Discard' }).click();
+
   // Add a lead like a lead form would; it opens in Conversations.
   await page.getByRole('link', { name: 'Conversations' }).click();
   await page.getByRole('button', { name: 'Add lead' }).click();

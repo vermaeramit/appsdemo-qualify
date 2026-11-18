@@ -21,6 +21,7 @@ export * from './lead-form-submissions.ts';
 export * from './lead-list.ts';
 export * from './leads.ts';
 export * from './live.ts';
+export * from './media.ts';
 export * from './migrate.ts';
 export * from './playbooks.ts';
 export * from './routing.ts';

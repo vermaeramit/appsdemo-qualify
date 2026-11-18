@@ -80,7 +80,7 @@ function fnv1a(text: string): string {
  * so it gets its own Meta approval (approved templates can't be silently edited).
  */
 export function openingTemplateName(
-  opening: Pick<PlaybookOpening, 'bodyText' | 'buttons' | 'templateLanguage'>,
+  opening: Pick<PlaybookOpening, 'bodyText' | 'buttons' | 'templateLanguage' | 'headerMedia'>,
 ): string {
   return messageTemplateName('qualify_opening', opening);
 }
@@ -88,9 +88,13 @@ export function openingTemplateName(
 /** "<prefix>_<hash of language, text and buttons>": one Meta template per distinct text. */
 export function messageTemplateName(
   prefix: string,
-  message: Pick<PlaybookOpening, 'bodyText' | 'buttons' | 'templateLanguage'>,
+  message: Pick<PlaybookOpening, 'bodyText' | 'buttons' | 'templateLanguage' | 'headerMedia'>,
 ): string {
-  const content = [message.templateLanguage, message.bodyText, ...message.buttons].join('\u0000');
+  // Without media the name is unchanged, so existing approved templates keep matching.
+  const media = message.headerMedia ? ['media', message.headerMedia.assetId] : [];
+  const content = [message.templateLanguage, message.bodyText, ...message.buttons, ...media].join(
+    '\u0000',
+  );
   return `${prefix}_${fnv1a(content)}`;
 }
 

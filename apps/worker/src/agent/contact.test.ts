@@ -8,6 +8,7 @@ import {
   messages,
   playbookVersions,
   publishPlaybookVersion,
+  saveMediaAsset,
   withTenant,
 } from '@qualify/db';
 import type { LlmClient, StructuredRequest } from '@qualify/integrations';
@@ -85,6 +86,8 @@ beforeEach(() => {
     sendList: ok(),
     sendTemplate: ok(),
     markRead: vi.fn(async () => undefined),
+    uploadMedia: vi.fn(async () => 'wa-media-1'),
+    sendMedia: ok(),
   };
 });
 
@@ -260,5 +263,54 @@ describe('processContact (opening message)', () => {
       expect.objectContaining({ buttons: ['This month', 'Next month'] }),
     );
     expect((await getLead(leadId)).status).toBe('engaged');
+  });
+});
+
+describe('opening with an image header (D-084)', () => {
+  it('uploads the file once, sends it with the template, then reuses the media id', async () => {
+    const asset = await withTenant(testDb.app.db, TENANT, (tx) =>
+      saveMediaAsset(tx, {
+        tenantId: TENANT,
+        kind: 'IMAGE',
+        mime: 'image/jpeg',
+        fileName: 'offer.jpg',
+        bytes: Buffer.from('jpeg bytes'),
+      }),
+    );
+    await withTenant(testDb.app.db, TENANT, async (tx) => {
+      const current = await getDefaultPublishedPlaybook(tx);
+      const config = travelPlaybookTemplate('Sunrise Holidays');
+      await publishPlaybookVersion(tx, {
+        tenantId: TENANT,
+        playbookId: current!.playbookId,
+        config: {
+          ...config,
+          opening: {
+            ...config.opening!,
+            templateName: 'qualify_opening_media',
+            headerMedia: { kind: 'IMAGE', assetId: asset.id },
+          },
+        },
+      });
+    });
+    const run = async (phone: string) => {
+      const leadId = await createApiLead(phone);
+      return processContact({ tenantId: TENANT, leadId }, deps({ allowlist: ['*'] }));
+    };
+
+    expect(await run('919800000051')).toBe('sent_template');
+    expect(await run('919800000052')).toBe('sent_template');
+    expect(client.uploadMedia).toHaveBeenCalledTimes(1);
+    expect(client.uploadMedia).toHaveBeenCalledWith(PHONE_NUMBER_ID, {
+      bytes: Buffer.from('jpeg bytes'),
+      mime: 'image/jpeg',
+      fileName: 'offer.jpg',
+    });
+    expect(client.sendTemplate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        templateName: 'qualify_opening_media',
+        header: { kind: 'IMAGE', mediaId: 'wa-media-1', fileName: 'offer.jpg' },
+      }),
+    );
   });
 });

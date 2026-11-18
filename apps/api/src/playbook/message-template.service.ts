@@ -21,6 +21,7 @@ import type {
 } from '@qualify/shared';
 import type { WorkspaceContext } from '../auth/workspace.guard';
 import { DB } from '../tokens';
+import { TemplateMediaService } from '../media/template-media.service';
 import { type WhatsAppAccess, WhatsAppAccessService } from '../whatsapp/whatsapp-access.service';
 import { PlaybookService } from './playbook.service';
 
@@ -75,6 +76,7 @@ export class MessageTemplateService {
     @Inject(DB) private readonly handle: DbHandle,
     @Inject(PlaybookService) private readonly playbooks: PlaybookService,
     @Inject(WhatsAppAccessService) private readonly whatsapp: WhatsAppAccessService,
+    @Inject(TemplateMediaService) private readonly media: TemplateMediaService,
   ) {}
 
   async status(tenantId: string, kind: TemplateKind): Promise<OpeningTemplateStatus> {
@@ -116,6 +118,9 @@ export class MessageTemplateService {
       );
     }
     if (!existing) {
+      const headerMedia = message.headerMedia
+        ? await this.media.sampleHandle(workspace.tenantId, message.headerMedia, access.accessToken)
+        : undefined;
       await this.meta(() =>
         access.client.createTemplate({
           wabaId: access.wabaId,
@@ -125,6 +130,7 @@ export class MessageTemplateService {
           bodyText: message.bodyText,
           bodyExample: openingExampleParams(message, config.business.name),
           quickReplies: message.buttons,
+          headerMedia,
         }),
       );
       await this.audit(workspace, `${kind}_template.submitted`, name);

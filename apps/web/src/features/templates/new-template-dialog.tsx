@@ -3,6 +3,7 @@ import {
   type CreateTemplateRequest,
   createTemplateRequestSchema,
   TEMPLATE_LANGUAGES,
+  type TemplateHeaderMedia,
   templateVariables,
 } from '@qualify/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -29,6 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { HeaderMediaInput } from '@/features/media/header-media-input';
 import { apiSend, errorMessage } from '@/lib/api';
 import { TemplatePreview } from './template-preview';
 
@@ -49,7 +51,9 @@ export function NewTemplateDialog() {
   const [name, setName] = useState('');
   const [language, setLanguage] = useState<CreateTemplateRequest['language']>('en');
   const [category, setCategory] = useState<CreateTemplateRequest['category']>('MARKETING');
+  const [headerType, setHeaderType] = useState<'none' | 'text' | 'media'>('none');
   const [headerText, setHeaderText] = useState('');
+  const [headerMedia, setHeaderMedia] = useState<TemplateHeaderMedia | undefined>(undefined);
   const [bodyText, setBodyText] = useState('');
   const [examples, setExamples] = useState<string[]>([]);
   const [footerText, setFooterText] = useState('');
@@ -61,7 +65,9 @@ export function NewTemplateDialog() {
 
   const reset = () => {
     setName('');
+    setHeaderType('none');
     setHeaderText('');
+    setHeaderMedia(undefined);
     setBodyText('');
     setExamples([]);
     setFooterText('');
@@ -87,7 +93,8 @@ export function NewTemplateDialog() {
       name,
       language,
       category,
-      headerText: headerText.trim() || undefined,
+      headerText: headerType === 'text' ? headerText.trim() || undefined : undefined,
+      headerMedia: headerType === 'media' ? headerMedia : undefined,
       bodyText,
       examples: exampleValues,
       footerText: footerText.trim() || undefined,
@@ -180,13 +187,35 @@ export function NewTemplateDialog() {
             </p>
 
             <div className="space-y-1.5">
-              <Label htmlFor="template-header">Header (optional)</Label>
-              <Input
-                id="template-header"
-                maxLength={60}
-                value={headerText}
-                onChange={(event) => setHeaderText(event.target.value)}
-              />
+              <Label htmlFor="template-header-type">Header (optional)</Label>
+              <Select
+                value={headerType}
+                onValueChange={(value) => setHeaderType(value as typeof headerType)}
+              >
+                <SelectTrigger id="template-header-type" className="w-full sm:w-60">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No header</SelectItem>
+                  <SelectItem value="text">Text</SelectItem>
+                  <SelectItem value="media">Image, video or PDF</SelectItem>
+                </SelectContent>
+              </Select>
+              {headerType === 'text' && (
+                <Input
+                  aria-label="Header text"
+                  maxLength={60}
+                  value={headerText}
+                  onChange={(event) => setHeaderText(event.target.value)}
+                />
+              )}
+              {headerType === 'media' && (
+                <HeaderMediaInput
+                  id="template-header-media"
+                  value={headerMedia}
+                  onChange={setHeaderMedia}
+                />
+              )}
               {errors.headerText && <p className="text-xs text-destructive">{errors.headerText}</p>}
             </div>
 
@@ -274,14 +303,19 @@ export function NewTemplateDialog() {
             <p className="text-xs font-medium text-muted-foreground">Preview</p>
             <div className="rounded-xl bg-muted/50 p-3">
               <TemplatePreview
-                headerText={headerText}
+                headerText={headerType === 'text' ? headerText : undefined}
+                headerMedia={headerType === 'media' ? headerMedia : undefined}
                 bodyText={bodyText}
                 footerText={footerText}
                 buttons={buttons}
                 examples={exampleValues}
               />
             </div>
-            <Button className="w-full" disabled={submit.isPending} onClick={onSubmit}>
+            <Button
+              className="w-full"
+              disabled={submit.isPending || (headerType === 'media' && !headerMedia)}
+              onClick={onSubmit}
+            >
               {submit.isPending && <Loader2 className="animate-spin" data-icon="inline-start" />}
               Submit to Meta
             </Button>

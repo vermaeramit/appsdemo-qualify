@@ -16,6 +16,7 @@ import {
 } from '@qualify/shared';
 import type { WorkspaceContext } from '../auth/workspace.guard';
 import { DB } from '../tokens';
+import { TemplateMediaService } from '../media/template-media.service';
 import { WhatsAppAccessService } from '../whatsapp/whatsapp-access.service';
 
 /** Graph template → our shape, with where the AI agent uses it. */
@@ -56,6 +57,7 @@ export class TemplatesService {
   constructor(
     @Inject(DB) private readonly handle: DbHandle,
     @Inject(WhatsAppAccessService) private readonly whatsapp: WhatsAppAccessService,
+    @Inject(TemplateMediaService) private readonly media: TemplateMediaService,
   ) {}
 
   async list(workspace: WorkspaceContext): Promise<TemplateList> {
@@ -79,6 +81,9 @@ export class TemplatesService {
     input: CreateTemplateRequest,
   ): Promise<{ id: string; status: string; category: string }> {
     const access = await this.requireAccess(workspace.tenantId);
+    const headerMedia = input.headerMedia
+      ? await this.media.sampleHandle(workspace.tenantId, input.headerMedia, access.accessToken)
+      : undefined;
     const created = await this.meta(() =>
       access.client.createTemplate({
         wabaId: access.wabaId,
@@ -90,6 +95,7 @@ export class TemplatesService {
         quickReplies: input.buttons,
         headerText: input.headerText,
         footerText: input.footerText,
+        headerMedia,
       }),
     );
     await this.audit(workspace, 'template.created', input.name, {

@@ -31,6 +31,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { type EditorConfig, friendlyError, placeholderCount } from './form-helpers';
 import { type TemplateKind, TemplateStatusCard } from './template-status-card';
+import { HeaderMediaInput, HeaderMediaView } from '@/features/media/header-media-input';
 import { WhatsAppBubble } from './whatsapp-preview';
 
 const LEAD_SOURCES = [
@@ -287,6 +288,26 @@ export function TemplateMessageEditor({
             )}
 
             <div className="space-y-1.5">
+              <Label htmlFor={`${kind}-media`}>Image, video or PDF (optional)</Label>
+              <Controller
+                control={control}
+                name={`${base}.headerMedia`}
+                render={({ field }) => (
+                  <HeaderMediaInput
+                    id={`${kind}-media`}
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={!editable}
+                  />
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                Shown above the text, e.g. a photo of your offer or a brochure. A new file needs a
+                new approval from Meta.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
               <Label htmlFor={`${kind}-buttons`}>Reply buttons</Label>
               <Controller
                 control={control}
@@ -341,6 +362,11 @@ export function TemplateMessageEditor({
           <CardContent>
             <div className="rounded-lg bg-muted/60 p-3">
               <WhatsAppBubble buttons={message.buttons.filter((button) => button.trim())}>
+                {message.headerMedia && (
+                  <span className="mb-2 block">
+                    <HeaderMediaView media={message.headerMedia} />
+                  </span>
+                )}
                 {preview.text}
               </WhatsAppBubble>
             </div>

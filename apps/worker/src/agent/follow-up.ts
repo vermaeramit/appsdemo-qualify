@@ -43,6 +43,7 @@ import type { Logger } from '../logger.ts';
 import { scoreColumns, writeSummary } from './scoring.ts';
 import { type AgentMessagingClient, describeSendError, sendWithOptions } from './send.ts';
 import { type EmitLeadEvent } from '../webhooks/webhooks.ts';
+import { headerMediaFor } from './media.ts';
 
 /** Schedules and cancels a lead's follow-up jobs (BullMQ in production, in memory in tests). */
 export interface FollowUpScheduler {
@@ -317,6 +318,16 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
     let waMessageId: string | null = null;
     let error: Record<string, unknown> | null = null;
     try {
+      const media = settings.template.headerMedia;
+      const header =
+        media && client.uploadMedia
+          ? await headerMediaFor(deps, {
+              tenantId: job.tenantId,
+              client: { uploadMedia: client.uploadMedia.bind(client) },
+              phoneNumberId: number.phoneNumberId,
+              media,
+            })
+          : null;
       waMessageId = (
         await client.sendTemplate({
           phoneNumberId: number.phoneNumberId,
@@ -324,6 +335,7 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
           templateName: settings.template.templateName,
           language: settings.template.templateLanguage,
           bodyParams: rendered.params,
+          header: header ?? undefined,
         })
       ).messageId;
     } catch (sendError) {

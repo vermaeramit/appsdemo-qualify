@@ -5,7 +5,14 @@ import type { Env } from '../config/env';
 import { DB, ENV } from '../tokens';
 
 export type WhatsAppAccess =
-  | { ok: true; client: WhatsAppClient; wabaId: string; phoneNumberId: string }
+  | {
+      ok: true;
+      client: WhatsAppClient;
+      wabaId: string;
+      phoneNumberId: string;
+      /** Needed for Meta's Resumable Upload (template media samples). */
+      accessToken: string;
+    }
   | { ok: false; reason: string };
 
 /** A Graph API client for the tenant's connected WhatsApp account (token decrypted on demand). */
@@ -38,10 +45,17 @@ export class WhatsAppAccessService {
     );
     if (!account) return { ok: false, reason: 'No WhatsApp number is connected yet.' };
 
+    const accessToken = decryptSecret(account.accessTokenEnc, this.masterKey);
     const client = new WhatsAppClient({
-      accessToken: decryptSecret(account.accessTokenEnc, this.masterKey),
+      accessToken,
       ...(this.env.META_GRAPH_VERSION ? { graphVersion: this.env.META_GRAPH_VERSION } : {}),
     });
-    return { ok: true, client, wabaId: account.wabaId, phoneNumberId: account.phoneNumberId };
+    return {
+      ok: true,
+      client,
+      wabaId: account.wabaId,
+      phoneNumberId: account.phoneNumberId,
+      accessToken,
+    };
   }
 }

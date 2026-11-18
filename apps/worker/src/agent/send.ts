@@ -1,10 +1,11 @@
 import type { ReplyOptions } from '@qualify/core';
-import { MetaApiError, type WhatsAppClient } from '@qualify/integrations';
+import { type MessageHeaderMedia, MetaApiError, type WhatsAppClient } from '@qualify/integrations';
 
 export type AgentMessagingClient = Pick<
   WhatsAppClient,
   'sendText' | 'sendButtons' | 'sendList' | 'sendTemplate' | 'markRead'
->;
+> &
+  Partial<Pick<WhatsAppClient, 'uploadMedia' | 'sendMedia'>>;
 
 export interface SendResult {
   waMessageId: string | null;
@@ -22,14 +23,27 @@ export function describeSendError(error: unknown): Record<string, unknown> {
 /** Sends a reply as plain text, reply buttons or a list menu, depending on the options. */
 export async function sendWithOptions(
   client: AgentMessagingClient,
-  input: { phoneNumberId: string; to: string; body: string; options: ReplyOptions },
+  input: {
+    phoneNumberId: string;
+    to: string;
+    body: string;
+    options: ReplyOptions;
+    /** A media header (only on reply buttons). */
+    header?: MessageHeaderMedia | null;
+  },
 ): Promise<SendResult> {
   const { phoneNumberId, to, body, options } = input;
   const type = options.kind === 'none' ? 'text' : 'interactive';
   try {
     const sent =
       options.kind === 'buttons'
-        ? await client.sendButtons({ phoneNumberId, to, body, buttons: options.buttons })
+        ? await client.sendButtons({
+            phoneNumberId,
+            to,
+            body,
+            buttons: options.buttons,
+            ...(input.header ? { header: input.header } : {}),
+          })
         : options.kind === 'list'
           ? await client.sendList({
               phoneNumberId,
@@ -42,5 +56,18 @@ export async function sendWithOptions(
     return { waMessageId: sent.messageId, error: null, type };
   } catch (error) {
     return { waMessageId: null, error: describeSendError(error), type };
+  }
+}
+
+/** An image, video or document with the text as its caption (no buttons). */
+export async function sendCaptionedMedia(
+  sendMedia: WhatsAppClient['sendMedia'],
+  input: { phoneNumberId: string; to: string; media: MessageHeaderMedia; caption: string },
+): Promise<SendResult> {
+  try {
+    const sent = await sendMedia(input);
+    return { waMessageId: sent.messageId, error: null, type: 'text' };
+  } catch (error) {
+    return { waMessageId: null, error: describeSendError(error), type: 'text' };
   }
 }

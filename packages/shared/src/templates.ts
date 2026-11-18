@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { templateHeaderMediaSchema } from './media.js';
 
 /** Template languages offered in the editor (Meta codes). */
 export const TEMPLATE_LANGUAGES = {
@@ -67,6 +68,8 @@ export const createTemplateRequestSchema = z
       .max(60)
       .refine((text) => !/\{\{/.test(text), 'Variables are not supported in the header')
       .optional(),
+    /** An image, video or PDF header instead of a text header (D-084). */
+    headerMedia: templateHeaderMediaSchema.optional(),
     bodyText: z.string().trim().min(1, 'Write the message').max(1_024),
     /** One example value per {{n}} in the body, in order (Meta reviews with them). */
     examples: z.array(z.string().trim().min(1, 'Give an example').max(200)).max(20).default([]),
@@ -88,6 +91,13 @@ export const createTemplateRequestSchema = z
         code: 'custom',
         path: ['examples'],
         message: `Give one example for each variable (${unique.length})`,
+      });
+    }
+    if (input.headerText && input.headerMedia) {
+      context.addIssue({
+        code: 'custom',
+        path: ['headerText'],
+        message: 'Use either a text header or a media header',
       });
     }
     if (new Set(input.buttons).size !== input.buttons.length) {

@@ -13,6 +13,7 @@ import {
   publishPlaybookVersion,
 } from './playbooks.ts';
 import { resolveTenantByPageId, resolveTenantByPhoneNumberId } from './routing.ts';
+import { getMediaAsset, saveMediaAsset } from './media.ts';
 import { saveWhatsAppConnection } from './whatsapp-connect.ts';
 import type { PlaybookConfig } from '@qualify/shared';
 import {
@@ -401,5 +402,41 @@ describe('Lead form tables and Page routing (connected as qualify_app)', () => {
     await expect(takeover).rejects.toSatisfy((error) =>
       /row-level security/.test(errorText(error)),
     );
+  });
+
+  it('isolates media assets and dedupes identical uploads', async () => {
+    const bytes = Buffer.from('fake png bytes');
+    const first = await withTenant(app.db, 'org_a', (tx) =>
+      saveMediaAsset(tx, {
+        tenantId: 'org_a',
+        kind: 'IMAGE',
+        mime: 'image/png',
+        fileName: 'a.png',
+        bytes,
+      }),
+    );
+    const again = await withTenant(app.db, 'org_a', (tx) =>
+      saveMediaAsset(tx, {
+        tenantId: 'org_a',
+        kind: 'IMAGE',
+        mime: 'image/png',
+        fileName: 'b.png',
+        bytes,
+      }),
+    );
+    expect(again.id).toBe(first.id);
+    expect(await withTenant(app.db, 'org_b', (tx) => getMediaAsset(tx, first.id))).toBeNull();
+    const stored = await withTenant(app.db, 'org_a', (tx) => getMediaAsset(tx, first.id));
+    expect(stored?.bytes.toString()).toBe('fake png bytes');
+    const spoof = withTenant(app.db, 'org_b', (tx) =>
+      saveMediaAsset(tx, {
+        tenantId: 'org_a',
+        kind: 'IMAGE',
+        mime: 'image/jpeg',
+        fileName: 'x.jpg',
+        bytes,
+      }),
+    );
+    await expect(spoof).rejects.toSatisfy((error) => /row-level security/.test(errorText(error)));
   });
 });

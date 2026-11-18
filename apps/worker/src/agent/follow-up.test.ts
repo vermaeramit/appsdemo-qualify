@@ -186,6 +186,8 @@ beforeEach(() => {
     sendList: ok(),
     sendTemplate: ok(),
     markRead: vi.fn(async () => undefined),
+    uploadMedia: vi.fn(async () => 'wa-media-1'),
+    sendMedia: ok(),
   };
 });
 

@@ -10,6 +10,7 @@ import type { PlaybookConfig, PlaybookResponse } from '@qualify/shared';
 import { describe, expect, it, vi } from 'vitest';
 import type { WorkspaceContext } from '../auth/workspace.guard';
 import type { WhatsAppAccess, WhatsAppAccessService } from '../whatsapp/whatsapp-access.service';
+import type { TemplateMediaService } from '../media/template-media.service';
 import { MessageTemplateService } from './message-template.service';
 import type { PlaybookService } from './playbook.service';
 
@@ -56,6 +57,7 @@ function setup(options: { templates?: Template[]; connected?: boolean } = {}) {
           client: client as unknown as WhatsAppClient,
           wabaId: 'waba1',
           phoneNumberId: 'pn1',
+          accessToken: 'token',
         };
   const whatsapp = { forTenant: vi.fn(async () => access) };
 
@@ -68,6 +70,9 @@ function setup(options: { templates?: Template[]; connected?: boolean } = {}) {
     handle,
     playbooks as unknown as PlaybookService,
     whatsapp as unknown as WhatsAppAccessService,
+    {
+      sampleHandle: vi.fn(async () => ({ format: 'IMAGE', handle: '4::h' })),
+    } as unknown as TemplateMediaService,
   );
   return { service, client, playbooks, templates, getConfig: () => config };
 }

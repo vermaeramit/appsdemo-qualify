@@ -148,6 +148,77 @@ export async function exchangeSignupCode(input: {
   return json.access_token;
 }
 
+/** A media header on a message we send (a WhatsApp media id from uploadMedia). */
+export interface MessageHeaderMedia {
+  kind: 'IMAGE' | 'VIDEO' | 'DOCUMENT';
+  mediaId: string;
+  /** Shown to the lead for documents. */
+  fileName?: string | undefined;
+}
+
+function headerMediaObject(media: MessageHeaderMedia) {
+  const type = media.kind.toLowerCase() as 'image' | 'video' | 'document';
+  return {
+    type,
+    [type]: {
+      id: media.mediaId,
+      ...(media.kind === 'DOCUMENT' && media.fileName ? { filename: media.fileName } : {}),
+    },
+  };
+}
+
+/**
+ * Template review needs a sample of a media header, uploaded with the Resumable Upload API
+ * (session on the app, then the raw bytes). Returns the handle for `example.header_handle`.
+ */
+export async function uploadTemplateSample(input: {
+  appId: string;
+  accessToken: string;
+  bytes: Buffer;
+  mime: string;
+  fileName: string;
+  graphVersion?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<string> {
+  const doFetch = input.fetchImpl ?? fetch;
+  const base = `https://graph.facebook.com/${input.graphVersion ?? DEFAULT_GRAPH_VERSION}`;
+  const read = async (response: Response) => {
+    const json = (await response.json().catch(() => ({}))) as {
+      id?: string;
+      h?: string;
+      error?: { message?: string; code?: number };
+    };
+    if (!response.ok) {
+      throw new MetaApiError(
+        response.status,
+        json.error?.message ?? `Media upload failed with ${response.status}`,
+        json.error?.code,
+        json,
+      );
+    }
+    return json;
+  };
+  const session = new URL(`${base}/${input.appId}/uploads`);
+  session.search = new URLSearchParams({
+    file_name: input.fileName,
+    file_length: String(input.bytes.length),
+    file_type: input.mime,
+    access_token: input.accessToken,
+  }).toString();
+  const started = await read(await doFetch(session, { method: 'POST' }));
+  if (!started.id)
+    throw new MetaApiError(500, 'Meta returned no upload session', undefined, started);
+  const uploaded = await read(
+    await doFetch(`${base}/${started.id}`, {
+      method: 'POST',
+      headers: { Authorization: `OAuth ${input.accessToken}`, file_offset: '0' },
+      body: new Uint8Array(input.bytes),
+    }),
+  );
+  if (!uploaded.h) throw new MetaApiError(500, 'Meta returned no file handle', undefined, uploaded);
+  return uploaded.h;
+}
+
 export class WhatsAppClient {
   private readonly baseUrl: string;
   private readonly accessToken: string;
@@ -193,6 +264,7 @@ export class WhatsAppClient {
     to: string;
     body: string;
     buttons: readonly string[];
+    header?: MessageHeaderMedia | undefined;
   }): Promise<{ messageId: string }> {
     const result = await this.request<{ messages?: { id: string }[] }>(
       'POST',
@@ -204,6 +276,7 @@ export class WhatsAppClient {
         type: 'interactive',
         interactive: {
           type: 'button',
+          ...(params.header ? { header: headerMediaObject(params.header) } : {}),
           body: { text: params.body },
           action: {
             buttons: params.buttons.slice(0, 3).map((title, index) => ({
@@ -264,7 +337,21 @@ export class WhatsAppClient {
     templateName: string;
     language: string;
     bodyParams: readonly string[];
+    header?: MessageHeaderMedia | undefined;
   }): Promise<{ messageId: string }> {
+    const components = [
+      ...(params.header
+        ? [{ type: 'header', parameters: [headerMediaObject(params.header)] }]
+        : []),
+      ...(params.bodyParams.length
+        ? [
+            {
+              type: 'body',
+              parameters: params.bodyParams.map((text) => ({ type: 'text', text })),
+            },
+          ]
+        : []),
+    ];
     const result = await this.request<{ messages?: { id: string }[] }>(
       'POST',
       `/${params.phoneNumberId}/messages`,
@@ -276,16 +363,7 @@ export class WhatsAppClient {
         template: {
           name: params.templateName,
           language: { code: params.language },
-          ...(params.bodyParams.length
-            ? {
-                components: [
-                  {
-                    type: 'body',
-                    parameters: params.bodyParams.map((text) => ({ type: 'text', text })),
-                  },
-                ],
-              }
-            : {}),
+          ...(components.length ? { components } : {}),
         },
       },
     );
@@ -303,13 +381,25 @@ export class WhatsAppClient {
     quickReplies: readonly string[];
     headerText?: string | undefined;
     footerText?: string | undefined;
+    /** A media header; `handle` comes from uploadTemplateSample. */
+    headerMedia?: { format: 'IMAGE' | 'VIDEO' | 'DOCUMENT'; handle: string } | undefined;
   }): Promise<{ id: string; status: string; category: string }> {
     return this.request('POST', `/${params.wabaId}/message_templates`, {
       name: params.name,
       language: params.language,
       category: params.category,
       components: [
-        ...(params.headerText ? [{ type: 'HEADER', format: 'TEXT', text: params.headerText }] : []),
+        ...(params.headerMedia
+          ? [
+              {
+                type: 'HEADER',
+                format: params.headerMedia.format,
+                example: { header_handle: [params.headerMedia.handle] },
+              },
+            ]
+          : params.headerText
+            ? [{ type: 'HEADER', format: 'TEXT', text: params.headerText }]
+            : []),
         {
           type: 'BODY',
           text: params.bodyText,
@@ -326,6 +416,58 @@ export class WhatsAppClient {
           : []),
       ],
     });
+  }
+
+  /** Uploads a file for sending; the media id is valid for 30 days. */
+  async uploadMedia(
+    phoneNumberId: string,
+    file: { bytes: Buffer; mime: string; fileName: string },
+  ): Promise<string> {
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', file.mime);
+    form.append('file', new Blob([new Uint8Array(file.bytes)], { type: file.mime }), file.fileName);
+    const response = await this.fetchImpl(`${this.baseUrl}/${phoneNumberId}/media`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+      body: form,
+    });
+    const json = (await response.json().catch(() => ({}))) as {
+      id?: string;
+      error?: { message?: string; code?: number };
+    };
+    if (!response.ok || !json.id) {
+      throw new MetaApiError(
+        response.status,
+        json.error?.message ?? `Media upload failed with ${response.status}`,
+        json.error?.code,
+        json,
+      );
+    }
+    return json.id;
+  }
+
+  /** An image, video or document with the text as its caption (inside the 24 h window). */
+  async sendMedia(params: {
+    phoneNumberId: string;
+    to: string;
+    media: MessageHeaderMedia;
+    caption: string;
+  }): Promise<{ messageId: string }> {
+    const type = params.media.kind.toLowerCase();
+    const object = headerMediaObject(params.media) as Record<string, Record<string, string>>;
+    const result = await this.request<{ messages?: { id: string }[] }>(
+      'POST',
+      `/${params.phoneNumberId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: params.to,
+        type,
+        [type]: { ...object[type], caption: params.caption },
+      },
+    );
+    return { messageId: requireMessageId(result) };
   }
 
   /** Every template on a WABA (follows pages, up to 1,000 templates). */

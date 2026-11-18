@@ -16,10 +16,17 @@ export type EditorConfig = PlaybookConfig & {
 };
 
 export function toEditorConfig(config: PlaybookConfig): EditorConfig {
+  const opening = resolveOpening(config);
+  const followUps = resolveFollowUps(config);
   return {
     ...config,
-    opening: resolveOpening(config),
-    followUps: resolveFollowUps(config),
+    // headerMedia is always present (possibly undefined) so "remove the file" and "discard"
+    // compare equal to the published version and don't leave the form dirty.
+    opening: { ...opening, headerMedia: opening.headerMedia },
+    followUps: {
+      ...followUps,
+      template: { ...followUps.template, headerMedia: followUps.template.headerMedia },
+    },
     scoring: resolveScoring(config),
   };
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { templateHeaderMediaSchema } from './media.js';
 
 /** Languages the agent can speak. "hinglish" = Hindi written in Roman script. */
 export const agentLanguageSchema = z.enum(['hinglish', 'en', 'hi']);
@@ -61,6 +62,8 @@ export const playbookOpeningSchema = z.object({
   bodyParams: z.array(z.string().min(1).max(80)).max(10),
   /** Quick-reply buttons of the template (also used for free-form openings). */
   buttons: z.array(z.string().min(1).max(20)).max(3),
+  /** Optional image, video or PDF shown above the text (D-084). */
+  headerMedia: templateHeaderMediaSchema.optional(),
 });
 export type PlaybookOpening = z.infer<typeof playbookOpeningSchema>;
 

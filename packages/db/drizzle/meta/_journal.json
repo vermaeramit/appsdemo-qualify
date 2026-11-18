@@ -155,6 +155,20 @@
       "when": 1795017329253,
       "tag": "0021_live_notify",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795020672235,
+      "tag": "0022_media_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795020674347,
+      "tag": "0023_media_assets_rls",
+      "breakpoints": true
     }
   ]
 }
