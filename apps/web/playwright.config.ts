@@ -7,6 +7,9 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
+  // Each spec signs up and builds a workspace against one local dev stack: more than two at once
+  // makes the dev servers the bottleneck and tests time out.
+  workers: 2,
   reporter: [['list']],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',
