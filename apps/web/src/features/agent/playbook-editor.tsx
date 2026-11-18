@@ -19,6 +19,7 @@ import { playbookQueryOptions } from './queries';
 import { QuestionsEditor } from './questions-editor';
 import { TemplatePicker } from './template-picker';
 import { TestChat } from './test-chat';
+import { VersionHistory } from './version-history';
 
 const TABS = [
   { value: 'questions', label: 'Questions' },
@@ -125,6 +126,16 @@ export function PlaybookEditor({
               version.
             </p>
           </div>
+          <VersionHistory
+            canEdit={canEdit}
+            onLoad={(config, versionNo) => {
+              form.reset(toEditorConfig(config), { keepDefaultValues: true });
+              setTab('questions');
+              toast.success(`Loaded version ${versionNo}`, {
+                description: 'Review it, then publish to make it live again.',
+              });
+            }}
+          />
           {canEdit && <TestChat getConfig={() => form.getValues()} />}
           {canEdit && (
             <TemplatePicker

@@ -88,6 +88,21 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await page.getByRole('button', { name: 'Publish v4' }).click();
   await expect(page.getByText('Published version 4')).toBeVisible();
 
+  // Version history: every publish is kept; an older one loads into the editor as a draft.
+  await page.getByRole('button', { name: 'Versions' }).click();
+  const history = page.getByRole('dialog');
+  await expect(history.getByText('Version 4')).toBeVisible();
+  await expect(history.getByText('Version 1')).toBeVisible();
+  await history
+    .getByRole('listitem')
+    .filter({ hasText: 'Version 1' })
+    .getByRole('button', { name: 'Load into editor' })
+    .click();
+  await expect(page.getByText('Loaded version 1')).toBeVisible();
+  await expect(page.getByText('You have unpublished changes.')).toBeVisible();
+  await page.getByRole('button', { name: 'Discard' }).click();
+  await expect(page.getByText('You have unpublished changes.')).toHaveCount(0);
+
   // Add a lead like a lead form would; it opens in Conversations.
   await page.getByRole('link', { name: 'Conversations' }).click();
   await page.getByRole('button', { name: 'Add lead' }).click();

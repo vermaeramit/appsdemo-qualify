@@ -186,6 +186,21 @@ export const playbookResponseSchema = z.object({
 });
 export type PlaybookResponse = z.infer<typeof playbookResponseSchema>;
 
+/** GET /api/playbook/versions — published versions, newest first (FR-4.9). */
+export const playbookVersionListSchema = z.object({
+  versions: z.array(
+    z.object({
+      id: z.uuid(),
+      versionNo: z.number().int().positive(),
+      publishedAt: z.iso.datetime().nullable(),
+      publishedBy: z.string().nullable(),
+      questions: z.number().int(),
+      current: z.boolean(),
+    }),
+  ),
+});
+export type PlaybookVersionList = z.infer<typeof playbookVersionListSchema>;
+
 /** Review state of the opening template on Meta. */
 export const openingTemplateStateSchema = z.enum([
   /** No active WhatsApp number (or no encryption key on the server). */

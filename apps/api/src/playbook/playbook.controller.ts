@@ -14,9 +14,11 @@ import {
   type OpeningTemplateStatus,
   playbookConfigSchema,
   type PlaybookResponse,
+  type PlaybookVersionList,
   type SimulateResponse,
   simulateRequestSchema,
 } from '@qualify/shared';
+import { z } from 'zod';
 import { requireManager } from '../auth/roles';
 import { CurrentWorkspace, type WorkspaceContext, WorkspaceGuard } from '../auth/workspace.guard';
 import { parseBody } from '../common/zod-body';
@@ -62,6 +64,22 @@ export class PlaybookController {
   ): Promise<PlaybookResponse> {
     requireManager(workspace);
     return this.playbooks.publish(workspace, parseBody(playbookConfigSchema, body));
+  }
+
+  /** Version history (FR-4.9). */
+  @Get('versions')
+  versions(@CurrentWorkspace() workspace: WorkspaceContext): Promise<PlaybookVersionList> {
+    return this.playbooks.versions(workspace.tenantId);
+  }
+
+  @Get('versions/:id')
+  version(
+    @CurrentWorkspace() workspace: WorkspaceContext,
+    @Param('id') id: string,
+  ): Promise<PlaybookResponse> {
+    const parsed = z.uuid().safeParse(id);
+    if (!parsed.success) throw new BadRequestException('Invalid version id');
+    return this.playbooks.version(workspace.tenantId, parsed.data);
   }
 
   /** Meta review state of the opening or follow-up template. */
