@@ -5,7 +5,6 @@ import {
   desc,
   eq,
   getDefaultPublishedPlaybook,
-  getPlaybookVersion,
   leads,
   messages,
   phoneNumbers,
@@ -75,9 +74,9 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
   const context = await withTenant(db, job.tenantId, async (tx) => {
     const [lead] = await tx.select().from(leads).where(eq(leads.id, job.leadId)).limit(1);
     if (!lead) return null;
-    const playbook = lead.playbookVersionId
-      ? await getPlaybookVersion(tx, lead.playbookVersionId)
-      : await getDefaultPublishedPlaybook(tx);
+    // A new enquiry starts on the current published version (with its opening and template),
+    // even if the lead's earlier conversation was pinned to an older one.
+    const playbook = await getDefaultPublishedPlaybook(tx);
     const [number] = await tx
       .select({
         phoneNumberId: phoneNumbers.phoneNumberId,

@@ -8,9 +8,10 @@ import {
   createdApiKeySchema,
 } from '@qualify/shared';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, KeyRound, Plus, TriangleAlert } from 'lucide-react';
+import { KeyRound, Plus, TriangleAlert } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { CopyButton } from '@/components/copy-button';
 import { FormField } from '@/components/form/form-field';
 import { SubmitButton } from '@/components/form/submit-button';
 import {
@@ -60,30 +61,6 @@ const apiKeysQueryOptions = queryOptions({
   queryKey: ['api-keys'] as const,
   queryFn: () => fetchJson('/api/api-keys', apiKeyListSchema),
 });
-
-/** Copies text and shows a tick for a moment. */
-export function CopyButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="icon"
-      aria-label={label}
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(text);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        } catch {
-          toast.error('Could not copy. Select the text and copy it manually.');
-        }
-      }}
-    >
-      {copied ? <Check className="text-success" /> : <Copy />}
-    </Button>
-  );
-}
 
 /** Workspace API keys for the public API (lead intake, agent configuration). */
 export function ApiKeysCard() {

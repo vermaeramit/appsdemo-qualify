@@ -6,6 +6,7 @@ import {
   getDefaultPublishedPlaybook,
   leads,
   messages,
+  playbookVersions,
   publishPlaybookVersion,
   withTenant,
 } from '@qualify/db';
@@ -30,7 +31,7 @@ function deps(overrides: Partial<ContactDeps> = {}): ContactDeps {
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     masterKey,
     createClient: () => client as unknown as AgentMessagingClient,
-    allowlist: [ALLOWED, '919800000011', '919800000012', '919800000013'],
+    allowlist: [ALLOWED, '919800000011', '919800000012', '919800000013', '919800000014'],
     isProduction: false,
     lock,
     ...overrides,
@@ -124,6 +125,25 @@ describe('processContact (opening message)', () => {
     const lead = await getLead(leadId);
     expect(lead.status).toBe('contacting');
     expect(lead.playbookVersionId).not.toBeNull();
+  });
+
+  it('uses the current playbook for a repeat enquiry from a lead pinned to an older version', async () => {
+    const [first] = await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx
+        .select({ id: playbookVersions.id })
+        .from(playbookVersions)
+        .where(eq(playbookVersions.versionNo, 1)),
+    );
+    const leadId = await createApiLead('919800000014');
+    await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx.update(leads).set({ playbookVersionId: first!.id }).where(eq(leads.id, leadId)),
+    );
+
+    expect(await processContact({ tenantId: TENANT, leadId }, deps())).toBe('sent_template');
+    const current = await withTenant(testDb.app.db, TENANT, (tx) =>
+      getDefaultPublishedPlaybook(tx),
+    );
+    expect((await getLead(leadId)).playbookVersionId).toBe(current!.versionId);
   });
 
   it('sends a free-form opening with buttons when the lead wrote in the last 24 h', async () => {

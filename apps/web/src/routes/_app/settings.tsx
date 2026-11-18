@@ -2,7 +2,8 @@ import { createFileRoute } from '@tanstack/react-router';
 import { ShieldAlert } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { ApiKeysCard, CopyButton } from '@/features/settings/api-keys-card';
+import { CopyButton } from '@/components/copy-button';
+import { ApiKeysCard } from '@/features/settings/api-keys-card';
 import { useActiveWorkspace } from '@/lib/use-workspace';
 import { canManage } from '@/lib/workspace';
 

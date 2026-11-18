@@ -72,8 +72,14 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await expect(page).toHaveURL(/\/conversations\?lead=/);
   await expect(page.getByText('Form Lead').first()).toBeVisible();
 
+  // API docs list this workspace's question keys, including the new one.
+  await page.getByRole('link', { name: 'API docs' }).click();
+  await expect(page.getByRole('heading', { name: 'API docs' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'meal_preference' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Veg · Non-veg · Jain' })).toBeVisible();
+
   // API keys: shown once, then revocable.
-  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'New key' }).click();
   await page.getByLabel('Name').fill('E2E key');
   await page.getByRole('button', { name: 'Create key' }).click();

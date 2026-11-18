@@ -25,7 +25,8 @@ export function normaliseFieldValue(field: PlaybookField, raw: string): string |
         options.find((option) => option.toLowerCase() === lower) ??
         options.find((option) => lower.startsWith(option.toLowerCase())) ??
         options.find((option) => option.toLowerCase().startsWith(lower)) ??
-        null
+        // "The lead may also type another answer": keep it as typed.
+        (field.allowOther ? value.slice(0, 160) : null)
       );
     }
     case 'yes_no': {

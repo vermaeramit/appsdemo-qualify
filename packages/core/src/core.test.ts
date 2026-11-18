@@ -32,6 +32,13 @@ describe('travel template', () => {
 });
 
 describe('mergeExtractedFields', () => {
+  it('keeps a typed answer outside the options only when the question allows it', () => {
+    const withOther = mergeExtractedFields(fields, {}, [{ key: 'trip_type', value: 'Pilgrimage' }]);
+    expect(withOther.fields.trip_type).toBe('Pilgrimage');
+    const strict = mergeExtractedFields(fields, {}, [{ key: 'passport_status', value: 'Lost it' }]);
+    expect(strict.fields.passport_status).toBeUndefined();
+  });
+
   it('normalises values by field type and reports what changed', () => {
     const result = mergeExtractedFields(fields, { destination: 'Dubai' }, [
       { key: 'travel_month', value: '2026-12' },
@@ -60,14 +67,14 @@ describe('mergeExtractedFields', () => {
       { key: 'favourite_colour', value: 'blue' },
       { key: 'budget', value: 'unknown' },
       { key: 'travel_month', value: 'December' },
-      { key: 'trip_type', value: 'Business' },
+      { key: 'passport_status', value: 'Business' },
     ]);
     expect(result.fields).toEqual({});
     expect(result.rejected.map((item) => item.key)).toEqual([
       'favourite_colour',
       'budget',
       'travel_month',
-      'trip_type',
+      'passport_status',
     ]);
   });
 
