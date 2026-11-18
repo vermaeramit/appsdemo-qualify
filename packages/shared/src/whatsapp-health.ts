@@ -29,6 +29,10 @@ export const whatsappHealthSchema = z.object({
     })
     .nullable(),
   webhooksSubscribed: z.boolean().nullable(),
+  /** Messages Meta refused in the last 24 h because of a payment problem (error 131042). */
+  paymentFailures24h: z.number().int(),
+  /** Where to fix things in Meta's tools (the client's own business account). */
+  links: z.object({ whatsappManager: z.string().nullable(), billing: z.string() }),
   /** Plain-language problems to fix, most serious first. Empty = healthy. */
   problems: z.array(z.string()),
 });

@@ -15,6 +15,7 @@ const healthy = {
   },
   account: { name: 'AppsDemo', reviewStatus: 'APPROVED', businessVerification: 'verified' },
   webhooksSubscribed: true,
+  paymentFailures24h: 0,
 };
 
 describe('WhatsApp health problems', () => {
@@ -32,11 +33,13 @@ describe('WhatsApp health problems', () => {
         nameStatus: 'DECLINED',
       },
       webhooksSubscribed: false,
+      paymentFailures24h: 3,
     });
-    expect(problems).toHaveLength(4);
-    expect(problems[0]).toContain('FLAGGED');
-    expect(problems[1]).toContain('Quality rating is low');
-    expect(problems[2]).toContain('DECLINED');
-    expect(problems[3]).toContain('not subscribed');
+    expect(problems).toHaveLength(5);
+    expect(problems[0]).toContain('payment problem (131042)');
+    expect(problems[1]).toContain('FLAGGED');
+    expect(problems[2]).toContain('Quality rating is low');
+    expect(problems[3]).toContain('DECLINED');
+    expect(problems[4]).toContain('not subscribed');
   });
 });

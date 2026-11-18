@@ -5,6 +5,8 @@ const KNOWN: Record<number, string> = {
   131026: 'Not delivered: this number may not be on WhatsApp, or its WhatsApp app needs an update.',
   131047: 'Not delivered: the 24-hour window is closed, so only an approved template can be sent.',
   131049: 'Not delivered: Meta is limiting marketing messages to this person for now.',
+  131042:
+    'Not delivered: Meta could not charge for messages. Check the payment method, credit line and tax details in Billing Hub.',
 };
 
 export function deliveryErrorMessage(error: Record<string, unknown> | null): string {

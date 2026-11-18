@@ -1,5 +1,5 @@
 import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
-import { type DbHandle, eq, phoneNumbers, withTenant } from '@qualify/db';
+import { type DbHandle, eq, phoneNumbers, sql, withTenant } from '@qualify/db';
 import { MetaApiError } from '@qualify/integrations';
 import { type WhatsAppHealth, whatsappHealthSchema } from '@qualify/shared';
 import { CurrentWorkspace, type WorkspaceContext, WorkspaceGuard } from '../auth/workspace.guard';
@@ -7,12 +7,20 @@ import { DB } from '../tokens';
 import { WhatsAppAccessService } from './whatsapp-access.service';
 
 const CACHE_MS = 60_000;
+const BILLING_URL = 'https://business.facebook.com/billing_hub/payment_settings';
+const managerUrl = (wabaId: string) =>
+  `https://business.facebook.com/wa/manage/home/?waba_id=${encodeURIComponent(wabaId)}`;
 
 /** Problems in the order a person should fix them. */
 export function problemsOf(
-  health: Omit<WhatsAppHealth, 'problems' | 'checkedAt' | 'connected'>,
+  health: Omit<WhatsAppHealth, 'problems' | 'checkedAt' | 'connected' | 'links'>,
 ): string[] {
   const problems: string[] = [];
+  if (health.paymentFailures24h > 0) {
+    problems.push(
+      `Meta refused ${health.paymentFailures24h} message(s) in the last 24 h because of a payment problem (131042). Check the payment method, credit line and tax details in Billing Hub.`,
+    );
+  }
   const number = health.number;
   if (number?.status && number.status !== 'CONNECTED') {
     problems.push(
@@ -68,9 +76,22 @@ export class WhatsAppHealthController {
         number: null,
         account: null,
         webhooksSubscribed: null,
+        paymentFailures24h: 0,
+        links: { whatsappManager: null, billing: BILLING_URL },
         problems: [access.reason],
       });
     }
+
+    const [failures] = (
+      await withTenant(this.handle.db, workspace.tenantId, (tx) =>
+        tx.execute<{ total: number }>(sql`
+          select count(*)::int as total from messages
+          where status = 'failed' and created_at >= now() - interval '24 hours'
+            and (error->'errors' @> '[{"code": 131042}]'::jsonb or error->>'code' = '131042')`),
+      )
+    ).rows;
+    const paymentFailures24h = failures?.total ?? 0;
+    const links = { whatsappManager: managerUrl(access.wabaId), billing: BILLING_URL };
 
     let value: WhatsAppHealth;
     try {
@@ -97,11 +118,13 @@ export class WhatsAppHealthController {
           businessVerification: account.business_verification_status ?? null,
         },
         webhooksSubscribed: apps.data.length > 0,
+        paymentFailures24h,
       };
       value = whatsappHealthSchema.parse({
         connected: true,
         checkedAt,
         ...partial,
+        links,
         problems: problemsOf(partial),
       });
       // Keep the stored rating current (the dashboard reads it).
@@ -122,6 +145,8 @@ export class WhatsAppHealthController {
         number: null,
         account: null,
         webhooksSubscribed: null,
+        paymentFailures24h,
+        links,
         problems: [
           tokenProblem
             ? 'Meta rejected the access token (expired or revoked). Reconnect the number.'

@@ -1,6 +1,6 @@
 import { whatsappHealthSchema } from '@qualify/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleCheck, Loader2, RefreshCw, TriangleAlert } from 'lucide-react';
+import { CircleCheck, ExternalLink, Loader2, RefreshCw, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -101,6 +101,22 @@ export function WhatsAppHealthCard() {
                 ))}
               </ul>
             )}
+            <div className="flex flex-wrap gap-2">
+              {data.links.whatsappManager && (
+                <Button variant="outline" size="sm" asChild>
+                  <a href={data.links.whatsappManager} target="_blank" rel="noopener noreferrer">
+                    WhatsApp Manager
+                    <ExternalLink data-icon="inline-end" />
+                  </a>
+                </Button>
+              )}
+              <Button variant="outline" size="sm" asChild>
+                <a href={data.links.billing} target="_blank" rel="noopener noreferrer">
+                  Meta Billing Hub
+                  <ExternalLink data-icon="inline-end" />
+                </a>
+              </Button>
+            </div>
             {data.number && (
               <dl className="divide-y">
                 <Row label="Number">
