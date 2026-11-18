@@ -33,6 +33,12 @@ test('a new user can sign up, create a workspace and sign back in', async ({ pag
   await expect(page.getByText(workspace).first()).toBeVisible();
   await expect(page.getByText('API online')).toBeVisible();
 
+  // Settings: the number health card says what to do when nothing is connected.
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page.getByText('WhatsApp number', { exact: true })).toBeVisible();
+  await expect(page.getByText('No WhatsApp number is connected yet.')).toBeVisible();
+  await page.getByRole('link', { name: 'Dashboard' }).click();
+
   // Command palette opens with Ctrl+K.
   await page.keyboard.press('Control+k');
   await expect(page.getByPlaceholder('Type a command or search…')).toBeVisible();

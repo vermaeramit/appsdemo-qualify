@@ -59,6 +59,27 @@ export interface PricingAnalyticsPoint {
   cost: number;
 }
 
+/** A phone number's health as Meta reports it (M6). */
+export interface PhoneNumberHealth {
+  id: string;
+  display_phone_number?: string;
+  verified_name?: string;
+  quality_rating?: string;
+  status?: string;
+  name_status?: string;
+  throughput?: { level?: string };
+  platform_type?: string;
+  /** Messaging limit, now set per business portfolio (e.g. TIER_2K). */
+  whatsapp_business_manager_messaging_limit?: string;
+}
+
+export interface WabaInfo {
+  id: string;
+  name?: string;
+  account_review_status?: string;
+  business_verification_status?: string;
+}
+
 export interface PhoneNumberInfo {
   id: string;
   display_phone_number: string;
@@ -344,6 +365,20 @@ export class WhatsAppClient {
     return this.request<PhoneNumberInfo>(
       'GET',
       `/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status,platform_type`,
+    );
+  }
+
+  async getPhoneHealth(phoneNumberId: string): Promise<PhoneNumberHealth> {
+    return this.request<PhoneNumberHealth>(
+      'GET',
+      `/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,status,name_status,throughput,platform_type,whatsapp_business_manager_messaging_limit`,
+    );
+  }
+
+  async getWabaInfo(wabaId: string): Promise<WabaInfo> {
+    return this.request<WabaInfo>(
+      'GET',
+      `/${wabaId}?fields=name,account_review_status,business_verification_status`,
     );
   }
 

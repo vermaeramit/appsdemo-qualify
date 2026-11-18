@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { CopyButton } from '@/components/copy-button';
 import { ApiKeysCard } from '@/features/settings/api-keys-card';
+import { WhatsAppHealthCard } from '@/features/settings/whatsapp-health-card';
 import { useActiveWorkspace } from '@/lib/use-workspace';
 import { canManage } from '@/lib/workspace';
 
@@ -27,6 +28,8 @@ function SettingsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">Workspace: {workspace.name}</p>
       </div>
+
+      <WhatsAppHealthCard />
 
       {canManage(workspace.role) ? (
         <ApiKeysCard />

@@ -13,3 +13,4 @@ export * from './playbook.js';
 export * from './queues.js';
 export * from './webhooks.js';
 export * from './simulate.js';
+export * from './whatsapp-health.js';

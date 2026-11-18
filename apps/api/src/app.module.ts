@@ -16,6 +16,7 @@ import { FormMappingService } from './meta-leads/form-mapping.service';
 import { SimulatorService } from './playbook/simulator.service';
 import { MetaLeadsController } from './meta-leads/meta-leads.controller';
 import { WebhooksOutController } from './webhooks-out/webhooks-out.controller';
+import { WhatsAppHealthController } from './whatsapp/whatsapp-health.controller';
 import { WebhooksOutService } from './webhooks-out/webhooks-out.service';
 import { MessageTemplateService } from './playbook/message-template.service';
 import { PlaybookController } from './playbook/playbook.controller';
@@ -76,6 +77,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
     CostsController,
     MetaLeadsController,
     WebhooksOutController,
+    WhatsAppHealthController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: OriginGuard },

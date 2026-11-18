@@ -51,7 +51,12 @@ function setup(options: { templates?: Template[]; connected?: boolean } = {}) {
   const access: WhatsAppAccess =
     options.connected === false
       ? { ok: false, reason: 'No WhatsApp number is connected yet.' }
-      : { ok: true, client: client as unknown as WhatsAppClient, wabaId: 'waba1' };
+      : {
+          ok: true,
+          client: client as unknown as WhatsAppClient,
+          wabaId: 'waba1',
+          phoneNumberId: 'pn1',
+        };
   const whatsapp = { forTenant: vi.fn(async () => access) };
 
   const tx = { execute: vi.fn(), insert: () => ({ values: vi.fn() }) };

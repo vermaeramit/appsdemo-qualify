@@ -5,7 +5,8 @@ import type { Env } from '../config/env';
 import { DB, ENV } from '../tokens';
 
 export type WhatsAppAccess =
-  { ok: true; client: WhatsAppClient; wabaId: string } | { ok: false; reason: string };
+  | { ok: true; client: WhatsAppClient; wabaId: string; phoneNumberId: string }
+  | { ok: false; reason: string };
 
 /** A Graph API client for the tenant's connected WhatsApp account (token decrypted on demand). */
 @Injectable()
@@ -28,6 +29,7 @@ export class WhatsAppAccessService {
         .select({
           wabaId: whatsappAccounts.wabaId,
           accessTokenEnc: whatsappAccounts.accessTokenEnc,
+          phoneNumberId: phoneNumbers.phoneNumberId,
         })
         .from(phoneNumbers)
         .innerJoin(whatsappAccounts, eq(phoneNumbers.whatsappAccountId, whatsappAccounts.id))
@@ -40,6 +42,6 @@ export class WhatsAppAccessService {
       accessToken: decryptSecret(account.accessTokenEnc, this.masterKey),
       ...(this.env.META_GRAPH_VERSION ? { graphVersion: this.env.META_GRAPH_VERSION } : {}),
     });
-    return { ok: true, client, wabaId: account.wabaId };
+    return { ok: true, client, wabaId: account.wabaId, phoneNumberId: account.phoneNumberId };
   }
 }
