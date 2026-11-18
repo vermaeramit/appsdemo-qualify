@@ -40,6 +40,11 @@ test('a new user can sign up, create a workspace and sign back in', async ({ pag
   // Without META_ES_CONFIG_ID the owner is told how the number gets connected.
   await expect(page.getByText(/Connecting from here needs Meta/)).toBeVisible();
 
+  // Templates live on the WhatsApp account: without a number the page says so.
+  await page.getByRole('link', { name: 'Templates' }).click();
+  await expect(page.getByRole('heading', { name: 'Templates' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open Settings' })).toBeVisible();
+
   // The platform admin page is for PLATFORM_ADMIN_EMAILS only.
   await expect(page.getByRole('link', { name: 'Platform admin' })).toHaveCount(0);
   await page.goto('/admin');

@@ -148,7 +148,7 @@
 - Submit the Meta App Review. Build continues while it is pending.
 
 ## M6 — Templates, Coexistence & health
-**Done:** Coexistence echoes pause the AI and hand the lead off (D-072); number health in Settings (D-077); payment-issue alert and Meta links (D-080); Embedded Signup v4 with Coexistence (D-081, needs Tech Provider access + configuration id to go live).
+**Done:** Coexistence echoes pause the AI and hand the lead off (D-072); number health in Settings (D-077); payment-issue alert and Meta links (D-080); Embedded Signup v4 with Coexistence (D-081, needs Tech Provider access + configuration id to go live); Templates page / template manager (D-083).
 - Embedded Signup (moved from M2, D-037): Facebook Login for Business config, code → token exchange, WABA/number capture, app subscription, encrypted token per tenant
 - Template manager: create, submit, status sync, multi-language versions, travel template library
 - Coexistence onboarding path + echo handling + history sync handling

@@ -15,7 +15,6 @@ import {
   Users,
   Wallet,
   Webhook,
-  type LucideIcon,
 } from 'lucide-react';
 import { ApiStatus } from '@/components/api-status';
 import { BrandLogo } from '@/components/brand-logo';
@@ -27,7 +26,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { canManage, initials, roleLabel } from '@/lib/workspace';
 import { CommandPalette } from './command-palette';
 import { UserMenu } from './user-menu';
@@ -40,10 +38,6 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-const upcoming: { label: string; icon: LucideIcon }[] = [
-  { label: 'Templates', icon: MessageSquareText },
-];
-
 const navItemClass =
   'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors';
 
@@ -53,6 +47,7 @@ const navLinks = [
   { to: '/conversations', label: 'Conversations', icon: MessagesSquare, exact: false },
   { to: '/meta-leads', label: 'Meta leads', icon: FileInput, exact: false },
   { to: '/agent', label: 'AI agent', icon: Bot, exact: false },
+  { to: '/templates', label: 'Templates', icon: MessageSquareText, exact: false },
   { to: '/integrations', label: 'Integrations', icon: Webhook, exact: false, managerOnly: true },
   { to: '/costs', label: 'Costs', icon: Wallet, exact: false, managerOnly: true },
   { to: '/api-docs', label: 'API docs', icon: BookOpen, exact: false },
@@ -101,20 +96,6 @@ export function AppShell({ user, workspace, children }: AppShellProps) {
               Platform admin
             </Link>
           )}
-          {upcoming.map(({ label, icon: Icon }) => (
-            <Tooltip key={label}>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className={`${navItemClass} text-sidebar-foreground/50 hover:bg-sidebar-accent/40`}
-                >
-                  <Icon className="size-4" />
-                  {label}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">Coming in a later milestone</TooltipContent>
-            </Tooltip>
-          ))}
         </nav>
         <div className="m-2 flex items-center gap-2.5 rounded-lg border bg-card p-2.5">
           <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary/10 text-xs font-semibold text-primary">

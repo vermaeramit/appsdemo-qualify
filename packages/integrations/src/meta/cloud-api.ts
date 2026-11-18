@@ -73,6 +73,23 @@ export interface PhoneNumberHealth {
   whatsapp_business_manager_messaging_limit?: string;
 }
 
+/** A message template as the Graph API lists it. */
+export interface GraphTemplate {
+  id: string;
+  name: string;
+  language: string;
+  status: string;
+  category: string;
+  rejected_reason?: string;
+  quality_score?: { score?: string };
+  components?: {
+    type: string;
+    format?: string;
+    text?: string;
+    buttons?: { type: string; text?: string }[];
+  }[];
+}
+
 export interface WabaInfo {
   id: string;
   name?: string;
@@ -284,17 +301,21 @@ export class WhatsAppClient {
     bodyText: string;
     bodyExample: readonly string[];
     quickReplies: readonly string[];
+    headerText?: string | undefined;
+    footerText?: string | undefined;
   }): Promise<{ id: string; status: string; category: string }> {
     return this.request('POST', `/${params.wabaId}/message_templates`, {
       name: params.name,
       language: params.language,
       category: params.category,
       components: [
+        ...(params.headerText ? [{ type: 'HEADER', format: 'TEXT', text: params.headerText }] : []),
         {
           type: 'BODY',
           text: params.bodyText,
           ...(params.bodyExample.length ? { example: { body_text: [params.bodyExample] } } : {}),
         },
+        ...(params.footerText ? [{ type: 'FOOTER', text: params.footerText }] : []),
         ...(params.quickReplies.length
           ? [
               {
@@ -305,6 +326,30 @@ export class WhatsAppClient {
           : []),
       ],
     });
+  }
+
+  /** Every template on a WABA (follows pages, up to 1,000 templates). */
+  async listTemplates(wabaId: string): Promise<GraphTemplate[]> {
+    const templates: GraphTemplate[] = [];
+    let after: string | undefined;
+    for (let page = 0; page < 10; page += 1) {
+      const result = await this.request<{
+        data: GraphTemplate[];
+        paging?: { cursors?: { after?: string }; next?: string };
+      }>(
+        'GET',
+        `/${wabaId}/message_templates?fields=id,name,language,status,category,components,rejected_reason,quality_score&limit=100${after ? `&after=${encodeURIComponent(after)}` : ''}`,
+      );
+      templates.push(...result.data);
+      after = result.paging?.next ? result.paging.cursors?.after : undefined;
+      if (!after) break;
+    }
+    return templates;
+  }
+
+  /** Deletes a template by name (every language of it). */
+  async deleteTemplate(wabaId: string, name: string): Promise<void> {
+    await this.request('DELETE', `/${wabaId}/message_templates?name=${encodeURIComponent(name)}`);
   }
 
   /** Templates with a given name on a WABA (status: APPROVED, PENDING, REJECTED…). */
@@ -457,7 +502,11 @@ export class WhatsAppClient {
     });
   }
 
-  private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  private async request<T>(
+    method: 'GET' | 'POST' | 'DELETE',
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method,
       headers: {
