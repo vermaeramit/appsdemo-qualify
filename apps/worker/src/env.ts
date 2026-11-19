@@ -25,6 +25,15 @@ const envSchema = z.object({
   AI_REASONING_EFFORT: z.enum(['none', 'minimal', 'low', 'medium', 'high']).default('low'),
   /** Quiet period before replying, so a burst of messages gets one answer. */
   AI_DEBOUNCE_MS: z.coerce.number().int().min(0).max(30_000).default(4_000),
+  /** Product name in e-mails (white-label later). */
+  APP_NAME: z.string().min(1).default('AppsDemo Qualify'),
+  /**
+   * Scheduled e-mail reports (D-088): any SMTP provider, e.g.
+   * smtp://user:pass@smtp-relay.example.com:587. Development defaults to Mailpit (compose.yaml).
+   */
+  SMTP_URL: optional,
+  /** Sender of the reports, e.g. "Qualify Reports <reports@example.com>". Required with SMTP_URL in production. */
+  MAIL_FROM: optional,
 });
 
 export type WorkerEnv = z.infer<typeof envSchema>;

@@ -21,6 +21,8 @@ export interface LeadListFilters {
   statuses?: readonly string[] | undefined;
   grades?: readonly string[] | undefined;
   sources?: readonly string[] | undefined;
+  /** Only this agent's leads (D-086). The default agent also owns leads not pinned yet. */
+  agent?: { id: string; includeUnpinned: boolean } | undefined;
 }
 
 export interface LeadListRow {
@@ -133,6 +135,12 @@ function whereClause(filters: LeadListFilters, range: { from: string; to: string
       )})`,
     );
   }
+  if (filters.agent) {
+    const pinned = sql`l.playbook_version_id in (select v.id from playbook_versions v where v.playbook_id = ${filters.agent.id})`;
+    parts.push(
+      filters.agent.includeUnpinned ? sql`(${pinned} or l.playbook_version_id is null)` : pinned,
+    );
+  }
   return sql.join(parts, sql` and `);
 }
 
@@ -211,5 +219,52 @@ export async function listLeads(
     total,
     from: range.from,
     to: range.to,
+  };
+}
+
+export interface LeadSummary {
+  from: string;
+  to: string;
+  total: number;
+  hot: number;
+  warm: number;
+  cold: number;
+  disqualified: number;
+  unscored: number;
+  qualified: number;
+  handoffs: number;
+}
+
+/** Counts for the leads matching the filters (scheduled reports). Run in withTenant(). */
+export async function summarizeLeads(
+  tx: Transaction,
+  filters: LeadListFilters,
+): Promise<LeadSummary> {
+  const range = await resolveRange(tx, filters);
+  const where = whereClause(filters, range);
+  const [row] = (
+    await tx.execute<Omit<LeadSummary, 'from' | 'to'>>(sql`
+      select count(*)::int as total,
+             count(*) filter (where l.grade = 'hot')::int as hot,
+             count(*) filter (where l.grade = 'warm')::int as warm,
+             count(*) filter (where l.grade = 'cold')::int as cold,
+             count(*) filter (where l.grade = 'disqualified')::int as disqualified,
+             count(*) filter (where l.grade is null)::int as unscored,
+             count(*) filter (where l.qualified_at is not null)::int as qualified,
+             count(*) filter (where l.handoff_at is not null)::int as handoffs
+      from leads l
+      where ${where}`)
+  ).rows;
+  return {
+    from: range.from,
+    to: range.to,
+    total: row?.total ?? 0,
+    hot: row?.hot ?? 0,
+    warm: row?.warm ?? 0,
+    cold: row?.cold ?? 0,
+    disqualified: row?.disqualified ?? 0,
+    unscored: row?.unscored ?? 0,
+    qualified: row?.qualified ?? 0,
+    handoffs: row?.handoffs ?? 0,
   };
 }

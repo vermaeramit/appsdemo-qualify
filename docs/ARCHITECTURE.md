@@ -24,7 +24,7 @@ Related: [PRD.md](PRD.md) · [DECISIONS.md](DECISIONS.md) · [MILESTONES.md](MIL
 | Auth | Better Auth: cookie sessions, organization plugin (organization = tenant), CSRF protection |
 | AI | Vercel AI SDK with the OpenRouter provider or the OpenAI provider. Structured output from Zod schemas. Model per task from config. |
 | Frontend | React + Vite + TypeScript, TanStack Router (file-based, auto code-splitting), Tailwind CSS, shadcn/ui, Motion, TanStack Query, TanStack Table, React Hook Form + Zod, dnd-kit, Recharts, Lucide, Sonner, socket.io-client, Better Auth React client |
-| Excel / email | ExcelJS (streaming writer) / Nodemailer + transactional provider (TBD) |
+| Excel / email | ExcelJS (streaming writer) / Nodemailer over SMTP: any transactional provider via `SMTP_URL`, Mailpit in development (D-088) |
 | Logs / monitoring | Pino → Seq, Uptime Kuma |
 | Testing | Vitest, Testcontainers (Postgres, Redis), Playwright (UI end-to-end) |
 | Security tooling | `@fastify/helmet`, `@fastify/rate-limit`, Zod at every boundary, Dependabot + `pnpm audit` in CI, pinned lockfile |
@@ -258,7 +258,7 @@ Respond job
 ## 9. Outputs
 
 - **Excel/CSV:** ExcelJS streaming writer, generated in the worker for large exports, with filters and a column picker.
-- **Scheduled reports:** a BullMQ repeatable job (job scheduler per tenant report), sent as an email attachment.
+- **Scheduled reports:** the schedule lives in Postgres (`email_reports.next_run_at`, computed in the report time zone); a one-minute BullMQ job scheduler claims due slots and queues one send job per run, which e-mails a summary with the leads as an Excel attachment (D-088).
 - **Outbound webhooks:**
   - JSON payload with `event`, `event_id` (idempotency), `timestamp` and `lead`, typed by Zod
   - HMAC-SHA256 signature header

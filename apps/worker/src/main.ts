@@ -3,8 +3,10 @@ import { createDb } from '@qualify/db';
 import {
   ALLOW_ALL,
   createLlmClient,
+  createMailer,
   parseAllowlist,
   parseMasterKey,
+  resolveMailSettings,
   WhatsAppClient,
 } from '@qualify/integrations';
 import {
@@ -19,6 +21,11 @@ import {
   leadEventJobSchema,
   metaEventJobSchema,
   QUEUES,
+  REPORT_SEND_QUEUE,
+  REPORT_TICK_QUEUE,
+  reportSendJobId,
+  type ReportSendJob,
+  reportSendJobSchema,
   RESCORE_QUEUE,
   rescoreJobSchema,
   RESPOND_QUEUE,
@@ -44,6 +51,13 @@ import { loadWorkerEnv } from './env.ts';
 import { createRedisLock } from './lock.ts';
 import { createLogger } from './logger.ts';
 import { processMetaEvent } from './meta-events/process-meta-event.ts';
+import {
+  processReportSend,
+  processReportTick,
+  REPORT_SEND_ATTEMPTS,
+  REPORT_SEND_BACKOFF_MS,
+  ReportRetryError,
+} from './reports/reports.ts';
 import {
   DELIVERY_ATTEMPTS,
   DELIVERY_BACKOFF_MS,
@@ -82,6 +96,15 @@ if (!isProduction) {
     );
   }
 }
+const mail = resolveMailSettings({
+  production: isProduction,
+  appName: env.APP_NAME,
+  smtpUrl: env.SMTP_URL,
+  mailFrom: env.MAIL_FROM,
+});
+const mailer = 'off' in mail ? null : createMailer({ url: mail.url, from: mail.from });
+if ('off' in mail) logger.warn(mail.off);
+else logger.info({ smtp: new URL(mail.url).host }, 'Scheduled e-mail reports enabled');
 if (!masterKey) logger.warn('ENCRYPTION_MASTER_KEY not set: messages are stored but not answered');
 logger.info(
   llm ? { model: env.AI_MODEL_CHAT, reasoningEffort: env.AI_REASONING_EFFORT } : { model: null },
@@ -93,6 +116,26 @@ const followUpQueue = new Queue<FollowUpJob>(FOLLOW_UP_QUEUE, { connection });
 const contactQueue = new Queue<ContactJob>(CONTACT_QUEUE, { connection });
 const leadEventsQueue = new Queue<LeadEventJob>(LEAD_EVENTS_QUEUE, { connection });
 const deliveryQueue = new Queue<WebhookDeliveryJob>(WEBHOOK_DELIVERY_QUEUE, { connection });
+const reportSendQueue = new Queue<ReportSendJob>(REPORT_SEND_QUEUE, { connection });
+const reportTickQueue = new Queue(REPORT_TICK_QUEUE, { connection });
+
+/** One job per report run; the id makes re-queuing a lost run a no-op while it still exists. */
+async function enqueueReportSend(job: ReportSendJob): Promise<void> {
+  await reportSendQueue.add('send', job, {
+    jobId: reportSendJobId(job.runId),
+    attempts: REPORT_SEND_ATTEMPTS,
+    backoff: { type: 'exponential', delay: REPORT_SEND_BACKOFF_MS },
+    removeOnComplete: true,
+    removeOnFail: true,
+  });
+}
+
+// The schedule lives in Postgres; this tick only asks "what is due?" every minute.
+await reportTickQueue.upsertJobScheduler(
+  'report-tick',
+  { every: 60_000 },
+  { name: 'tick', opts: { removeOnComplete: 50, removeOnFail: 50 } },
+);
 
 /** What happened to a lead, for webhooks (fanned out by the lead-events worker). */
 const emitLeadEvent: EmitLeadEvent = async (event) => {
@@ -303,6 +346,28 @@ const deliveryWorker = new Worker(
   { connection, concurrency: 10 },
 );
 
+const reportTickWorker = new Worker(
+  REPORT_TICK_QUEUE,
+  async () => {
+    const { queued } = await processReportTick({ db, logger, enqueueSend: enqueueReportSend });
+    if (queued) logger.info({ queued }, 'Report runs queued');
+  },
+  { connection, concurrency: 1 },
+);
+
+const reportSendWorker = new Worker(
+  REPORT_SEND_QUEUE,
+  async (job) => {
+    const outcome = await processReportSend(
+      reportSendJobSchema.parse(job.data),
+      { attemptsMade: job.attemptsMade, maxAttempts: job.opts.attempts ?? 1 },
+      { db, logger, mailer, appBaseUrl: env.APP_BASE_URL, productName: env.APP_NAME },
+    );
+    logger.info({ runId: job.data.runId, outcome }, 'Report run');
+  },
+  { connection, concurrency: 2 },
+);
+
 for (const [name, worker] of [
   ['meta-events', metaEventsWorker],
   ['respond', respondWorker],
@@ -311,6 +376,8 @@ for (const [name, worker] of [
   ['rescore', rescoreWorker],
   ['lead-events', leadEventsWorker],
   ['webhook-delivery', deliveryWorker],
+  ['report-tick', reportTickWorker],
+  ['report-send', reportSendWorker],
 ] as const) {
   worker.on('failed', (job, error) => {
     const busy =
@@ -318,6 +385,10 @@ for (const [name, worker] of [
       error instanceof ContactBusyError ||
       error instanceof FollowUpBusyError;
     if (busy) return; // retried shortly
+    if (error instanceof ReportRetryError) {
+      logger.warn({ jobId: job?.id, attempts: job?.attemptsMade, err: error }, 'Report retry');
+      return;
+    }
     if (error instanceof DeliveryRetryError) {
       logger.warn({ jobId: job?.id, attempts: job?.attemptsMade, err: error }, 'Webhook retry');
       return;
@@ -339,6 +410,8 @@ logger.info(
       RESCORE_QUEUE,
       LEAD_EVENTS_QUEUE,
       WEBHOOK_DELIVERY_QUEUE,
+      REPORT_TICK_QUEUE,
+      REPORT_SEND_QUEUE,
     ],
   },
   'Worker started',
@@ -354,6 +427,8 @@ async function shutdown(signal: string): Promise<void> {
     rescoreWorker.close(),
     leadEventsWorker.close(),
     deliveryWorker.close(),
+    reportTickWorker.close(),
+    reportSendWorker.close(),
   ]);
   await Promise.all([
     respondQueue.close(),
@@ -361,6 +436,8 @@ async function shutdown(signal: string): Promise<void> {
     contactQueue.close(),
     leadEventsQueue.close(),
     deliveryQueue.close(),
+    reportSendQueue.close(),
+    reportTickQueue.close(),
   ]);
   await pool.end();
   connection.disconnect();

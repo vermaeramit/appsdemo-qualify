@@ -12,6 +12,10 @@ built by GitHub Actions and pulled from GHCR. Files: [`Dockerfile`](../Dockerfil
   server, and one for staging if you run it (`qualify-staging.appsdemo.in`).
 - A GitHub token with `read:packages` for the server to pull the private images.
 - The Meta app values (`docs/META_SETUP.md`) and an OpenAI API key.
+- For scheduled e-mail reports: an SMTP account at a transactional e-mail provider (Brevo,
+  ZeptoMail or Amazon SES) with the sender domain verified (SPF and DKIM records in DNS). Put its
+  URL in `SMTP_URL` and the sender in `MAIL_FROM`. Without them reports are kept but not sent, and
+  the Integrations page says so.
 
 ## 2. Prepare the server (once)
 

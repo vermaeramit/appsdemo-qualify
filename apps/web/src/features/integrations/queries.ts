@@ -1,5 +1,10 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
-import { webhookDeliveriesSchema, webhookListSchema } from '@qualify/shared';
+import {
+  emailReportListSchema,
+  emailReportRunsSchema,
+  webhookDeliveriesSchema,
+  webhookListSchema,
+} from '@qualify/shared';
 import { fetchJson } from '@/lib/api';
 
 export const webhooksQueryOptions = queryOptions({
@@ -18,5 +23,22 @@ export const deliveriesQueryOptions = (endpointId: string) =>
       ),
     initialPageParam: '',
     getNextPageParam: (page) => page.nextCursor ?? undefined,
+    refetchInterval: 5_000,
+  });
+
+/** E-mail reports; polls quickly while a run is being sent. */
+export const reportsQueryOptions = queryOptions({
+  queryKey: ['reports'] as const,
+  queryFn: () => fetchJson('/api/reports', emailReportListSchema),
+  refetchInterval: (query) =>
+    query.state.data?.reports.some((report) => report.lastRun?.status === 'queued')
+      ? 3_000
+      : 30_000,
+});
+
+export const reportRunsQueryOptions = (reportId: string) =>
+  queryOptions({
+    queryKey: ['reports', reportId, 'runs'] as const,
+    queryFn: () => fetchJson(`/api/reports/${reportId}/runs`, emailReportRunsSchema),
     refetchInterval: 5_000,
   });

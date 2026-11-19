@@ -31,6 +31,10 @@ const envSchema = z.object({
   OPENAI_API_KEY: optionalSecret,
   AI_MODEL_CHAT: z.string().min(1).default('gpt-5.4-mini'),
   AI_REASONING_EFFORT: z.enum(['none', 'minimal', 'low', 'medium', 'high']).default('low'),
+  /** Scheduled e-mail reports (D-088): the worker sends them; the api only shows whether it can. */
+  APP_NAME: z.string().min(1).default('AppsDemo Qualify'),
+  SMTP_URL: optionalSecret,
+  MAIL_FROM: optionalSecret,
 });
 
 export type Env = z.infer<typeof envSchema>;

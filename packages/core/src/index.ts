@@ -12,3 +12,4 @@ export * from './scoring.ts';
 export * from './summary.ts';
 export * from './templates/index.ts';
 export * from './turn.ts';
+export * from './report-email.ts';

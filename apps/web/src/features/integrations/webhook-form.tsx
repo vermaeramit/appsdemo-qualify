@@ -15,7 +15,7 @@ import { GRADE_OPTIONS } from './grades';
 
 const DEFAULT_EVENTS: WebhookEventType[] = ['lead.qualified', 'lead.handoff'];
 
-function Chip({
+export function Chip({
   on,
   onClick,
   children,

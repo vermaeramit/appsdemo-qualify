@@ -15,11 +15,14 @@ import {
 } from './playbooks.ts';
 import { resolveTenantByPageId, resolveTenantByPhoneNumberId } from './routing.ts';
 import { getMediaAsset, saveMediaAsset } from './media.ts';
+import { dueEmailReportWork } from './email-reports.ts';
 import { saveWhatsAppConnection } from './whatsapp-connect.ts';
 import type { PlaybookConfig } from '@qualify/shared';
 import {
   apiKeys,
   auditLogs,
+  emailReportRuns,
+  emailReports,
   facebookPages,
   leadFormMappings,
   leadFormSubmissions,
@@ -439,6 +442,56 @@ describe('Lead form tables and Page routing (connected as qualify_app)', () => {
       }),
     );
     await expect(spoof).rejects.toSatisfy((error) => /row-level security/.test(errorText(error)));
+  });
+
+  it('isolates e-mail reports and their runs; the due lookup returns ids only (D-088)', async () => {
+    const [report] = await withTenant(app.db, 'org_a', (tx) =>
+      tx
+        .insert(emailReports)
+        .values({
+          tenantId: 'org_a',
+          name: 'Daily',
+          recipients: ['a@example.com'],
+          frequency: 'daily',
+          sendTime: '09:00',
+          timeZone: 'Asia/Kolkata',
+          nextRunAt: new Date(Date.now() - 60_000),
+        })
+        .returning(),
+    );
+    await withTenant(app.db, 'org_a', (tx) =>
+      tx.insert(emailReportRuns).values({
+        tenantId: 'org_a',
+        reportId: report!.id,
+        trigger: 'manual',
+        periodFrom: '2026-11-18',
+        periodTo: '2026-11-18',
+        recipients: ['a@example.com'],
+      }),
+    );
+    expect(await withTenant(app.db, 'org_b', (tx) => tx.select().from(emailReports))).toEqual([]);
+    expect(await withTenant(app.db, 'org_b', (tx) => tx.select().from(emailReportRuns))).toEqual(
+      [],
+    );
+    // Outside any tenant the minute tick sees the due report, and nothing but its ids.
+    const due = await dueEmailReportWork(app.db);
+    expect(due).toContainEqual({ kind: 'report', tenantId: 'org_a', id: report!.id });
+    const direct = app.db.execute(sql`select recipients from email_reports`);
+    expect(((await direct).rows as unknown[]).length).toBe(0);
+    const spoof = withTenant(app.db, 'org_b', (tx) =>
+      tx.insert(emailReports).values({
+        tenantId: 'org_a',
+        name: 'Spoof',
+        recipients: ['x@example.com'],
+        frequency: 'daily',
+        sendTime: '09:00',
+        timeZone: 'UTC',
+      }),
+    );
+    await expect(spoof).rejects.toSatisfy((error) => /row-level security/.test(errorText(error)));
+    await withTenant(app.db, 'org_a', (tx) =>
+      tx.delete(emailReports).where(eq(emailReports.id, report!.id)),
+    );
   });
 
   it('routes a new enquiry to the matching agent, else the default (D-086)', async () => {

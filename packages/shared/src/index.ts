@@ -19,3 +19,4 @@ export * from './onboarding.js';
 export * from './templates.js';
 export * from './media.js';
 export * from './agents.js';
+export * from './reports.js';

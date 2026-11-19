@@ -43,6 +43,14 @@ services:
     volumes:
       - seqdata:/data
 
+  # Catches every e-mail the app sends in development (scheduled reports). Nothing leaves the
+  # machine. Inbox: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - '127.0.0.1:1025:1025' # SMTP (SMTP_URL=smtp://localhost:1025)
+      - '127.0.0.1:8025:8025' # web inbox and API
+
 volumes:
   pgdata:
   redisdata:

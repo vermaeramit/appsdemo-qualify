@@ -54,6 +54,7 @@ import { timeAgo } from '@/lib/time';
 import { useActiveWorkspace } from '@/lib/use-workspace';
 import { canManage } from '@/lib/workspace';
 import { cn } from '@/lib/utils';
+import { EmailReportsSection } from './email-reports';
 import { deliveriesQueryOptions, webhooksQueryOptions } from './queries';
 import { GRADE_OPTIONS } from './grades';
 import { WebhookForm } from './webhook-form';
@@ -105,7 +106,8 @@ function ManagerIntegrations() {
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-semibold tracking-tight">Integrations</h1>
           <p className="text-sm text-muted-foreground">
-            Send qualified leads to your CRM, a sheet, or any system that accepts a webhook.
+            Send qualified leads to your CRM, a sheet, or any system that accepts a webhook, and
+            e-mail lead reports to your team.
           </p>
         </div>
         <Button onClick={() => setAdding(true)}>
@@ -142,6 +144,8 @@ function ManagerIntegrations() {
           ))}
         </div>
       )}
+
+      <EmailReportsSection />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

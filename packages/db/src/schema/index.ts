@@ -6,3 +6,4 @@ export * from './platform.ts';
 export * from './playbooks.ts';
 export * from './webhooks.ts';
 export * from './media.ts';
+export * from './reports.ts';

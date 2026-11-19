@@ -5,3 +5,4 @@ export * from './meta/signature.ts';
 export * from './meta/webhook.ts';
 export * from './phone.ts';
 export * from './webhooks.ts';
+export * from './mailer.ts';
