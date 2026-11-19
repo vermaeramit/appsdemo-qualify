@@ -10,6 +10,7 @@ import {
   resolvePlaybookForAttribution,
   resolveTenantByPhoneNumberId,
   sql,
+  touchNumberEvent,
   withTenant,
 } from '@qualify/db';
 import {
@@ -24,6 +25,7 @@ import {
   type WaValue,
 } from '@qualify/integrations';
 import type { LeadAttribution, RespondJob } from '@qualify/shared';
+import { DEV_SWITCH_REASON, quote, type RecordActivity, sendErrorDetail } from '../activity.ts';
 import type { FollowUpScheduler } from '../agent/follow-up.ts';
 import { handleLeadgen, type LeadFormDeps } from './lead-forms.ts';
 import type { Logger } from '../logger.ts';
@@ -43,6 +45,8 @@ export interface ProcessorDeps {
   leadForms?: Omit<LeadFormDeps, 'db' | 'logger' | 'emitLeadEvent'>;
   /** Lead events for webhooks (M7). */
   emitLeadEvent?: EmitLeadEvent;
+  /** Activity log (D-091). */
+  activity?: RecordActivity;
 }
 
 const STATUS_RANK: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3 };
@@ -115,6 +119,10 @@ export async function processMetaEvent(eventId: string, deps: ProcessorDeps): Pr
       );
       continue;
     }
+    // Meta reached us for this number: the Logs page uses it to spot a broken webhook.
+    await touchNumberEvent(db, tenantId, phoneNumberId).catch((error: unknown) =>
+      logger.warn({ eventId, err: error }, 'Could not note the Meta event time'),
+    );
     for (const message of change.value.messages ?? []) {
       await handleInboundMessage(deps, tenantId, phoneNumberId, change.value, message);
     }
@@ -216,13 +224,59 @@ async function handleInboundMessage(
   }
 
   // Meta retries deliveries: a message we already stored must not trigger another reply.
-  if (!stored.isNew || NO_REPLY_TYPES.has(message.type)) return;
+  if (!stored.isNew) return;
+  const text = inboundText(message);
+  const base = { tenantId, leadId: stored.leadId } as const;
+  await deps.activity?.([
+    ...(stored.leadCreated
+      ? [
+          {
+            ...base,
+            source: 'lead' as const,
+            kind: 'lead.created',
+            message: attribution
+              ? 'New lead: wrote on WhatsApp from your ad'
+              : 'New lead: wrote on WhatsApp',
+            detail: {
+              ...(profileName ? { 'WhatsApp name': profileName } : {}),
+              ...(attribution?.headline ? { Ad: attribution.headline } : {}),
+              ...(attribution?.adId ? { 'Ad id': attribution.adId } : {}),
+            },
+          },
+        ]
+      : []),
+    {
+      ...base,
+      source: 'whatsapp',
+      kind: 'whatsapp.received',
+      message: text
+        ? `Message from the lead: ${quote(text)}`
+        : `Message from the lead (${message.type})`,
+      detail: { Type: message.type, 'WhatsApp message id': message.id },
+    },
+  ]);
+  if (NO_REPLY_TYPES.has(message.type)) {
+    await deps.activity?.({
+      ...base,
+      source: 'agent',
+      kind: 'agent.skipped',
+      message: `AI didn't reply: a "${message.type}" message needs no answer`,
+    });
+    return;
+  }
 
   if (!isAllowedRecipient(message.from, deps.allowlist, deps.isProduction)) {
     logger.info(
       { tenantId, leadId: stored.leadId },
       'Dev safety switch: sender not in DEV_ALLOWED_NUMBERS, not replying',
     );
+    await deps.activity?.({
+      ...base,
+      source: 'agent',
+      kind: 'agent.skipped',
+      level: 'warn',
+      message: `AI didn't reply: ${DEV_SWITCH_REASON}`,
+    });
     return;
   }
   await deps.followUps?.cancel(stored.leadId);
@@ -298,6 +352,17 @@ async function handleEcho(
     return { leadId: lead.id, handedOff: takeOver };
   });
   if (!outcome) return;
+  await deps.activity?.({
+    tenantId,
+    leadId: outcome.leadId,
+    source: 'whatsapp',
+    kind: 'whatsapp.team_reply',
+    level: 'warn',
+    message: outcome.handedOff
+      ? 'Your team replied from the WhatsApp app: the AI is paused and the lead is handed off'
+      : 'Your team replied from the WhatsApp app: the AI is paused for this lead',
+    detail: echo.text?.body ? { Message: echo.text.body } : {},
+  });
   await deps.followUps?.cancel(outcome.leadId);
   if (outcome.handedOff) {
     await deps.emitLeadEvent?.({ tenantId, leadId: outcome.leadId, type: 'lead.handoff' });
@@ -310,7 +375,7 @@ async function handleStatus(
   tenantId: string,
   status: WaStatus,
 ): Promise<void> {
-  const undeliverableLeadId = await withTenant(deps.db, tenantId, async (tx) => {
+  const result = await withTenant(deps.db, tenantId, async (tx) => {
     const [existing] = await tx
       .select({
         id: messages.id,
@@ -318,6 +383,9 @@ async function handleStatus(
         direction: messages.direction,
         status: messages.status,
         pricing: messages.pricing,
+        body: messages.body,
+        payload: messages.payload,
+        sender: messages.sender,
       })
       .from(messages)
       .where(eq(messages.waMessageId, status.id))
@@ -340,6 +408,14 @@ async function handleStatus(
           }
         : null;
     if (!moves && !pricing) return null;
+    const moved = moves
+      ? {
+          leadId: existing.leadId,
+          body: existing.body,
+          payload: existing.payload,
+          sender: existing.sender,
+        }
+      : null;
 
     await tx
       .update(messages)
@@ -360,7 +436,7 @@ async function handleStatus(
       failed &&
       existing.direction === 'outbound' &&
       (status.errors ?? []).some((error) => error.code === UNDELIVERABLE_CODE);
-    if (!undeliverable) return null;
+    if (!undeliverable) return { moved, undeliverableLeadId: null };
     const [marked] = await tx
       .update(leads)
       .set({ status: 'undeliverable' })
@@ -372,7 +448,7 @@ async function handleStatus(
         ),
       )
       .returning({ id: leads.id });
-    if (!marked) return null;
+    if (!marked) return { moved, undeliverableLeadId: null };
     await tx.insert(auditLogs).values({
       tenantId,
       actorUserId: null,
@@ -380,10 +456,41 @@ async function handleStatus(
       target: marked.id,
       metadata: { errors: status.errors ?? [] },
     });
-    return marked.id;
+    return { moved, undeliverableLeadId: marked.id };
   });
 
+  const moved = result?.moved;
+  if (moved && status.status !== 'sent') {
+    const what = describeOurMessage(moved.body, moved.payload, moved.sender);
+    const failed = status.status === 'failed';
+    await deps.activity?.({
+      tenantId,
+      leadId: moved.leadId,
+      source: 'whatsapp',
+      kind: `whatsapp.${status.status}`,
+      level: failed ? 'error' : 'info',
+      message: failed
+        ? `Not delivered: ${what}`
+        : status.status === 'read'
+          ? `Read by the lead: ${what}`
+          : `Delivered: ${what}`,
+      detail: {
+        ...(failed ? sendErrorDetail({ errors: status.errors ?? [] }) : {}),
+        'WhatsApp message id': status.id,
+      },
+    });
+  }
+  const undeliverableLeadId = result?.undeliverableLeadId ?? null;
   if (undeliverableLeadId) {
+    await deps.activity?.({
+      tenantId,
+      leadId: undeliverableLeadId,
+      source: 'lead',
+      kind: 'lead.undeliverable',
+      level: 'warn',
+      message:
+        "Marked undeliverable: WhatsApp couldn't reach this number, and the lead never wrote to us",
+    });
     await deps.followUps?.cancel(undeliverableLeadId);
     await deps.emitLeadEvent?.({
       tenantId,
@@ -395,4 +502,25 @@ async function handleStatus(
       'Lead is undeliverable on WhatsApp',
     );
   }
+}
+
+/** "the opening “…”", "the AI reply “…”": which of our messages a status is about. */
+function describeOurMessage(
+  body: string | null,
+  payload: Record<string, unknown>,
+  sender: string,
+): string {
+  const kind = typeof payload.kind === 'string' ? payload.kind : null;
+  const label =
+    kind === 'opening'
+      ? 'the opening'
+      : kind === 'followup'
+        ? 'a follow-up'
+        : sender === 'ai'
+          ? 'the AI reply'
+          : sender === 'human_app'
+            ? "your team's message"
+            : 'our message';
+  const text = quote(body, 80);
+  return text ? `${label} ${text}` : label;
 }

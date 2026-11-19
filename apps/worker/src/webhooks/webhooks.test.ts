@@ -6,7 +6,8 @@ import { eq, leads, webhookDeliveries, webhookEndpoints, withTenant } from '@qua
 import { encryptSecret, verifyWebhookSignature } from '@qualify/integrations';
 import { type WebhookDeliveryJob, webhookPayloadSchema } from '@qualify/shared';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { startTestDb, TENANT, type TestDb } from '../test/test-db.ts';
+import { createActivityRecorder } from '../activity.ts';
+import { activityOf, startTestDb, TENANT, type TestDb } from '../test/test-db.ts';
 import { DeliveryRetryError, processLeadEvent, processWebhookDelivery } from './webhooks.ts';
 
 const masterKey = randomBytes(32);
@@ -167,7 +168,13 @@ describe('webhooks', () => {
       },
     );
     const job = queued.at(-1)!;
-    const deps = { db: testDb.app.db, logger, masterKey, policy };
+    const deps = {
+      db: testDb.app.db,
+      logger,
+      masterKey,
+      policy,
+      activity: createActivityRecorder(testDb.app.db, logger),
+    };
     replyStatus = 500;
     await expect(
       processWebhookDelivery(job, { attemptsMade: 0, maxAttempts: 2 }, deps),
@@ -191,6 +198,16 @@ describe('webhooks', () => {
       responseExcerpt: 'boom',
       nextAttemptAt: null,
     });
+    // Activity log (D-091): the retry, then the final failure, on the lead's timeline.
+    const entries = (await activityOf(testDb.app.db, lead.id)).filter(
+      (entry) => entry.source === 'webhook',
+    );
+    expect(entries.map((entry) => [entry.kind, entry.level])).toEqual([
+      ['webhook.retry', 'warn'],
+      ['webhook.failed', 'error'],
+    ]);
+    expect(entries[1]!.message).toContain("didn't get lead.qualified: HTTP 500");
+    expect(entries[1]!.detail).toMatchObject({ 'HTTP status': 500, Attempt: '2 of 2' });
   });
 
   it('never calls a private address when the policy forbids it', async () => {

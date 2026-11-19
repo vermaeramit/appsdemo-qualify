@@ -125,7 +125,7 @@ Platform
 | `message_templates` | tenant_id, whatsapp_account_id, name, language, category, components (jsonb), status, meta_template_id |
 | `leads` | tenant_id, phone_e164 (unique per tenant), name, source, source_ref, playbook_version_id, status, language, fields (jsonb), score, grade, score_breakdown (jsonb), summary, ai_paused, window_expires_at, followups_sent, qualified_at, outcome, outcome_value |
 | `messages` | tenant_id, lead_id, direction, sender (lead / ai / human_app / system), type, body, wa_message_id (unique), status, template_name, created_at (partition by month later) |
-| `lead_events` | tenant_id, lead_id, type, payload (jsonb), created_at (timeline) |
+| `activity_log` | tenant_id, lead_id (null for workspace entries), at, source (whatsapp / agent / outreach / lead / webhook / team), kind, level (info / warn / error), message, detail (jsonb label → value); RLS, pruned after 30 days (D-091) |
 | `webhook_endpoints` | tenant_id, url, auth_enc, signing_secret_enc, events[], conditions (jsonb), field_mapping (jsonb), active |
 | `webhook_deliveries` | endpoint_id, event_id, payload, attempt, status_code, response_excerpt, next_retry_at |
 | `inbound_meta_events` | raw payload, signature_ok, received_at, processed_at (audit + replay) |
@@ -312,6 +312,7 @@ Respond job
   - daily `pg_dump` (later WAL archiving) plus file volume → off-site object storage
   - monthly restore drill
 - **Environments:** `qualify-staging.appsdemo.in` and `qualify.appsdemo.in`.
+- **Activity log (D-091):** what happened to each lead is written to `activity_log` by the worker (Meta events, AI replies and skips, openings, follow-ups, lead forms, webhook deliveries, job failures) and the api (Add lead, API intake, AI pause/resume), through `recordActivity`, which never throws. The conversation's **Activity** panel shows one lead (all members); **Logs** (`/logs`) shows every lead with source and "problems only" filters (owners and managers). `phone_numbers.last_event_at` notes each webhook from Meta; `GET /api/activity/health` reports "silent" when a message we sent more than 5 minutes ago got no Meta event since (a broken webhook URL or subscription), shown on Logs and as a banner in the conversation. Server logs (Pino → Seq) stay the place for platform-level problems (signature failures, unknown numbers).
 - **Local dev:** Docker Desktop runs Postgres (host port 5434), Redis (6380) and Seq (UI on 5380) from `compose.yaml`. The ports avoid clashes with other local projects. The apps run with hot reload through `pnpm dev`. A Cloudflare Tunnel or ngrok receives Meta webhooks.
 - **CI/CD:** on push to `main`: lint + typecheck + test → images to GHCR → deploy to staging. Production deploys are triggered manually.
 

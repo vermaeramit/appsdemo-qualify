@@ -5,7 +5,9 @@ import { travelPlaybookTemplate, TRAVEL_TEMPLATE_KEY } from '@qualify/core';
 import {
   createDb,
   createPublishedPlaybook,
+  type Database,
   type DbHandle,
+  listActivity,
   organization,
   phoneNumbers,
   runMigrations,
@@ -83,4 +85,12 @@ export async function startTestDb(masterKey: Buffer): Promise<TestDb> {
       await container.stop();
     },
   };
+}
+
+/** A lead's activity log (D-091), oldest first; with no lead, the tenant's whole feed. */
+export async function activityOf(db: Database, leadId?: string) {
+  const page = await withTenant(db, TENANT, (tx) =>
+    listActivity(tx, { ...(leadId ? { leadId } : {}), limit: 100 }),
+  );
+  return page.items.reverse();
 }

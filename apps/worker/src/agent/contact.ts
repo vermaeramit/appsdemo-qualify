@@ -18,6 +18,15 @@ import {
   toWaId,
 } from '@qualify/integrations';
 import type { ContactJob } from '@qualify/shared';
+import {
+  DEV_SWITCH_REASON,
+  quote,
+  type RecordActivity,
+  sendErrorDetail,
+  sendErrorReason,
+  type SkipEntry,
+  skipEntry,
+} from '../activity.ts';
 import type { LeadLock } from '../lock.ts';
 import { headerMediaFor } from './media.ts';
 import { type FollowUpScheduler, startFollowUps } from './follow-up.ts';
@@ -41,6 +50,8 @@ export interface ContactDeps {
   /** Starts the follow-up sequence after a delivered opening. */
   followUps?: FollowUpScheduler;
   now?: () => Date;
+  /** Activity log (D-091). */
+  activity?: RecordActivity;
 }
 
 export type ContactOutcome =
@@ -54,6 +65,23 @@ export type ContactOutcome =
   | 'skipped_no_playbook'
   | 'skipped_no_number'
   | 'skipped_recent_opening';
+
+/** Openings that weren't attempted, for the activity log. */
+const SKIPPED: Partial<Record<ContactOutcome, SkipEntry>> = {
+  skipped_paused: { level: 'info', message: 'Opening not sent: the AI is paused for this lead' },
+  skipped_no_playbook: {
+    level: 'error',
+    message: 'Opening not sent: there is no published AI agent',
+  },
+  skipped_no_number: {
+    level: 'error',
+    message: 'Opening not sent: no WhatsApp number is connected to this workspace',
+  },
+  skipped_recent_opening: {
+    level: 'info',
+    message: 'Opening not sent again: one went out in the last 10 minutes',
+  },
+};
 
 /** A second form submission within this window does not trigger another opening. */
 const OPENING_DEDUPE_MS = 10 * 60 * 1000;
@@ -73,6 +101,13 @@ export class ContactBusyError extends Error {
 export async function processContact(job: ContactJob, deps: ContactDeps): Promise<ContactOutcome> {
   const locked = await deps.lock.withLock(`respond-lock:${job.leadId}`, () => contact(job, deps));
   if (!locked.acquired) throw new ContactBusyError();
+  const entry = skipEntry(SKIPPED, locked.result, {
+    tenantId: job.tenantId,
+    leadId: job.leadId,
+    source: 'outreach',
+    kind: 'outreach.opening_skipped',
+  });
+  if (entry) await deps.activity?.(entry);
   return locked.result;
 }
 
@@ -125,6 +160,13 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
   const allowed = isAllowedRecipient(toWaId(lead.phoneE164), deps.allowlist, deps.isProduction);
   if (allowed && !deps.masterKey) {
     logger.warn(log, 'ENCRYPTION_MASTER_KEY missing: cannot decrypt token');
+    await deps.activity?.({
+      ...log,
+      source: 'outreach',
+      kind: 'outreach.opening_failed',
+      level: 'error',
+      message: "Opening not sent: the server can't read the WhatsApp access token",
+    });
     return 'send_failed';
   }
 
@@ -251,12 +293,37 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
     return row!;
   });
 
+  const mode = windowOpen ? 'Free-form message (the lead wrote in the last 24 hours)' : 'Template';
+  await deps.activity?.({
+    ...log,
+    source: 'outreach',
+    kind: sent.waMessageId ? 'outreach.opening_sent' : 'outreach.opening_failed',
+    level: sent.waMessageId ? 'info' : outcome === 'skipped_not_allowed' ? 'warn' : 'error',
+    message: sent.waMessageId
+      ? windowOpen
+        ? `Opening sent: ${quote(rendered.text)}`
+        : `Opening sent with the template "${opening.templateName ?? ''}"`
+      : outcome === 'skipped_not_allowed'
+        ? `Opening not sent: ${DEV_SWITCH_REASON}`
+        : `Opening not sent: ${sendErrorReason(sent.error)}`,
+    detail: {
+      ...(sent.waMessageId ? {} : sendErrorDetail(sent.error)),
+      Mode: mode,
+      ...(!windowOpen && opening.templateName
+        ? { Template: `${opening.templateName} (${opening.templateLanguage})` }
+        : {}),
+      ...(header ? { Header: 'Image, video or PDF attached' } : {}),
+      Message: rendered.text,
+      ...(sent.waMessageId ? { 'WhatsApp message id': sent.waMessageId } : {}),
+    },
+  });
   if (sent.waMessageId) {
     await startFollowUps(deps.followUps, {
       tenantId: job.tenantId,
       leadId: job.leadId,
       config: playbook.config,
       message: stored,
+      activity: deps.activity,
     });
   }
   if (sent.error) logger.warn({ ...log, outcome, error: sent.error }, 'Opening not delivered');

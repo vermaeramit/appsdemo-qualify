@@ -37,6 +37,7 @@ import {
   type LeadAttribution,
   type PlaybookField,
 } from '@qualify/shared';
+import type { RecordActivity } from '../activity.ts';
 import type { Logger } from '../logger.ts';
 import { type EmitLeadEvent } from '../webhooks/webhooks.ts';
 
@@ -55,6 +56,8 @@ export interface LeadFormDeps {
   model: string;
   reasoningEffort: ReasoningEffort;
   enqueueContact: (job: ContactJob) => Promise<void>;
+  /** Activity log (D-091). */
+  activity?: RecordActivity;
 }
 
 export type LeadFormOutcome =
@@ -99,9 +102,24 @@ export async function handleLeadgen(
     return { seen: Boolean(seen), page, stored, playbook, tenant };
   });
   if (context.seen) return 'duplicate';
-  if (!context.playbook) return 'no_playbook';
+  const formProblem = (message: string) =>
+    deps.activity?.({
+      tenantId,
+      source: 'lead',
+      kind: 'lead.form_failed',
+      level: 'error',
+      message,
+      detail: { Form: value.form_id, 'Meta lead id': value.leadgen_id },
+    });
+  if (!context.playbook) {
+    await formProblem('Lead form submission not imported: there is no published AI agent');
+    return 'no_playbook';
+  }
   if (!context.page || !deps.masterKey) {
     logger.warn({ ...log, tenantId }, 'No Page token or encryption key: cannot fetch the lead');
+    await formProblem(
+      "Lead form submission not imported: the Facebook Page's access isn't available (reconnect the Page)",
+    );
     return 'no_token';
   }
 
@@ -220,9 +238,34 @@ export async function handleLeadgen(
   });
 
   if (result === 'duplicate' || result === 'no_phone') {
-    if (result === 'no_phone') logger.warn({ ...log, tenantId }, 'Lead form without a valid phone');
+    if (result === 'no_phone') {
+      logger.warn({ ...log, tenantId }, 'Lead form without a valid phone');
+      await formProblem(
+        `Lead form submission from "${form.name ?? value.form_id}" has no valid phone number, so nobody can be contacted`,
+      );
+    }
     return result;
   }
+  const mapped = Object.entries(answers.fields).map(([key, answer]) => `${key}=${answer}`);
+  await deps.activity?.({
+    tenantId,
+    leadId: result.leadId,
+    source: 'lead',
+    kind: result.isNewLead ? 'lead.created' : 'lead.enquiry',
+    message: `${result.isNewLead ? 'New lead' : 'New enquiry'} from the lead form "${form.name ?? value.form_id}"`,
+    detail: {
+      ...(mapped.length ? { Answers: mapped.join('; ') } : {}),
+      ...(Object.keys(answers.other).length
+        ? {
+            'Other answers': Object.entries(answers.other)
+              .map(([key, answer]) => `${key}=${answer}`)
+              .join('; '),
+          }
+        : {}),
+      ...((value.ad_id ?? lead.ad_id) ? { 'Ad id': value.ad_id ?? lead.ad_id ?? null } : {}),
+      'Meta lead id': value.leadgen_id,
+    },
+  });
   if (result.isNewLead) {
     await deps.emitLeadEvent?.({ tenantId, leadId: result.leadId, type: 'lead.created' });
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deliveryErrorMessage } from './delivery-error';
+import { deliveryErrorMessage } from './delivery-error.ts';
 
 describe('deliveryErrorMessage', () => {
   it('explains known Meta error codes', () => {

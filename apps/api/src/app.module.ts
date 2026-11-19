@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { ApiKeysController } from './api-keys/api-keys.controller';
 import type { Env } from './config/env';
+import { ActivityController } from './activity/activity.controller';
 import { ConversationsController } from './conversations/conversations.controller';
 import { CoreModule } from './core/core.module';
 import { CostsController } from './costs/costs.controller';
@@ -80,6 +81,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
     HealthController,
     MeController,
     ConversationsController,
+    ActivityController,
     MetaWebhookController,
     LeadsV1Controller,
     PlaybookV1Controller,

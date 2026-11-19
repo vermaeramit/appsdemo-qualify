@@ -15,6 +15,7 @@ import {
   Users,
   Wallet,
   Webhook,
+  ScrollText,
 } from 'lucide-react';
 import { ApiStatus } from '@/components/api-status';
 import { BrandLogo } from '@/components/brand-logo';
@@ -50,6 +51,7 @@ const navLinks = [
   { to: '/templates', label: 'Templates', icon: MessageSquareText, exact: false },
   { to: '/integrations', label: 'Integrations', icon: Webhook, exact: false, managerOnly: true },
   { to: '/costs', label: 'Costs', icon: Wallet, exact: false, managerOnly: true },
+  { to: '/logs', label: 'Logs', icon: ScrollText, exact: false },
   { to: '/api-docs', label: 'API docs', icon: BookOpen, exact: false },
   { to: '/settings', label: 'Settings', icon: Settings, exact: false },
 ] as const;

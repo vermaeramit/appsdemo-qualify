@@ -20,3 +20,4 @@ export * from './templates.js';
 export * from './media.js';
 export * from './agents.js';
 export * from './reports.js';
+export * from './activity.js';

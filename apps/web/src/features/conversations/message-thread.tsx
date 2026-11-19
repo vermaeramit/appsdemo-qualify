@@ -20,6 +20,8 @@ import { cn } from '@/lib/utils';
 import { clockTime } from '@/lib/time';
 import { useActiveWorkspace } from '@/lib/use-workspace';
 import { canManage } from '@/lib/workspace';
+import { LeadActivityButton } from '@/features/activity/lead-activity';
+import { MetaSilentBanner } from '@/features/activity/meta-health';
 import { DeleteLeadButton } from './delete-lead';
 import { LeadPanel } from './lead-panel';
 import { LeadStatusBadge } from './lead-status';
@@ -85,6 +87,10 @@ export function MessageThread({
               {thread.lead.name ? `${thread.lead.phone} · ` : ''}WhatsApp
             </div>
           </div>
+          <LeadActivityButton
+            leadId={thread.lead.id}
+            label={thread.lead.name ?? thread.lead.phone}
+          />
           {manager && (
             <DeleteLeadButton
               leadId={thread.lead.id}
@@ -97,6 +103,7 @@ export function MessageThread({
           ref={scrollRef}
           className="flex-1 space-y-2 overflow-y-auto bg-muted/30 px-4 py-4 [overflow-anchor:none]"
         >
+          <MetaSilentBanner />
           {hasOlder && (
             <div className="text-center">
               <Button variant="outline" size="xs" disabled={loadingOlder} onClick={loadOlder}>

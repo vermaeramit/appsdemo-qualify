@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
 const changeSchema = z.object({
-  kinds: z.array(z.enum(['leads', 'messages', 'lead_form_submissions'])),
+  kinds: z.array(z.enum(['leads', 'messages', 'lead_form_submissions', 'activity_log'])),
   leadIds: z.array(z.string()),
 });
 
@@ -12,6 +12,7 @@ const AFFECTED: Record<z.infer<typeof changeSchema>['kinds'][number], string[][]
   messages: [['conversations'], ['leads'], ['dashboard'], ['costs']],
   leads: [['conversations'], ['leads'], ['dashboard']],
   lead_form_submissions: [['meta-leads'], ['leads']],
+  activity_log: [['activity']],
 };
 
 /**

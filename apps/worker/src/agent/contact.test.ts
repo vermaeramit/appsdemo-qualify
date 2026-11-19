@@ -17,8 +17,16 @@ import type { LlmClient, StructuredRequest } from '@qualify/integrations';
 import type { AgentTurn } from '@qualify/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
+import { createActivityRecorder } from '../activity.ts';
 import { createMemoryLock } from '../lock.ts';
-import { ALLOWED, PHONE_NUMBER_ID, startTestDb, TENANT, type TestDb } from '../test/test-db.ts';
+import {
+  activityOf,
+  ALLOWED,
+  PHONE_NUMBER_ID,
+  startTestDb,
+  TENANT,
+  type TestDb,
+} from '../test/test-db.ts';
 import { processContact, type ContactDeps } from './contact.ts';
 import { processRespond } from './respond.ts';
 import type { AgentMessagingClient } from './send.ts';
@@ -37,6 +45,7 @@ function deps(overrides: Partial<ContactDeps> = {}): ContactDeps {
     allowlist: [ALLOWED, '919800000011', '919800000012', '919800000013', '919800000014'],
     isProduction: false,
     lock,
+    activity: createActivityRecorder(testDb.app.db, { warn: vi.fn() }),
     ...overrides,
   };
 }
@@ -101,6 +110,13 @@ describe('processContact (opening message)', () => {
     const [opening] = await leadMessages(leadId);
     expect(opening).toMatchObject({ type: 'template', status: 'failed', sender: 'system' });
     expect((await getLead(leadId)).status).toBe('new');
+    // Activity log (D-091): why nothing went out.
+    const [entry] = await activityOf(testDb.app.db, leadId);
+    expect(entry).toMatchObject({
+      kind: 'outreach.opening_failed',
+      level: 'error',
+      message: expect.stringContaining('No approved opening template'),
+    });
   });
 
   it('sends the approved template with name and business as parameters', async () => {
@@ -126,6 +142,11 @@ describe('processContact (opening message)', () => {
     });
     const [opening] = await leadMessages(leadId);
     expect(opening).toMatchObject({ type: 'template', status: 'sent' });
+    expect((await activityOf(testDb.app.db, leadId))[0]).toMatchObject({
+      kind: 'outreach.opening_sent',
+      message: 'Opening sent with the template "qualify_opening_v1"',
+      detail: expect.objectContaining({ Template: 'qualify_opening_v1 (en)' }),
+    });
     expect(opening!.body).toContain('Hi Rahul! 👋 Thanks for your enquiry with Sunrise Holidays.');
     const lead = await getLead(leadId);
     expect(lead.status).toBe('contacting');

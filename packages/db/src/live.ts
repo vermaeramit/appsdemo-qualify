@@ -5,7 +5,7 @@ import { z } from 'zod';
 export interface LiveChange {
   tenantId: string;
   leadId: string | null;
-  kind: 'leads' | 'messages' | 'lead_form_submissions';
+  kind: 'leads' | 'messages' | 'lead_form_submissions' | 'activity_log';
 }
 
 export const LIVE_CHANNEL = 'qualify_live';
@@ -13,7 +13,7 @@ export const LIVE_CHANNEL = 'qualify_live';
 const notificationSchema = z.object({
   t: z.string(),
   l: z.string().nullable(),
-  k: z.enum(['leads', 'messages', 'lead_form_submissions']),
+  k: z.enum(['leads', 'messages', 'lead_form_submissions', 'activity_log']),
 });
 
 /**

@@ -14,6 +14,7 @@ import {
   Settings,
   Sun,
   Wallet,
+  ScrollText,
 } from 'lucide-react';
 import { useTheme } from '@/components/theme/use-theme';
 import {
@@ -94,6 +95,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <CommandItem onSelect={() => run(() => navigate({ to: '/costs' }))}>
               <Wallet />
               Costs (Meta and AI)
+            </CommandItem>
+            <CommandItem onSelect={() => run(() => navigate({ to: '/logs' }))}>
+              <ScrollText />
+              Logs (what happened to each lead)
             </CommandItem>
             <CommandItem onSelect={() => run(() => navigate({ to: '/api-docs' }))}>
               <BookOpen />

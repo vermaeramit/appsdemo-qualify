@@ -1,4 +1,5 @@
 import {
+  aiCostUsd,
   applyAgentTurn,
   confirmingIn,
   prefillMode,
@@ -38,6 +39,15 @@ import {
   type LeadAttribution,
   type RespondJob,
 } from '@qualify/shared';
+import {
+  DEV_SWITCH_REASON,
+  quote,
+  type RecordActivity,
+  sendErrorDetail,
+  sendErrorReason,
+  type SkipEntry,
+  skipEntry,
+} from '../activity.ts';
 import type { LeadLock } from '../lock.ts';
 import { type FollowUpScheduler, startFollowUps } from './follow-up.ts';
 import { FINAL_STATUSES, scoreColumns, writeSummary } from './scoring.ts';
@@ -67,6 +77,8 @@ export interface RespondDeps {
   followUps?: FollowUpScheduler;
   now?: () => Date;
   timeZone?: string;
+  /** Activity log (D-091). */
+  activity?: RecordActivity;
 }
 
 /** Thrown when another worker is answering this lead; BullMQ retries the job shortly. */
@@ -91,6 +103,35 @@ export type RespondOutcome =
 
 const SILENT_STATUSES = new Set<string>(['disqualified', 'handoff']);
 
+/** Why the AI stayed silent, for the activity log (routine outcomes are left out). */
+const SKIPPED: Partial<Record<RespondOutcome, SkipEntry>> = {
+  skipped_paused: { level: 'info', message: "AI didn't reply: the AI is paused for this lead" },
+  skipped_closed: {
+    level: 'info',
+    message: "AI didn't reply: the lead is handed off or not a fit, so the AI stays quiet",
+  },
+  skipped_window_closed: {
+    level: 'warn',
+    message:
+      "AI didn't reply: the lead's last message is more than 24 hours old (WhatsApp allows only templates then)",
+  },
+  skipped_not_allowed: { level: 'warn', message: `AI didn't reply: ${DEV_SWITCH_REASON}` },
+  skipped_no_ai: {
+    level: 'error',
+    message: "AI didn't reply: the AI is turned off on the server (no AI provider key)",
+  },
+  skipped_no_playbook: {
+    level: 'error',
+    message: "AI didn't reply: there is no published AI agent for this lead",
+  },
+};
+
+const STATUS_TEXT: Record<string, string> = {
+  qualified: 'Qualified',
+  handoff: 'Handed off to the team',
+  disqualified: 'Not a fit',
+};
+
 const AD_CONTEXT_MS = 72 * 3_600_000;
 
 /** The Click-to-WhatsApp ad the lead tapped, while that enquiry is fresh. */
@@ -112,6 +153,13 @@ function localDate(now: Date, timeZone: string): string {
 export async function processRespond(job: RespondJob, deps: RespondDeps): Promise<RespondOutcome> {
   const locked = await deps.lock.withLock(`respond-lock:${job.leadId}`, () => respond(job, deps));
   if (!locked.acquired) throw new LeadBusyError();
+  const entry = skipEntry(SKIPPED, locked.result, {
+    tenantId: job.tenantId,
+    leadId: job.leadId,
+    source: 'agent',
+    kind: 'agent.skipped',
+  });
+  if (entry) await deps.activity?.(entry);
   return locked.result;
 }
 
@@ -162,7 +210,18 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
 
   // 3. WhatsApp client for this tenant's number (+ "typing…" while we think).
   const client = await createTenantClient(deps, job.tenantId, latestInbound.phoneNumberId);
-  if (!client) return 'send_failed';
+  if (!client) {
+    await deps.activity?.({
+      tenantId: job.tenantId,
+      leadId: job.leadId,
+      source: 'agent',
+      kind: 'agent.skipped',
+      level: 'error',
+      message:
+        "AI didn't reply: the WhatsApp number's access isn't available (reconnect the number)",
+    });
+    return 'send_failed';
+  }
   if (latestInbound.waMessageId) {
     await client
       .markRead(latestInbound.phoneNumberId, latestInbound.waMessageId, { typing: true })
@@ -330,6 +389,57 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
     await deps.emitLeadEvent?.({ tenantId: job.tenantId, leadId: job.leadId, type: event });
   }
 
+  const cost = aiCostUsd(usage);
+  const learnt = applied.changed.map((key) => `${key}=${applied.fields[key] ?? ''}`);
+  await deps.activity?.([
+    {
+      ...log,
+      source: 'agent',
+      kind: waMessageId ? 'agent.replied' : 'agent.send_failed',
+      level: waMessageId ? 'info' : 'error',
+      message: waMessageId
+        ? `AI replied: ${quote(reply)}`
+        : `AI reply not sent: ${sendErrorReason(sent.error)}`,
+      detail: {
+        ...(waMessageId ? {} : sendErrorDetail(sent.error)),
+        ...(waMessageId ? {} : { Reply: reply }),
+        Model: usage.model,
+        Tokens: `${usage.inputTokens} in (${usage.cachedInputTokens} cached) · ${usage.outputTokens} out`,
+        'AI time': `${(usage.latencyMs / 1000).toFixed(1)} s`,
+        ...(cost !== null ? { 'AI cost': `${cost.toFixed(4)}` } : {}),
+        ...(learnt.length ? { Learnt: learnt.join('; ') } : {}),
+        ...(applied.rejected.length
+          ? {
+              'Not accepted': applied.rejected
+                .map((item) => `${item.key}=${item.value} (${item.reason})`)
+                .join('; '),
+            }
+          : {}),
+        ...(applied.confirmed.length ? { Confirmed: applied.confirmed.join(', ') } : {}),
+        ...(applied.confirming.length ? { 'Asked to confirm': applied.confirming.join(', ') } : {}),
+        ...(turn.askingField ? { Asking: turn.askingField } : {}),
+        ...(status !== lead.status ? { Status: `${lead.status} → ${status}` } : {}),
+        Score: `${scored.score} (${scored.grade})`,
+        ...(turn.handoff.requested && turn.handoff.reason
+          ? { 'Handoff reason': turn.handoff.reason }
+          : {}),
+        ...(turn.disqualified.value && turn.disqualified.reason
+          ? { 'Not a fit because': turn.disqualified.reason }
+          : {}),
+      },
+    },
+    ...(STATUS_TEXT[status] && (status !== lead.status || applied.becameQualified)
+      ? [
+          {
+            ...log,
+            source: 'lead' as const,
+            kind: `lead.${status}`,
+            message: `${STATUS_TEXT[status]} · score ${scored.score} (${scored.grade})`,
+          },
+        ]
+      : []),
+  ]);
+
   // Still qualifying: follow up if the lead goes quiet. Otherwise the conversation is done.
   if (waMessageId && status === 'engaged' && !applied.aiPaused) {
     await startFollowUps(deps.followUps, {
@@ -337,6 +447,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
       leadId: job.leadId,
       config: playbook.config,
       message: stored,
+      activity: deps.activity,
     });
   } else if (status !== 'engaged' || applied.aiPaused) {
     await deps.followUps?.cancel(job.leadId);

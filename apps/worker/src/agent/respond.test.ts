@@ -5,9 +5,17 @@ import type { LlmClient, StructuredRequest } from '@qualify/integrations';
 import type { AgentTurn, RespondJob } from '@qualify/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
+import { createActivityRecorder } from '../activity.ts';
 import { createMemoryLock } from '../lock.ts';
 import type { FollowUpScheduler } from './follow-up.ts';
-import { ALLOWED, PHONE_NUMBER_ID, startTestDb, TENANT, type TestDb } from '../test/test-db.ts';
+import {
+  activityOf,
+  ALLOWED,
+  PHONE_NUMBER_ID,
+  startTestDb,
+  TENANT,
+  type TestDb,
+} from '../test/test-db.ts';
 import {
   type AgentMessagingClient,
   LeadBusyError,
@@ -99,6 +107,7 @@ function deps(overrides: Partial<RespondDeps> = {}): RespondDeps {
     enqueueRespond,
     followUps: followUps as unknown as FollowUpScheduler,
     now: () => new Date(),
+    activity: createActivityRecorder(testDb.app.db, { warn: vi.fn() }),
     ...overrides,
   };
 }
@@ -223,6 +232,22 @@ describe('processRespond', () => {
     expect(
       (outbound!.payload as { rejected: { key: string }[] }).rejected.map((r) => r.key),
     ).toEqual(['shoe_size']);
+
+    // Activity log (D-091): the reply with what the AI learnt, then the follow-up plan.
+    const activity = await activityOf(testDb.app.db, leadId);
+    const replied = activity.find((entry) => entry.kind === 'agent.replied');
+    expect(replied).toMatchObject({
+      source: 'agent',
+      level: 'info',
+      message: 'AI replied: “Wah, Dubai! Kab ka plan hai?”',
+      detail: expect.objectContaining({
+        Model: 'fake-model',
+        Learnt: 'destination=Dubai; travelers=2 adults',
+        Status: 'new → engaged',
+      }),
+    });
+    expect(String(replied!.detail['Not accepted'])).toContain('shoe_size=9');
+    expect(activity.at(-1)?.kind).toBe('outreach.followup_scheduled');
   });
 
   it('does nothing when there is no new message from the lead', async () => {
@@ -380,6 +405,14 @@ describe('processRespond', () => {
       'skipped_not_allowed',
     );
     expect(requests).toHaveLength(0);
+    // Why the AI stayed silent is in each lead's activity.
+    expect((await activityOf(testDb.app.db, old)).map((entry) => entry.message)).toEqual([
+      "AI didn't reply: the lead's last message is more than 24 hours old (WhatsApp allows only templates then)",
+    ]);
+    expect((await activityOf(testDb.app.db, stranger))[0]).toMatchObject({
+      level: 'warn',
+      message: expect.stringContaining('development safety switch'),
+    });
   });
 
   it('records a failed send but keeps what the lead told us', async () => {
@@ -398,6 +431,9 @@ describe('processRespond', () => {
     const [outbound] = await getOutbound(id);
     expect(outbound).toMatchObject({ status: 'failed', error: { message: 'network down' } });
     expect((await getLead(id)).fields).toEqual({ destination: 'Bali' });
+    expect(
+      (await activityOf(testDb.app.db, id)).find((entry) => entry.kind === 'agent.send_failed'),
+    ).toMatchObject({ level: 'error', message: 'AI reply not sent: network down' });
   });
 
   it('stays silent when no AI provider is configured', async () => {

@@ -1,9 +1,11 @@
 // Integration test: webhook event → lead + message → debounced respond job.
 import { randomBytes } from 'node:crypto';
-import { eq, inboundMetaEvents, leads, messages, withTenant } from '@qualify/db';
+import { eq, inboundMetaEvents, leads, messages, phoneNumbers, withTenant } from '@qualify/db';
+import { createActivityRecorder } from '../activity.ts';
 import type { RespondJob } from '@qualify/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  activityOf,
   ALLOWED,
   PHONE_NUMBER_ID,
   STRANGER,
@@ -23,6 +25,7 @@ function deps(): ProcessorDeps {
     allowlist: [ALLOWED],
     isProduction: false,
     enqueueRespond,
+    activity: createActivityRecorder(testDb.app.db, { warn: vi.fn() }),
   };
 }
 
@@ -142,6 +145,17 @@ describe('processMetaEvent', () => {
       .from(inboundMetaEvents)
       .where(eq(inboundMetaEvents.id, eventId));
     expect(event?.processedAt).not.toBeNull();
+
+    // Activity log (D-091): the new lead and its message; Meta reached us for this number.
+    const activity = await activityOf(testDb.app.db, lead!.id);
+    expect(activity.map((entry) => [entry.kind, entry.message])).toEqual([
+      ['lead.created', 'New lead: wrote on WhatsApp'],
+      ['whatsapp.received', 'Message from the lead: “Dubai package price?”'],
+    ]);
+    const [number] = await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx.select().from(phoneNumbers),
+    );
+    expect(number?.lastEventAt).not.toBeNull();
   });
 
   it('does not schedule again when the same event or a Meta retry is processed', async () => {
@@ -195,6 +209,14 @@ describe('processMetaEvent', () => {
     );
     expect(updated?.status).toBe('read');
     expect(updated?.pricing).toBeNull();
+    // Delivered and read are logged once each; the late "sent" adds nothing.
+    const statuses = (await activityOf(testDb.app.db, lead!.id)).filter(
+      (entry) => entry.kind.startsWith('whatsapp.') && entry.kind !== 'whatsapp.received',
+    );
+    expect(statuses.map((entry) => entry.message)).toEqual([
+      'Delivered: the AI reply “Hi!”',
+      'Read by the lead: the AI reply “Hi!”',
+    ]);
   });
 
   it('stores Meta pricing from a status, even one that arrives late', async () => {
@@ -316,6 +338,16 @@ describe('processMetaEvent', () => {
     expect(rows.find((row) => row.id === talking!.id)?.status).toBe('engaged');
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(cancel).toHaveBeenCalledWith(unreached!.id);
+    const activity = await activityOf(testDb.app.db, unreached!.id);
+    expect(activity.find((entry) => entry.kind === 'whatsapp.failed')).toMatchObject({
+      level: 'error',
+      message: 'Not delivered: our message “Hi”',
+      detail: expect.objectContaining({
+        Reason: expect.stringContaining('may not be on WhatsApp'),
+        'Meta error code': 131026,
+      }),
+    });
+    expect(activity.some((entry) => entry.kind === 'lead.undeliverable')).toBe(true);
   });
 
   it('pauses the AI when the team replies from the WhatsApp Business app (Coexistence)', async () => {

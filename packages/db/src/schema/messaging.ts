@@ -60,6 +60,8 @@ export const phoneNumbers = pgTable('phone_numbers', {
   status: text('status', { enum: ['active', 'disconnected'] })
     .notNull()
     .default('active'),
+  /** Last webhook from Meta for this number: shows whether Meta reaches us (D-091). */
+  lastEventAt: timestamp('last_event_at', { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

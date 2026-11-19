@@ -41,6 +41,15 @@ import {
   type PlaybookConfig,
   type PlaybookFollowUps,
 } from '@qualify/shared';
+import {
+  DEV_SWITCH_REASON,
+  quote,
+  type RecordActivity,
+  sendErrorDetail,
+  sendErrorReason,
+  type SkipEntry,
+  skipEntry,
+} from '../activity.ts';
 import type { LeadLock } from '../lock.ts';
 import type { Logger } from '../logger.ts';
 import { scoreColumns, writeSummary } from './scoring.ts';
@@ -77,6 +86,7 @@ export async function startFollowUps(
     leadId: string;
     config: PlaybookConfig;
     message: { id: string; createdAt: Date };
+    activity?: RecordActivity | undefined;
   },
 ): Promise<void> {
   if (!scheduler) return;
@@ -93,6 +103,26 @@ export async function startFollowUps(
     },
     plan.dueAt,
   );
+  await input.activity?.(scheduledEntry(input.tenantId, input.leadId, plan));
+}
+
+/** "Follow-up 1 scheduled": what happens next if the lead stays quiet. */
+function scheduledEntry(
+  tenantId: string,
+  leadId: string,
+  plan: { kind: FollowUpJob['kind']; step: number; dueAt: Date },
+) {
+  return {
+    tenantId,
+    leadId,
+    source: 'outreach' as const,
+    kind: 'outreach.followup_scheduled',
+    message:
+      plan.kind === 'unresponsive'
+        ? "If the lead doesn't answer, they'll be marked as not replying"
+        : `Follow-up ${plan.step + 1} scheduled, in case the lead doesn't answer`,
+    detail: { Due: plan.dueAt.toISOString() },
+  };
 }
 
 export interface FollowUpDeps {
@@ -110,6 +140,8 @@ export interface FollowUpDeps {
   lock: LeadLock;
   scheduler: FollowUpScheduler;
   now?: () => Date;
+  /** Activity log (D-091). */
+  activity?: RecordActivity;
 }
 
 export type FollowUpOutcome =
@@ -134,6 +166,20 @@ export class FollowUpBusyError extends Error {
   }
 }
 
+/** Follow-ups that weren't sent, for the activity log (routine cancellations are left out). */
+const SKIPPED: Partial<Record<FollowUpOutcome, SkipEntry>> = {
+  skipped_disabled: { level: 'info', message: 'Follow-up not sent: follow-ups are turned off' },
+  skipped_no_playbook: {
+    level: 'error',
+    message: 'Follow-up not sent: there is no published AI agent',
+  },
+  skipped_not_allowed: { level: 'warn', message: `Follow-up not sent: ${DEV_SWITCH_REASON}` },
+  skipped_no_number: {
+    level: 'error',
+    message: "Follow-up not sent: no WhatsApp number is connected, or its access isn't available",
+  },
+};
+
 /** Leads we are still waiting on. Qualified, handed-off and closed leads get no follow-ups. */
 const WAITING_STATUSES = new Set(['contacting', 'engaged']);
 
@@ -143,6 +189,22 @@ export async function processFollowUp(
 ): Promise<FollowUpOutcome> {
   const locked = await deps.lock.withLock(`respond-lock:${job.leadId}`, () => followUp(job, deps));
   if (!locked.acquired) throw new FollowUpBusyError();
+  const entry =
+    locked.result === 'marked_unresponsive'
+      ? {
+          tenantId: job.tenantId,
+          leadId: job.leadId,
+          source: 'lead' as const,
+          kind: 'lead.unresponsive',
+          message: 'No answer after the follow-ups: marked as not replying',
+        }
+      : skipEntry(SKIPPED, locked.result, {
+          tenantId: job.tenantId,
+          leadId: job.leadId,
+          source: 'outreach',
+          kind: 'outreach.followup_skipped',
+        });
+  if (entry) await deps.activity?.(entry);
   return locked.result;
 }
 
@@ -418,7 +480,7 @@ async function storeFollowUp(
   },
 ): Promise<{ id: string; createdAt: Date }> {
   const now = deps.now ?? (() => new Date());
-  return withTenant(deps.db, job.tenantId, async (tx) => {
+  const stored = await withTenant(deps.db, job.tenantId, async (tx) => {
     const [row] = await tx
       .insert(messages)
       .values({
@@ -438,6 +500,28 @@ async function storeFollowUp(
     await tx.update(leads).set({ lastMessageAt: now() }).where(eq(leads.id, job.leadId));
     return row!;
   });
+  const step = job.step + 1;
+  const templateName =
+    typeof message.payload.templateName === 'string' ? message.payload.templateName : null;
+  await deps.activity?.({
+    tenantId: job.tenantId,
+    leadId: job.leadId,
+    source: 'outreach',
+    kind: message.waMessageId ? 'outreach.followup_sent' : 'outreach.followup_failed',
+    level: message.waMessageId ? 'info' : templateName ? 'error' : 'warn',
+    message: message.waMessageId
+      ? templateName
+        ? `Follow-up ${step} sent with the template "${templateName}"`
+        : `Follow-up ${step} sent: ${quote(message.body)}`
+      : `Follow-up ${step} not sent: ${sendErrorReason(message.error)}`,
+    detail: {
+      ...(message.waMessageId ? {} : sendErrorDetail(message.error)),
+      Mode: message.payload.mode === 'freeform' ? 'Free-form message' : 'Template',
+      Message: message.body,
+      ...(message.waMessageId ? { 'WhatsApp message id': message.waMessageId } : {}),
+    },
+  });
+  return stored;
 }
 
 /** The follow-up after `sent` ones, or the final "No reply" check, measured from `after`. */
@@ -460,4 +544,5 @@ async function scheduleNext(
     },
     plan.dueAt,
   );
+  await deps.activity?.(scheduledEntry(job.tenantId, job.leadId, plan));
 }

@@ -1,5 +1,5 @@
 import './load-env.ts';
-import { createDb } from '@qualify/db';
+import { createDb, pruneActivity } from '@qualify/db';
 import {
   ALLOW_ALL,
   createLlmClient,
@@ -10,6 +10,8 @@ import {
   WhatsAppClient,
 } from '@qualify/integrations';
 import {
+  ACTIVITY_PRUNE_QUEUE,
+  ACTIVITY_RETENTION_DAYS,
   CONTACT_QUEUE,
   type ContactJob,
   contactJobSchema,
@@ -37,6 +39,8 @@ import {
 } from '@qualify/shared';
 import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
+import { z } from 'zod';
+import { createActivityRecorder } from './activity.ts';
 import { ContactBusyError, processContact } from './agent/contact.ts';
 import {
   allFollowUpJobIds,
@@ -71,6 +75,8 @@ const env = loadWorkerEnv();
 const logger = createLogger(env.LOG_LEVEL, env.NODE_ENV === 'development');
 const { db, pool } = createDb(env.APP_DATABASE_URL);
 const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
+/** Activity log (D-091): what happened to each lead, shown in the dashboard. */
+const activity = createActivityRecorder(db, logger);
 
 const allowlist = parseAllowlist(env.DEV_ALLOWED_NUMBERS);
 const isProduction = env.NODE_ENV === 'production';
@@ -118,6 +124,7 @@ const leadEventsQueue = new Queue<LeadEventJob>(LEAD_EVENTS_QUEUE, { connection 
 const deliveryQueue = new Queue<WebhookDeliveryJob>(WEBHOOK_DELIVERY_QUEUE, { connection });
 const reportSendQueue = new Queue<ReportSendJob>(REPORT_SEND_QUEUE, { connection });
 const reportTickQueue = new Queue(REPORT_TICK_QUEUE, { connection });
+const activityPruneQueue = new Queue(ACTIVITY_PRUNE_QUEUE, { connection });
 
 /** One job per report run; the id makes re-queuing a lost run a no-op while it still exists. */
 async function enqueueReportSend(job: ReportSendJob): Promise<void> {
@@ -135,6 +142,13 @@ await reportTickQueue.upsertJobScheduler(
   'report-tick',
   { every: 60_000 },
   { name: 'tick', opts: { removeOnComplete: 50, removeOnFail: 50 } },
+);
+
+// Old activity entries are deleted every 6 hours (kept ACTIVITY_RETENTION_DAYS days).
+await activityPruneQueue.upsertJobScheduler(
+  'activity-prune',
+  { every: 6 * 3_600_000 },
+  { name: 'prune', opts: { removeOnComplete: 20, removeOnFail: 20 } },
 );
 
 /** What happened to a lead, for webhooks (fanned out by the lead-events worker). */
@@ -224,6 +238,7 @@ const metaEventsWorker = new Worker(
       enqueueRespond: (respondJob) => enqueueRespond(respondJob),
       followUps,
       emitLeadEvent,
+      activity,
       leadForms: {
         masterKey,
         createClient: whatsapp,
@@ -231,6 +246,7 @@ const metaEventsWorker = new Worker(
         model: env.AI_MODEL_CHAT,
         reasoningEffort: env.AI_REASONING_EFFORT,
         enqueueContact,
+        activity,
       },
     });
   },
@@ -254,6 +270,7 @@ const respondWorker = new Worker(
       enqueueRespond,
       followUps,
       emitLeadEvent,
+      activity,
     });
     if (outcome !== 'replied') logger.info({ leadId: job.data.leadId, outcome }, 'Respond run');
   },
@@ -272,6 +289,7 @@ const contactWorker = new Worker(
       isProduction,
       lock: createRedisLock(connection),
       followUps,
+      activity,
     });
     logger.info({ leadId: job.data.leadId, outcome }, 'Contact run');
   },
@@ -294,6 +312,7 @@ const followUpWorker = new Worker(
       lock: createRedisLock(connection),
       scheduler: followUps,
       emitLeadEvent,
+      activity,
     });
     logger.info({ leadId: job.data.leadId, kind: job.data.kind, outcome }, 'Follow-up run');
   },
@@ -339,6 +358,7 @@ const deliveryWorker = new Worker(
         masterKey,
         // Development may post to a local receiver; production only to public https URLs.
         policy: { allowPrivate: !isProduction, requireHttps: isProduction },
+        activity,
       },
     );
     logger.info({ deliveryId: job.data.deliveryId, outcome }, 'Webhook delivery');
@@ -368,6 +388,23 @@ const reportSendWorker = new Worker(
   { connection, concurrency: 2 },
 );
 
+const activityPruneWorker = new Worker(
+  ACTIVITY_PRUNE_QUEUE,
+  async () => {
+    const removed = await pruneActivity(db, ACTIVITY_RETENTION_DAYS);
+    if (removed) logger.info({ removed }, 'Old activity entries deleted');
+  },
+  { connection, concurrency: 1 },
+);
+
+/** Jobs about one lead whose crash the team should see in the lead's activity. */
+const LEAD_JOB_FAILURES: Record<string, string> = {
+  respond: 'AI reply failed',
+  contact: 'Opening failed',
+  'follow-up': 'Follow-up failed',
+};
+const leadJobSchema = z.object({ tenantId: z.string().min(1), leadId: z.uuid() });
+
 for (const [name, worker] of [
   ['meta-events', metaEventsWorker],
   ['respond', respondWorker],
@@ -378,6 +415,7 @@ for (const [name, worker] of [
   ['webhook-delivery', deliveryWorker],
   ['report-tick', reportTickWorker],
   ['report-send', reportSendWorker],
+  ['activity-prune', activityPruneWorker],
 ] as const) {
   worker.on('failed', (job, error) => {
     const busy =
@@ -397,6 +435,24 @@ for (const [name, worker] of [
       { queue: name, jobId: job?.id, attempts: job?.attemptsMade, err: error },
       'Job failed',
     );
+    // The first failure and the last one go to the lead's activity (retries in between don't).
+    const label = LEAD_JOB_FAILURES[name];
+    const lead = leadJobSchema.safeParse(job?.data);
+    const attempts = job?.opts.attempts ?? 1;
+    const made = job?.attemptsMade ?? 0;
+    if (label && lead.success && (made === 1 || made >= attempts)) {
+      void activity({
+        tenantId: lead.data.tenantId,
+        leadId: lead.data.leadId,
+        source: name === 'respond' ? 'agent' : 'outreach',
+        kind: `${name === 'respond' ? 'agent' : 'outreach'}.job_failed`,
+        level: 'error',
+        message:
+          made >= attempts
+            ? `${label}, gave up after ${made} attempts: ${error.message}`
+            : `${label} (attempt 1 of ${attempts}), retrying: ${error.message}`,
+      });
+    }
   });
 }
 
@@ -412,6 +468,7 @@ logger.info(
       WEBHOOK_DELIVERY_QUEUE,
       REPORT_TICK_QUEUE,
       REPORT_SEND_QUEUE,
+      ACTIVITY_PRUNE_QUEUE,
     ],
   },
   'Worker started',
@@ -429,6 +486,7 @@ async function shutdown(signal: string): Promise<void> {
     deliveryWorker.close(),
     reportTickWorker.close(),
     reportSendWorker.close(),
+    activityPruneWorker.close(),
   ]);
   await Promise.all([
     respondQueue.close(),
@@ -438,6 +496,7 @@ async function shutdown(signal: string): Promise<void> {
     deliveryQueue.close(),
     reportSendQueue.close(),
     reportTickQueue.close(),
+    activityPruneQueue.close(),
   ]);
   await pool.end();
   connection.disconnect();

@@ -17,6 +17,7 @@ import {
   WebhookUrlError,
 } from '@qualify/integrations';
 import type { LeadEventJob, WebhookDeliveryJob, WebhookEventType } from '@qualify/shared';
+import type { RecordActivity } from '../activity.ts';
 import type { Logger } from '../logger.ts';
 
 /** Producers (respond, follow-ups, intake, webhooks from Meta) report what happened to a lead. */
@@ -98,6 +99,8 @@ export interface DeliveryDeps {
   masterKey: Buffer | null;
   policy: DeliveryPolicy;
   now?: () => Date;
+  /** Activity log (D-091). */
+  activity?: RecordActivity;
 }
 
 /** Thrown to make BullMQ retry a delivery that didn't get a 2xx. */
@@ -154,6 +157,25 @@ export async function processWebhookDelivery(
         .update(webhookEndpoints)
         .set(outcome.ok ? { lastSuccessAt: at } : { lastFailureAt: at })
         .where(eq(webhookEndpoints.id, endpoint.id));
+    });
+    const attemptNo = attempt.attemptsMade + 1;
+    await deps.activity?.({
+      tenantId: job.tenantId,
+      leadId: delivery.leadId,
+      source: 'webhook',
+      kind: outcome.ok ? 'webhook.delivered' : outcome.final ? 'webhook.failed' : 'webhook.retry',
+      level: outcome.ok ? 'info' : outcome.final ? 'error' : 'warn',
+      message: outcome.ok
+        ? `Webhook "${endpointLabel(endpoint)}" received ${delivery.eventType}`
+        : outcome.final
+          ? `Webhook "${endpointLabel(endpoint)}" didn't get ${delivery.eventType}: ${outcome.error ?? 'failed'}`
+          : `Webhook "${endpointLabel(endpoint)}" didn't get ${delivery.eventType} yet (attempt ${attemptNo} of ${attempt.maxAttempts}), retrying: ${outcome.error ?? 'failed'}`,
+      detail: {
+        Endpoint: endpoint.url,
+        ...(outcome.status !== null ? { 'HTTP status': outcome.status } : {}),
+        Attempt: `${attemptNo} of ${attempt.maxAttempts}`,
+        ...(outcome.excerpt ? { Response: outcome.excerpt } : {}),
+      },
     });
   };
 
@@ -215,4 +237,14 @@ export async function processWebhookDelivery(
     return 'failed';
   }
   throw new DeliveryRetryError(error ?? `HTTP ${result?.status ?? 0}`);
+}
+
+/** How an endpoint is named in the activity log: its description, else its host. */
+function endpointLabel(endpoint: { description: string | null; url: string }): string {
+  if (endpoint.description?.trim()) return endpoint.description.trim().slice(0, 80);
+  try {
+    return new URL(endpoint.url).host;
+  } catch {
+    return 'endpoint';
+  }
 }

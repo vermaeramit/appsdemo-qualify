@@ -34,9 +34,10 @@ import {
   pageLimitSchema,
   storedLeadOutcomeSchema,
 } from '@qualify/shared';
+import { deliveryErrorMessage } from '@qualify/core';
 import { z } from 'zod';
+import { actorName, recordApiActivity } from '../activity/record';
 import { decodeCursor, encodeCursor } from '../common/cursor';
-import { deliveryErrorMessage } from '../common/delivery-error';
 import { parseQuery } from '../common/zod-body';
 import { CurrentWorkspace, type WorkspaceContext, WorkspaceGuard } from '../auth/workspace.guard';
 import { DB } from '../tokens';
@@ -247,5 +248,15 @@ export class ConversationsController {
       return true;
     });
     if (!updated) throw new NotFoundException('Conversation not found');
+    const actor = await actorName(this.handle.db, workspace.userId);
+    await recordApiActivity(this.handle.db, {
+      tenantId: workspace.tenantId,
+      leadId,
+      source: 'team',
+      kind: paused ? 'team.ai_paused' : 'team.ai_resumed',
+      message: paused
+        ? `${actor} paused the AI: the team handles this lead`
+        : `${actor} resumed the AI: it answers the lead's next message`,
+    });
   }
 }

@@ -14,8 +14,10 @@ import {
   type CreateLeadRequest,
   type CreateLeadResponse,
   createLeadResponseSchema,
+  LEAD_SOURCE_LABELS,
 } from '@qualify/shared';
 import type { Queue } from 'bullmq';
+import { actorName, recordApiActivity } from '../activity/record';
 import type { WorkspaceContext } from '../auth/workspace.guard';
 import { CONTACT_QUEUE_TOKEN } from '../queue/queue.module';
 import { WebhooksOutService } from '../webhooks-out/webhooks-out.service';
@@ -102,7 +104,29 @@ export class LeadIntakeService {
         target: leadId,
         metadata: { source: input.source, campaign: input.campaign ?? null, ignoredFields },
       });
-      return { leadId, isNewLead, ignoredFields };
+      return { leadId, isNewLead, ignoredFields, accepted };
+    });
+
+    // Activity log (D-091): where the lead came from and which answers were kept.
+    const answers = Object.entries(result.accepted).map(([key, value]) => `${key}=${value}`);
+    const fromDashboard = via === 'dashboard';
+    const actor = fromDashboard ? await actorName(this.handle.db, workspace.userId) : null;
+    await recordApiActivity(this.handle.db, {
+      tenantId: workspace.tenantId,
+      leadId: result.leadId,
+      source: fromDashboard ? 'team' : 'lead',
+      kind: result.isNewLead ? 'lead.created' : 'lead.enquiry',
+      message: fromDashboard
+        ? `${actor} added ${result.isNewLead ? 'this lead' : 'a new enquiry'} from the dashboard`
+        : `${result.isNewLead ? 'New lead' : 'New enquiry'} from the API${input.campaign ? ` (campaign "${input.campaign}")` : ''}`,
+      detail: {
+        Source: LEAD_SOURCE_LABELS[input.source],
+        ...(input.campaign ? { Campaign: input.campaign } : {}),
+        ...(answers.length ? { Answers: answers.join('; ') } : {}),
+        ...(result.ignoredFields.length
+          ? { 'Ignored answers (no matching question)': result.ignoredFields.join(', ') }
+          : {}),
+      },
     });
 
     if (result.isNewLead) {
@@ -123,6 +147,11 @@ export class LeadIntakeService {
       },
     );
 
-    return createLeadResponseSchema.parse({ ...result, status: 'queued' });
+    return createLeadResponseSchema.parse({
+      leadId: result.leadId,
+      isNewLead: result.isNewLead,
+      ignoredFields: result.ignoredFields,
+      status: 'queued',
+    });
   }
 }

@@ -15,6 +15,7 @@ export {
   or,
   sql,
 } from 'drizzle-orm';
+export * from './activity.ts';
 export * from './api-keys.ts';
 export * from './client.ts';
 export * from './email-reports.ts';

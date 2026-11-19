@@ -16,9 +16,17 @@ import {
 import { resolveTenantByPageId, resolveTenantByPhoneNumberId } from './routing.ts';
 import { getMediaAsset, saveMediaAsset } from './media.ts';
 import { dueEmailReportWork } from './email-reports.ts';
+import {
+  activityHealth,
+  listActivity,
+  pruneActivity,
+  recordActivity,
+  touchNumberEvent,
+} from './activity.ts';
 import { saveWhatsAppConnection } from './whatsapp-connect.ts';
 import type { PlaybookConfig } from '@qualify/shared';
 import {
+  activityLog,
   apiKeys,
   auditLogs,
   emailReportRuns,
@@ -536,5 +544,146 @@ describe('Lead form tables and Page routing (connected as qualify_app)', () => {
     // Another workspace never sees these routes.
     const elsewhere = await resolve('org_b', { channel: 'meta_form', at, formId: 'form_intl' });
     expect(elsewhere?.playbookId).not.toBe(routed.playbookId);
+  });
+});
+
+describe('Activity log (connected as qualify_app, D-091)', () => {
+  it('isolates entries per tenant and refuses spoofed tenant ids', async () => {
+    expect(
+      await recordActivity(app.db, {
+        tenantId: 'org_a',
+        source: 'team',
+        kind: 'test.entry',
+        message: 'Only A sees this',
+      }),
+    ).toBeNull();
+    const seenByB = await withTenant(app.db, 'org_b', (tx) => tx.select().from(activityLog));
+    expect(seenByB.filter((row) => row.kind === 'test.entry')).toEqual([]);
+    const seenByA = await withTenant(app.db, 'org_a', (tx) => tx.select().from(activityLog));
+    expect(seenByA.filter((row) => row.kind === 'test.entry')).toHaveLength(1);
+    expect(await app.db.select().from(activityLog)).toEqual([]);
+    const spoof = withTenant(app.db, 'org_b', (tx) =>
+      tx.insert(activityLog).values({
+        tenantId: 'org_a',
+        source: 'team',
+        kind: 'test.spoof',
+        message: 'x',
+      }),
+    );
+    await expect(spoof).rejects.toSatisfy((error) => /row-level security/.test(errorText(error)));
+  });
+
+  it('lists a lead timeline and the workspace feed with filters and a cursor', async () => {
+    const lead = await withTenant(app.db, 'org_a', async (tx) => {
+      const [created] = await tx
+        .insert(leads)
+        .values({ tenantId: 'org_a', phoneE164: '+919811100001', name: 'Timeline', source: 'api' })
+        .returning({ id: leads.id });
+      return created!.id;
+    });
+    const base = { tenantId: 'org_a', leadId: lead } as const;
+    for (const [index, entry] of [
+      { source: 'lead', kind: 'lead.created', message: 'Lead added' },
+      { source: 'outreach', kind: 'outreach.opening_sent', message: 'Opening sent' },
+      { source: 'agent', kind: 'agent.failed', level: 'error', message: 'AI reply failed' },
+      { source: 'whatsapp', kind: 'whatsapp.received', message: 'Message from the lead' },
+    ].entries()) {
+      await withTenant(app.db, 'org_a', (tx) =>
+        tx.insert(activityLog).values({
+          ...base,
+          ...(entry as { source: 'lead'; kind: string; message: string }),
+          level: (entry as { level?: 'error' }).level ?? 'info',
+          at: new Date(Date.now() - (10 - index) * 1_000),
+          detail: { Step: index },
+        }),
+      );
+    }
+    const first = await withTenant(app.db, 'org_a', (tx) =>
+      listActivity(tx, { leadId: lead, limit: 3 }),
+    );
+    expect(first.items.map((item) => item.kind)).toEqual([
+      'whatsapp.received',
+      'agent.failed',
+      'outreach.opening_sent',
+    ]);
+    expect(first.items[0]!.lead).toEqual({ id: lead, name: 'Timeline', phone: '+919811100001' });
+    const second = await withTenant(app.db, 'org_a', (tx) =>
+      listActivity(tx, { leadId: lead, limit: 3, before: first.next }),
+    );
+    expect(second.items.map((item) => item.kind)).toEqual(['lead.created']);
+    expect(second.next).toBeNull();
+    const problems = await withTenant(app.db, 'org_a', (tx) =>
+      listActivity(tx, { problems: true, limit: 10 }),
+    );
+    expect(problems.items.map((item) => item.message)).toEqual(['AI reply failed']);
+    const outreach = await withTenant(app.db, 'org_a', (tx) =>
+      listActivity(tx, { source: 'outreach', limit: 10 }),
+    );
+    expect(outreach.items.map((item) => item.kind)).toEqual(['outreach.opening_sent']);
+    expect(
+      (await withTenant(app.db, 'org_b', (tx) => listActivity(tx, { leadId: lead, limit: 10 })))
+        .items,
+    ).toEqual([]);
+  });
+
+  it('says when Meta stopped reaching us after we sent a message', async () => {
+    const lead = await withTenant(app.db, 'org_b', async (tx) => {
+      const [created] = await tx
+        .insert(leads)
+        .values({ tenantId: 'org_b', phoneE164: '+919811100002', source: 'api' })
+        .returning({ id: leads.id });
+      return created!.id;
+    });
+    const health = () => withTenant(app.db, 'org_b', (tx) => activityHealth(tx));
+    expect((await health()).problem).toBeNull();
+    // We sent a message 10 minutes ago and Meta has sent nothing since.
+    await withTenant(app.db, 'org_b', (tx) =>
+      tx.insert(messages).values({
+        tenantId: 'org_b',
+        leadId: lead,
+        phoneNumberId: 'pn_b',
+        direction: 'outbound',
+        sender: 'ai',
+        type: 'text',
+        body: 'Hi',
+        waMessageId: 'wamid.health.1',
+        status: 'sent',
+        createdAt: new Date(Date.now() - 10 * 60_000),
+      }),
+    );
+    const silent = await health();
+    expect(silent.problem).toBe('silent');
+    expect(silent.number).toEqual({ phone: '+91 2', lastEventAt: null });
+    // A webhook for the number clears it.
+    await touchNumberEvent(app.db, 'org_b', 'pn_b');
+    const ok = await health();
+    expect(ok.problem).toBeNull();
+    expect(ok.number?.lastEventAt).not.toBeNull();
+  });
+
+  it('prunes only old entries, across tenants, through the narrow function', async () => {
+    const old = new Date(Date.now() - 40 * 86_400_000);
+    for (const tenantId of ['org_a', 'org_b']) {
+      await withTenant(app.db, tenantId, (tx) =>
+        tx.insert(activityLog).values([
+          { tenantId, source: 'team', kind: 'test.old', message: 'old', at: old },
+          { tenantId, source: 'team', kind: 'test.recent', message: 'recent' },
+        ]),
+      );
+    }
+    expect(await pruneActivity(app.db, 30)).toBe(2);
+    for (const tenantId of ['org_a', 'org_b']) {
+      const kinds = (await withTenant(app.db, tenantId, (tx) => tx.select().from(activityLog))).map(
+        (row) => row.kind,
+      );
+      expect(kinds).not.toContain('test.old');
+      expect(kinds).toContain('test.recent');
+    }
+    // Never below 7 days, and the app role can't delete across tenants itself.
+    await expect(pruneActivity(app.db, 1)).rejects.toSatisfy((error) =>
+      /at least 7 days/.test(errorText(error)),
+    );
+    const direct = await app.db.execute(sql`delete from activity_log returning id`);
+    expect(direct.rows).toEqual([]);
   });
 });
