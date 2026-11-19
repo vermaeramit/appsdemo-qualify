@@ -57,6 +57,44 @@ prints the tag (`<branch-or-tag>-<sha>`); `latest` points to the newest build.
 Keep a copy of `ENCRYPTION_MASTER_KEY` outside the server (password manager): without it the
 stored Meta tokens and webhook secrets can't be decrypted, even from a backup.
 
+## 3b. Shared server (another product already owns 80/443)
+
+When the server already runs another product whose Caddy owns ports 80/443 (our first server
+runs `appsdemo-dine` in `/opt/appsdemo-dine`), run Qualify next to it without publishing any
+port (D-093):
+
+- `.env` gets `COMPOSE_FILE=compose.yaml:compose.behind-proxy.yaml`. The override removes our
+  Caddy's ports, mounts [`Caddyfile.behind-proxy`](../deploy/prod/Caddyfile.behind-proxy) (plain
+  HTTP on :80, trusts the forwarding proxy for the visitor's IP and scheme), puts it on the
+  external Docker network `qualify-edge` as `qualify-web`, and caps memory/CPU per service
+  (about 3 GB RAM in total) so this stack can't starve the other one.
+- Once: `docker network create qualify-edge`.
+- The other product's Caddy forwards our domain. Connect it to the network without a restart and
+  add one site block to its Caddyfile, edited in place (it is a single-file bind mount), then
+  validate and reload gracefully:
+
+  ```sh
+  docker network connect qualify-edge appsdemo-dine-caddy-1
+  cat >> /opt/appsdemo-dine/deploy/caddy/Caddyfile <<'CADDY'
+
+  # AppsDemo Qualify (/opt/qualify), reached over the qualify-edge network (D-093).
+  qualify.appsdemo.in {
+  	reverse_proxy qualify-web:80 {
+  		import upstream
+  	}
+  }
+  CADDY
+  docker exec appsdemo-dine-caddy-1 caddy validate --config /etc/caddy/Caddyfile
+  docker exec appsdemo-dine-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+  ```
+
+  Put the same two changes in the other product's own repository (its compose: the caddy service
+  joins the external `qualify-edge` network; its Caddyfile: the block above), or its next deploy
+  removes them and only Qualify goes offline.
+- Without a registry token, build the images locally and load them over SSH:
+  `docker save qualify/api:<tag> qualify/worker:<tag> qualify/web:<tag> | gzip | ssh <server> 'gunzip | sudo docker load'`
+  (`IMAGE_PREFIX=qualify`, `IMAGE_TAG=<tag>`; skip `docker compose pull`).
+
 ## 4. Connect Meta
 
 1. Meta app → WhatsApp → Configuration → Webhook: callback

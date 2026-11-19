@@ -1,0 +1,49 @@
+# Shared server (D-093): another Caddy already owns ports 80/443 and terminates TLS. Our Caddy
+# serves the dashboard and /api over plain HTTP on the shared "qualify-edge" Docker network only
+# (no host ports), and every service gets a memory/CPU ceiling so this stack can never starve the
+# other product on the server. Enable it in .env:
+#   COMPOSE_FILE=compose.yaml:compose.behind-proxy.yaml
+# and create the network once: docker network create qualify-edge
+x-logs: &logs
+  logging:
+    driver: json-file
+    options: { max-size: '10m', max-file: '3' }
+
+services:
+  caddy:
+    <<: *logs
+    ports: !reset []
+    volumes:
+      - ./Caddyfile.behind-proxy:/etc/caddy/Caddyfile:ro
+    networks:
+      default: {}
+      edge:
+        aliases: [qualify-web]
+    mem_limit: 256m
+    cpus: 0.5
+
+  api:
+    mem_limit: 768m
+    cpus: 1.0
+
+  worker:
+    mem_limit: 768m
+    cpus: 1.0
+
+  migrate:
+    mem_limit: 512m
+
+  postgres:
+    <<: *logs
+    mem_limit: 1g
+    cpus: 1.0
+
+  redis:
+    <<: *logs
+    mem_limit: 256m
+    cpus: 0.5
+
+networks:
+  edge:
+    name: qualify-edge
+    external: true

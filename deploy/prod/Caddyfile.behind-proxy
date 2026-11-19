@@ -1,0 +1,46 @@
+# Shared server (D-093): the server's own Caddy owns the public address and TLS, and forwards
+# this product's domain here over the private "qualify-edge" network. Plain HTTP on :80.
+{
+	auto_https off
+	servers {
+		# Trust the forwarding Caddy (private Docker addresses), so the visitor's IP and the https
+		# scheme reach the api (per-visitor rate limits, secure cookies).
+		trusted_proxies static private_ranges
+	}
+}
+
+:80 {
+	# Live updates are a Server-Sent Events stream (D-079): never buffer or compress it.
+	@compressible not path /api/live
+	encode @compressible zstd gzip
+
+	# API, Better Auth, Meta webhooks: all under /api (D-035).
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	# Dashboard (Vite build). Hashed assets are cached for a year; index.html never.
+	handle {
+		root * /srv
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@html not path /assets/*
+		header @html Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
