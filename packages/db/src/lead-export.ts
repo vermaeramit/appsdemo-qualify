@@ -67,6 +67,7 @@ export function leadSheetColumns(definitions: readonly PlaybookField[]): LeadShe
       width: 20,
     })),
     { header: 'Other answers', key: 'other', width: 30 },
+    { header: 'Not confirmed yet', key: 'unconfirmed', width: 24 },
     { header: 'Outcome', key: 'outcome', width: 14 },
     { header: 'Deal value', key: 'dealValue', width: 14 },
     { header: 'Last message', key: 'lastMessage', width: 18 },
@@ -114,6 +115,12 @@ export function leadSheetCells(
       definitions.map((field) => [`field:${field.key}`, row.fields[field.key] ?? null]),
     ),
     other: other || null,
+    // Answers from the form or API the lead hasn't confirmed in the chat (D-089).
+    unconfirmed:
+      definitions
+        .filter((field) => row.unconfirmedFields.includes(field.key) && row.fields[field.key])
+        .map((field) => field.label)
+        .join(', ') || null,
     outcome: row.outcome ? LEAD_OUTCOME_LABELS[row.outcome.outcome] : null,
     dealValue:
       row.outcome?.value !== undefined

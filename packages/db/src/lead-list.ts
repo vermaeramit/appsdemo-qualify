@@ -36,6 +36,8 @@ export interface LeadListRow {
   scoreDetails: LeadScoreDetails | null;
   summary: string | null;
   fields: Record<string, string>;
+  /** Answers that came with the lead and aren't confirmed in chat yet (D-089). */
+  unconfirmedFields: string[];
   attribution: LeadAttribution | null;
   outcome: StoredLeadOutcome | null;
   playbookVersionId: string | null;
@@ -56,6 +58,7 @@ type RawRow = {
   score_details: LeadScoreDetails | null;
   summary: string | null;
   fields: Record<string, string> | null;
+  unconfirmed_fields: string[] | null;
   attribution: LeadAttribution | null;
   outcome: StoredLeadOutcome | null;
   playbook_version_id: string | null;
@@ -174,7 +177,7 @@ export async function listLeads(
   const raw = (
     await tx.execute<RawRow>(sql`
       select l.id, l.name, l.phone_e164, l.source, l.status, l.grade, l.score, l.score_details,
-             l.summary, l.fields, l.attribution, l.outcome, l.playbook_version_id, l.created_at::text as created_at,
+             l.summary, l.fields, l.unconfirmed_fields, l.attribution, l.outcome, l.playbook_version_id, l.created_at::text as created_at,
              l.last_message_at::text as last_message_at, l.qualified_at::text as qualified_at,
              l.handoff_at::text as handoff_at, (${expr})::text as sort_key
       from leads l
@@ -207,6 +210,7 @@ export async function listLeads(
       scoreDetails: row.score_details,
       summary: row.summary,
       fields: row.fields ?? {},
+      unconfirmedFields: row.unconfirmed_fields ?? [],
       attribution: row.attribution,
       outcome: row.outcome,
       playbookVersionId: row.playbook_version_id,

@@ -304,7 +304,10 @@ export function ApiDocsPage() {
               from your WhatsApp number. If the lead messaged you in the last 24 hours it goes as
               normal text with buttons; otherwise WhatsApp only allows your approved template.
             </li>
-            <li>When the lead replies, the agent asks only what is still missing.</li>
+            <li>
+              When the lead replies, the agent first checks the answers you sent with the lead (you
+              can turn this off on the AI agent page), then asks only what is still missing.
+            </li>
             <li>
               A second submission for the same lead within 10 minutes doesn’t send another opening.
             </li>

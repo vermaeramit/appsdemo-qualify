@@ -1,10 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { resolveFollowUps, resolveOpening, resolveScoring } from '@qualify/core';
+import { prefillMode, resolveFollowUps, resolveOpening, resolveScoring } from '@qualify/core';
 import {
   type FieldType,
   type PlaybookConfig,
   playbookConfigSchema,
   type PlaybookField,
+  type PrefillConfirmation,
 } from '@qualify/shared';
 import type { FieldErrors, Resolver } from 'react-hook-form';
 
@@ -13,6 +14,7 @@ export type EditorConfig = PlaybookConfig & {
   opening: NonNullable<PlaybookConfig['opening']>;
   followUps: NonNullable<PlaybookConfig['followUps']>;
   scoring: NonNullable<PlaybookConfig['scoring']>;
+  prefillConfirmation: PrefillConfirmation;
 };
 
 export function toEditorConfig(config: PlaybookConfig): EditorConfig {
@@ -20,6 +22,13 @@ export function toEditorConfig(config: PlaybookConfig): EditorConfig {
   const followUps = resolveFollowUps(config);
   return {
     ...config,
+    // Explicit keys (possibly undefined) so an untouched form equals the published version.
+    // An unset "confirm" follows "required" (D-089).
+    fields: config.fields.map((field) => ({
+      ...field,
+      confirmWhenPrefilled: field.confirmWhenPrefilled,
+    })),
+    prefillConfirmation: prefillMode(config),
     // headerMedia is always present (possibly undefined) so "remove the file" and "discard"
     // compare equal to the published version and don't leave the form dirty.
     opening: { ...opening, headerMedia: opening.headerMedia },
@@ -67,7 +76,14 @@ export function keyFromLabel(label: string, taken: ReadonlySet<string>): string 
 
 export function newQuestion(style: AnswerStyle, taken: ReadonlySet<string>): PlaybookField {
   const key = keyFromLabel('question', taken);
-  const base = { key, label: '', required: false, priority: 99, question: '' };
+  const base = {
+    key,
+    label: '',
+    required: false,
+    priority: 99,
+    question: '',
+    confirmWhenPrefilled: undefined,
+  };
   if (style === 'options') return { ...base, type: 'choice', options: [] };
   if (style === 'yes_no') return { ...base, type: 'yes_no' };
   return { ...base, type: 'text' };
@@ -95,11 +111,12 @@ export function cleanConfig(values: EditorConfig): EditorConfig {
   return {
     ...values,
     fields: values.fields.map((field, index) => {
-      const { question, guidance, options, allowOther, ...rest } = field;
+      const { question, guidance, options, allowOther, confirmWhenPrefilled, ...rest } = field;
       const isChoice = field.type === 'choice';
       return {
         ...rest,
         priority: index + 1,
+        ...(confirmWhenPrefilled !== undefined ? { confirmWhenPrefilled } : {}),
         ...(question?.trim() ? { question: question.trim() } : {}),
         ...(guidance?.trim() ? { guidance: guidance.trim() } : {}),
         ...(isChoice ? { options: (options ?? []).map((option) => option.trim()) } : {}),

@@ -325,6 +325,7 @@ export class WebhooksOutService {
           key: field.key,
           label: field.label,
           value: field.options?.[0] ?? 'Sample answer',
+          confirmed: true,
         })),
         otherAnswers: {},
         attribution: { channel: 'api', at: now, campaign: 'Test' },

@@ -1,5 +1,6 @@
 import {
   applyAgentTurn,
+  prefillMode,
   buildStateNote,
   chooseReplyLanguage,
   buildSystemPrompt,
@@ -174,6 +175,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
   const defaultLanguage: AgentLanguage =
     agentLanguageSchema.safeParse(tenant?.defaultLanguage).data ?? 'hinglish';
   const definitions = playbook.config.fields;
+  const confirmMode = prefillMode(playbook.config);
   const replyLanguage = chooseReplyLanguage({
     latestLeadText: latestInbound.body,
     previous: lead.language,
@@ -199,6 +201,8 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
         leadName: lead.name,
         replyLanguage,
         ad: freshAd(lead.attribution, now()),
+        unconfirmed: lead.unconfirmedFields,
+        confirmMode,
       }),
       schema: agentTurnSchema,
       reasoningEffort: deps.reasoningEffort,
@@ -224,7 +228,13 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
   }
 
   // 6. Apply the turn (same pure logic the eval harness uses).
-  const applied = applyAgentTurn(definitions, lead, turn, replyLanguage);
+  const applied = applyAgentTurn(
+    definitions,
+    { ...lead, unconfirmed: lead.unconfirmedFields },
+    turn,
+    replyLanguage,
+    confirmMode,
+  );
   const { reply, options, status } = applied;
   const updates: Partial<typeof leads.$inferInsert> = {};
   if (applied.becameQualified) updates.qualifiedAt = now();
@@ -271,6 +281,8 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
           model: usage.model,
           usage,
           extracted: turn.extracted,
+          confirming: turn.confirming,
+          confirmed: applied.confirmed,
           rejected: applied.rejected,
           handoff: turn.handoff,
           disqualified: turn.disqualified,
@@ -286,6 +298,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
         ...updates,
         ...scored,
         fields: applied.fields,
+        unconfirmedFields: applied.unconfirmed,
         language: applied.language ?? lead.language,
         signals: applied.signals,
         status,

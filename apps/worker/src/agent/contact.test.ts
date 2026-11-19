@@ -216,6 +216,8 @@ describe('processContact (opening message)', () => {
       quickReplies: ['This month', 'Next month'],
       askingField: 'travel_month',
       extracted: [],
+      confirming: [],
+      confirmed: [],
       signals: { urgency: 5, seriousness: 6, buyingSignals: 3, note: 'Dubai enquiry' },
       handoff: { requested: false, reason: null },
       disqualified: { value: false, reason: null },

@@ -1,4 +1,4 @@
-import type { AgentLanguage, PlaybookField } from '@qualify/shared';
+import type { AgentLanguage, PlaybookField, PrefillConfirmation } from '@qualify/shared';
 import { sanitizeQuickReplies } from './policy.ts';
 
 /** How the agent's reply is presented on WhatsApp. */
@@ -17,6 +17,13 @@ const YES_NO: Record<AgentLanguage, [string, string]> = {
   hi: ['हाँ', 'नहीं'],
 };
 
+/** Answers to "is this what you filled in?" (D-089). */
+const CONFIRM_ALL: Record<AgentLanguage, [string, string]> = {
+  en: ['Yes, correct', 'Change something'],
+  hinglish: ['Haan, sahi hai', 'Kuch badalna hai'],
+  hi: ['हाँ, सही है', 'कुछ बदलना है'],
+};
+
 const LIST_BUTTON: Record<AgentLanguage, string> = {
   en: 'Choose',
   hinglish: 'Choose karein',
@@ -25,6 +32,8 @@ const LIST_BUTTON: Record<AgentLanguage, string> = {
 
 /**
  * Picks the WhatsApp presentation for a reply:
+ * - the reply confirms answers that came with the lead → "Yes, correct / Change something" for
+ *   several (or in "together" mode), Yes/No for one at a time;
  * - the question is about a `choice` field → its configured options (≤3 short ones as buttons,
  *   otherwise a list menu of up to 10);
  * - a `yes_no` field → Yes/No buttons in the lead's language;
@@ -34,11 +43,22 @@ const LIST_BUTTON: Record<AgentLanguage, string> = {
 export function chooseReplyOptions(input: {
   definitions: readonly PlaybookField[];
   askingField: string | null;
+  /** Keys this reply asks the lead to confirm. */
+  confirming?: readonly string[];
+  confirmMode?: PrefillConfirmation;
   status: string;
   language: AgentLanguage;
   suggested: readonly string[];
 }): ReplyOptions {
   if (input.status !== 'engaged') return { kind: 'none' };
+  const confirming = input.confirming ?? [];
+  if (confirming.length > 0) {
+    const oneByOne = input.confirmMode === 'one_by_one' && confirming.length === 1;
+    return {
+      kind: 'buttons',
+      buttons: [...(oneByOne ? YES_NO : CONFIRM_ALL)[input.language]],
+    };
+  }
   const field = input.askingField
     ? input.definitions.find((candidate) => candidate.key === input.askingField)
     : undefined;

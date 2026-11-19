@@ -36,10 +36,17 @@ export function LeadPanel({ lead }: { lead: ConversationThread['lead'] }) {
       <dl className="space-y-2.5">
         {lead.fieldDefinitions.map((field) => {
           const value = lead.fields[field.key];
+          // From the form or API, not confirmed by the lead in the chat yet (D-089).
+          const unconfirmed = Boolean(value) && lead.unconfirmedFields.includes(field.key);
           return (
             <div key={field.key} className="flex items-start gap-2 text-sm">
               {value ? (
-                <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" />
+                <CircleCheck
+                  className={cn(
+                    'mt-0.5 size-4 shrink-0',
+                    unconfirmed ? 'text-grade-warm' : 'text-success',
+                  )}
+                />
               ) : (
                 <CircleDashed
                   className={cn(
@@ -55,6 +62,14 @@ export function LeadPanel({ lead }: { lead: ConversationThread['lead'] }) {
                 </dt>
                 <dd className={cn('break-words', !value && 'text-muted-foreground/60')}>
                   {value ?? '—'}
+                  {unconfirmed && (
+                    <span
+                      className="ml-1.5 rounded-full bg-grade-warm/15 px-1.5 py-0.5 text-[0.65rem] font-medium text-grade-warm"
+                      title="Came with the lead (form or website); the lead hasn't confirmed it in the chat yet"
+                    >
+                      Not confirmed
+                    </span>
+                  )}
                 </dd>
               </div>
             </div>

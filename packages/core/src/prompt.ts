@@ -1,5 +1,11 @@
-import type { AgentLanguage, PlaybookConfig, PlaybookField } from '@qualify/shared';
+import type {
+  AgentLanguage,
+  PlaybookConfig,
+  PlaybookField,
+  PrefillConfirmation,
+} from '@qualify/shared';
 import { type LeadFields, missingRequiredFields } from './fields.ts';
+import { answersToConfirm, prefillMode } from './prefill.ts';
 
 const LANGUAGE_NAMES: Record<AgentLanguage, string> = {
   hinglish: 'Hinglish (Hindi written in Roman letters)',
@@ -36,6 +42,28 @@ function describeField(field: PlaybookField): string {
   }
   if (field.guidance) parts.push(`  Guidance: ${field.guidance}`);
   return parts.join('\n');
+}
+
+const CONFIRM_STYLE: Record<Exclude<PrefillConfirmation, 'off'>, string> = {
+  together:
+    '- Confirm ALL of them in ONE short message before asking anything else: mention the values naturally in the lead\'s language (e.g. "You mentioned Goa in December for 4 people. Is that right?") and set `confirming` to all their keys. The app shows "Yes, correct" / "Change something" buttons, so return an empty quickReplies list.',
+  one_by_one:
+    '- Confirm them ONE at a time, in the listed order: each message checks exactly one answer as a short yes/no question (e.g. "You\'re planning a trip to Goa, right?"), never two answers together, and sets `confirming` to that one key. The app shows Yes/No buttons, so return an empty quickReplies list.',
+};
+
+/** Rules for answers that came with the lead (D-089); empty when confirmation is off. */
+function confirmationSection(mode: PrefillConfirmation): string {
+  if (mode === 'off') return '';
+  return [
+    '',
+    '# Answers that came with the lead',
+    'Some leads filled a form (a Meta lead form or a website form) before the chat. The state note lists those answers under "Answers to confirm". People often tap form answers in a hurry, so confirm them before relying on them:',
+    CONFIRM_STYLE[mode],
+    "- Answer the lead's own questions first, as usual, then confirm.",
+    '- When the lead says they are correct ("yes", "haan", "sahi hai", a thumbs up…), put those keys in `confirmed`. When the lead gives a different value, extract the new value (it counts as confirmed). When the lead says something is wrong but not what is right, ask for the right value and set `askingField` to that key.',
+    "- Don't ask again what the lead has confirmed. After the answers are confirmed, continue with the missing required fields.",
+    '',
+  ].join('\n');
 }
 
 /**
@@ -83,7 +111,8 @@ Collect the fields listed below through a natural, friendly conversation. When t
 - Set \`askingField\` to the key of the field your reply asks about (null if the reply asks nothing).
 - For questions with options (choice) and yes/no questions, the app shows the configured options as tap buttons or a list automatically: just ask the question, don't list the options in your text, and return an empty quickReplies list.
 - For plain questions you may offer 2–3 quick replies (at most 20 characters each) when there are a few obvious answers (e.g. "This month", "Next month"); otherwise return an empty list.
-
+- Return empty \`confirming\` and \`confirmed\` lists unless the state note lists answers to confirm.
+${confirmationSection(prefillMode(config))}
 # Extraction (field \`extracted\`)
 - Return every field value the lead has stated that is missing from, or different from, the collected fields in the state note. Use the field keys exactly as listed below.
 - Normalise values to English: names of places and things in English (e.g. "मुंबई" → "Mumbai"); months as YYYY-MM, choosing the next upcoming occurrence relative to today's date in the state note; numbers as digits; choice fields as one of the listed options; "flexible" when the lead is flexible.
@@ -132,6 +161,9 @@ export interface StateNoteInput {
   followUp?: { step: number; hoursSilent: number };
   /** The Click-to-WhatsApp ad the lead tapped (the business's own ad text). */
   ad?: { headline?: string | undefined; body?: string | undefined } | undefined;
+  /** Answers that came with the lead and aren't confirmed yet (D-089). */
+  unconfirmed?: readonly string[];
+  confirmMode?: PrefillConfirmation;
 }
 
 function adLine(ad: StateNoteInput['ad']): string {
@@ -151,14 +183,28 @@ export function buildStateNote(input: StateNoteInput): string {
     .filter((field) => input.fields[field.key])
     .map((field) => `${field.key}=${input.fields[field.key]}`);
   const missing = missingRequiredFields(input.definitions, input.fields).map((field) => field.key);
-  const complete = missing.length === 0;
+  const toConfirm = answersToConfirm(
+    input.definitions,
+    input.fields,
+    input.unconfirmed ?? [],
+    input.confirmMode ?? 'off',
+  ).map((field) => `${field.key}=${input.fields[field.key]}`);
+  const complete = missing.length === 0 && toConfirm.length === 0;
+  const completeText = complete
+    ? 'YES, send the closing message (or, if already sent, only answer questions)'
+    : missing.length === 0
+      ? 'no, only the answers to confirm are left: once the lead confirms them, send the closing message'
+      : 'no';
+  const confirmLine = toConfirm.length
+    ? `\nAnswers to confirm (came with the lead, not confirmed yet): ${toConfirm.join('; ')}`
+    : '';
 
   return `<state>
 Today: ${input.today}
 Lead name: ${input.leadName ?? 'unknown'}
 Collected fields: ${collected.length ? collected.join('; ') : 'none yet'}
-Missing required fields (ask in this order): ${complete ? 'none' : missing.join(', ')}
-Qualification complete: ${complete ? 'YES, send the closing message (or, if already sent, only answer questions)' : 'no'}
+Missing required fields (ask in this order): ${missing.length ? missing.join(', ') : 'none'}${confirmLine}
+Qualification complete: ${completeText}
 Lead status: ${input.status}${adLine(input.ad)}${input.replyLanguage ? `\nReply language: ${LANGUAGE_NAMES[input.replyLanguage]}. Write the whole reply and the quick replies in this language.` : ''}
 </state>
 ${

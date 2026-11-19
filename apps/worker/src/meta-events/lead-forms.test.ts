@@ -135,6 +135,8 @@ describe('Meta lead forms', () => {
       name: 'Amit Kumar',
       source: 'meta_form',
       fields: { travel_month: '2026-12', trip_type: 'Family' },
+      // The agent confirms form answers in the chat (D-089).
+      unconfirmedFields: ['travel_month', 'trip_type'],
     });
     expect(created!.score).not.toBeNull();
     expect(created!.attribution).toMatchObject({

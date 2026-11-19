@@ -496,6 +496,8 @@ describe('applyAgentTurn', () => {
     quickReplies: ['Ok'],
     askingField: null,
     extracted: [],
+    confirming: [] as string[],
+    confirmed: [] as string[],
     signals: { urgency: 1, seriousness: 1, buyingSignals: 0, note: 'said thanks' },
     handoff: { requested: false, reason: null },
     disqualified: { value: false, reason: null },

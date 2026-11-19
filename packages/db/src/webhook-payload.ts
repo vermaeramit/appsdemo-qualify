@@ -60,7 +60,12 @@ export async function buildWebhookPayload(
       summary: lead.summary,
       answers: definitions
         .filter((field) => lead.fields[field.key])
-        .map((field) => ({ key: field.key, label: field.label, value: lead.fields[field.key]! })),
+        .map((field) => ({
+          key: field.key,
+          label: field.label,
+          value: lead.fields[field.key]!,
+          confirmed: !lead.unconfirmedFields.includes(field.key),
+        })),
       otherAnswers: Object.fromEntries(
         Object.entries(lead.fields).filter(([key]) => !known.has(key)),
       ),

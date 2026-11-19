@@ -16,6 +16,10 @@ export const agentTurnSchema = z.object({
   askingField: z.string().nullable(),
   /** Field values learnt from the lead's latest messages, normalised to English. */
   extracted: z.array(z.object({ key: z.string(), value: z.string() })),
+  /** Keys of answers from the "to confirm" list that this reply asks the lead to confirm (D-089). */
+  confirming: z.array(z.string()),
+  /** Keys of answers from the "to confirm" list the lead confirmed as correct in their latest messages. */
+  confirmed: z.array(z.string()),
   /** 0–10 each. */
   signals: z.object({
     urgency: z.number(),

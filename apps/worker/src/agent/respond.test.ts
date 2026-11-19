@@ -36,6 +36,8 @@ function turn(overrides: Partial<AgentTurn> = {}): AgentTurn {
     quickReplies: [],
     askingField: null,
     extracted: [],
+    confirming: [],
+    confirmed: [],
     signals: { urgency: 5, seriousness: 5, buyingSignals: 5, note: 'ok' },
     handoff: { requested: false, reason: null },
     disqualified: { value: false, reason: null },
@@ -90,6 +92,7 @@ function deps(overrides: Partial<RespondDeps> = {}): RespondDeps {
       '919800000004',
       '919800000005',
       '919800000008',
+      '919800000009',
     ],
     isProduction: false,
     lock,
@@ -265,6 +268,62 @@ describe('processRespond', () => {
       kind: 'followup',
       step: 0,
       afterMessageId: reply!.id,
+    });
+  });
+
+  it('confirms answers from a form before closing (D-089)', async () => {
+    // A form lead: every required answer came with it, none confirmed yet.
+    const formFields = {
+      destination: 'Dubai',
+      travel_month: '2026-12',
+      travelers: '2 adults',
+      departure_city: 'Delhi',
+      budget: '70000 INR total',
+    };
+    const [created] = await withTenant(testDb.app.db, TENANT, (tx) =>
+      tx
+        .insert(leads)
+        .values({
+          tenantId: TENANT,
+          phoneE164: '+919800000009',
+          name: 'Neha',
+          source: 'meta_form',
+          status: 'contacting',
+          fields: formFields,
+          unconfirmedFields: Object.keys(formFields),
+          lastInboundAt: new Date(),
+        })
+        .returning({ id: leads.id }),
+    );
+    const id = created!.id;
+    await addInbound(id, 'Hi');
+    nextTurn = turn({
+      reply: 'Aapne bataya tha: Dubai, December, 2 log, Delhi se, budget 70k. Sahi hai?',
+      confirming: Object.keys(formFields),
+    });
+    expect(await processRespond({ tenantId: TENANT, leadId: id }, deps())).toBe('replied');
+    expect(requests[0]!.system).toContain('# Answers that came with the lead');
+    expect(requests[0]!.stateNote).toContain('Answers to confirm (came with the lead');
+    expect(requests[0]!.stateNote).toContain('destination=Dubai');
+    expect(client.sendButtons).toHaveBeenCalledWith(
+      expect.objectContaining({ buttons: ['Haan, sahi hai', 'Kuch badalna hai'] }),
+    );
+    // Everything is answered, but nothing is confirmed: still qualifying.
+    expect(await getLead(id)).toMatchObject({ status: 'engaged', qualifiedAt: null });
+
+    await addInbound(id, 'Haan sahi hai, bas month January kar do');
+    nextTurn = turn({
+      reply: 'Thank you! Our expert will call you shortly',
+      extracted: [{ key: 'travel_month', value: '2027-01' }],
+      confirmed: ['destination', 'travelers', 'departure_city', 'budget'],
+    });
+    expect(await processRespond({ tenantId: TENANT, leadId: id }, deps())).toBe('replied');
+    const lead = await getLead(id);
+    expect(lead).toMatchObject({ status: 'qualified', unconfirmedFields: [] });
+    expect(lead.fields.travel_month).toBe('2027-01');
+    const outbound = await getOutbound(id);
+    expect(outbound.at(-1)!.payload).toMatchObject({
+      confirmed: ['destination', 'travel_month', 'travelers', 'departure_city', 'budget'],
     });
   });
 

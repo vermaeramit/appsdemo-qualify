@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { ListChecks, Plus, ToggleLeft, Type } from 'lucide-react';
 import { Reorder } from 'motion/react';
-import { useFieldArray, useFormContext } from 'react-hook-form';
+import type { PrefillConfirmation } from '@qualify/shared';
+import { Controller, useFieldArray, useFormContext, useWatch } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +34,57 @@ const ADD_OPTIONS: { style: AnswerStyle; label: string; hint: string; icon: type
   { style: 'yes_no', label: 'Yes / No question', hint: 'Two buttons', icon: ToggleLeft },
   { style: 'plain', label: 'Plain question', hint: 'The lead types the answer', icon: Type },
 ];
+
+const CONFIRM_MODES: { value: PrefillConfirmation; label: string; example: string }[] = [
+  {
+    value: 'together',
+    label: 'Confirm together',
+    example: '“You mentioned Goa in December for 4 people. Is that right?”',
+  },
+  {
+    value: 'one_by_one',
+    label: 'Confirm one by one',
+    example: '“You’re planning Goa, right?” then the next answer',
+  },
+  { value: 'off', label: "Don't confirm", example: 'Form answers are used as they are' },
+];
+
+/** How the agent checks answers that came with the lead (D-089). */
+function PrefillConfirmationSetting({ readOnly }: { readOnly: boolean }) {
+  const { control } = useFormContext<EditorConfig>();
+  const mode = useWatch({ control, name: 'prefillConfirmation' });
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-card p-3">
+      <div className="min-w-0 flex-1 basis-64">
+        <Label htmlFor="prefill-confirmation" className="text-sm font-medium">
+          Answers from forms
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          When a lead form or your website already answered a question, the agent first checks it
+          with the lead. {CONFIRM_MODES.find((option) => option.value === mode)?.example}
+        </p>
+      </div>
+      <Controller
+        control={control}
+        name="prefillConfirmation"
+        render={({ field }) => (
+          <Select value={field.value} onValueChange={field.onChange} disabled={readOnly}>
+            <SelectTrigger id="prefill-confirmation" className="w-52">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CONFIRM_MODES.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      />
+    </div>
+  );
+}
 
 /** The questions the agent asks, in order. Drag (or use the menu) to change the order. */
 export function QuestionsEditor({
@@ -79,6 +139,7 @@ export function QuestionsEditor({
 
   return (
     <div className="space-y-3">
+      <PrefillConfirmationSetting readOnly={readOnly} />
       <Reorder.Group axis="y" values={fields} onReorder={onReorder} className="space-y-2">
         {fields.map((row, index) => (
           <QuestionCard

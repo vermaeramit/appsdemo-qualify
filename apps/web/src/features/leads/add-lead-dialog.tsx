@@ -194,7 +194,10 @@ function AddLeadForm({ onDone }: { onDone: () => void }) {
           <summary className="cursor-pointer text-sm font-medium select-none group-open:mb-3">
             Answers from the form (optional)
           </summary>
-          <p className="mb-3 text-xs text-muted-foreground">The agent won’t ask these again.</p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            The agent won’t ask these again. It checks them with the lead first, as set on the AI
+            agent page.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
             {questions.map((question) => (
               <AnswerInput key={question.key} question={question} form={form} />

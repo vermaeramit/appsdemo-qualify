@@ -42,6 +42,7 @@ export async function upsertLeadFromIntake(
       id: leads.id,
       name: leads.name,
       fields: leads.fields,
+      unconfirmedFields: leads.unconfirmedFields,
       status: leads.status,
       signals: leads.signals,
       scoreDetails: leads.scoreDetails,
@@ -51,6 +52,13 @@ export async function upsertLeadFromIntake(
     .limit(1);
 
   const fields = { ...(existing?.fields ?? {}), ...input.fields };
+  // Answers that came with this enquiry wait for the lead's confirmation in the chat (D-089).
+  const unconfirmedFields = [
+    ...new Set([
+      ...(existing?.unconfirmedFields ?? []),
+      ...Object.keys(input.fields).filter((key) => input.fields[key]),
+    ]),
+  ];
   const score =
     input.score({
       fields,
@@ -65,6 +73,7 @@ export async function upsertLeadFromIntake(
       .set({
         name: input.name ?? existing.name,
         fields,
+        unconfirmedFields,
         attribution: input.attribution,
         ...(input.playbookVersionId ? { playbookVersionId: input.playbookVersionId } : {}),
         ...score,
@@ -80,6 +89,7 @@ export async function upsertLeadFromIntake(
       name: input.name,
       source: input.source,
       fields,
+      unconfirmedFields,
       attribution: input.attribution,
       playbookVersionId: input.playbookVersionId ?? null,
       ...score,

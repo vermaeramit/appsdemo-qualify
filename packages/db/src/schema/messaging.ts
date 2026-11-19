@@ -88,6 +88,8 @@ export const leads = pgTable(
     attribution: jsonb('attribution').$type<LeadAttribution>(),
     /** Collected qualification fields, normalised (key → value). */
     fields: jsonb('fields').$type<Record<string, string>>().notNull().default({}),
+    /** Keys of answers that came with the lead (form / API) and aren't confirmed in chat (D-089). */
+    unconfirmedFields: jsonb('unconfirmed_fields').$type<string[]>().notNull().default([]),
     language: text('language'),
     /** True when a human took over or the AI must stay silent for this lead. */
     aiPaused: boolean('ai_paused').notNull().default(false),

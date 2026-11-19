@@ -124,6 +124,7 @@ describe('webhooks', () => {
       key: 'destination',
       label: expect.any(String),
       value: 'Goa',
+      confirmed: true,
     });
     expect(request!.headers['x-qualify-event-id']).toBe(payload.id);
 

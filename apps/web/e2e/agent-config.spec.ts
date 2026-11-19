@@ -45,6 +45,11 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await page.getByLabel('What you collect').last().fill('Meal preference');
   await page.getByLabel('How the agent asks').last().fill('Any meal preference?');
 
+  // Answers from forms are confirmed together by default (D-089); switch to one by one.
+  await expect(page.getByLabel('Answers from forms')).toHaveText('Confirm together');
+  await page.getByLabel('Answers from forms').click();
+  await page.getByRole('option', { name: 'Confirm one by one' }).click();
+
   // Publishing without options is blocked with a clear message.
   await page.getByRole('button', { name: 'Publish v2' }).click();
   await expect(page.getByText('Add at least 2').first()).toBeVisible();
@@ -71,6 +76,7 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await page.reload();
   await expect(page.getByText('Meal preference', { exact: true })).toBeVisible();
   await expect(page.getByText('Special requests', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Answers from forms')).toHaveText('Confirm one by one');
 
   // Opening tab: preview and template state (no WhatsApp number in this workspace).
   await page.getByRole('tab', { name: 'Opening' }).click();
@@ -169,12 +175,16 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   await page.getByLabel('WhatsApp number').fill('+91 99999 0' + String(Date.now()).slice(-4));
   await page.getByLabel('Name', { exact: true }).fill('Form Lead');
   await page.getByLabel('Campaign (optional)').fill('premium');
+  await page.getByText('Answers from the form (optional)').click();
+  await page.getByRole('dialog').getByLabel('Location', { exact: true }).fill('Pune');
   await page.getByRole('button', { name: 'Add lead and send opening' }).click();
   await expect(page.getByText('Lead added')).toBeVisible();
   await expect(page).toHaveURL(/\/conversations\?lead=/);
   await expect(page.getByText('Form Lead').first()).toBeVisible();
   // The campaign routed it to the second agent.
   await expect(page.locator('p', { hasText: 'Handled by:' })).toContainText('Premium projects');
+  // The form answer waits for the lead's confirmation (D-089).
+  await expect(page.locator('dd', { hasText: 'Pune' })).toContainText('Not confirmed');
 
   // The dashboard shows the real lead (no sample data).
   await page.getByRole('link', { name: 'Dashboard' }).click();

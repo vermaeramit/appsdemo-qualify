@@ -1,0 +1,1 @@
+ALTER TABLE "leads" ADD COLUMN "unconfirmed_fields" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -53,6 +53,8 @@ export const conversationThreadSchema = z.object({
     language: z.string().nullable(),
     /** Collected qualification fields: key → normalised value. */
     fields: z.record(z.string(), z.string()),
+    /** Answers that came with the lead (form / API) and the lead hasn't confirmed yet (D-089). */
+    unconfirmedFields: z.array(z.string()),
     /** Field definitions of the playbook (for labels/order in the UI). */
     fieldDefinitions: z.array(
       z.object({ key: z.string(), label: z.string(), required: z.boolean() }),

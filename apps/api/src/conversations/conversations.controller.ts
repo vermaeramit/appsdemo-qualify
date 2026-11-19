@@ -174,6 +174,7 @@ export class ConversationsController {
         aiPaused: lead.aiPaused,
         language: lead.language,
         fields: lead.fields,
+        unconfirmedFields: lead.unconfirmedFields,
         fieldDefinitions: [...(playbook?.config.fields ?? [])]
           .sort((a, b) => a.priority - b.priority)
           .map((field) => ({ key: field.key, label: field.label, required: field.required })),

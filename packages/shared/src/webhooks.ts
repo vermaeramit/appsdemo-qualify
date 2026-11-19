@@ -66,8 +66,13 @@ export const webhookPayloadSchema = z.object({
     score: z.number().int().nullable(),
     scoreReason: z.string().nullable(),
     summary: z.string().nullable(),
-    /** Answers to the AI agent's questions, in question order. */
-    answers: z.array(z.object({ key: z.string(), label: z.string(), value: z.string() })),
+    /**
+     * Answers to the AI agent's questions, in question order. `confirmed` is false for an answer
+     * that came with the lead (form / API) and the lead hasn't confirmed in the chat yet.
+     */
+    answers: z.array(
+      z.object({ key: z.string(), label: z.string(), value: z.string(), confirmed: z.boolean() }),
+    ),
     /** Answers that are not (or no longer) questions of the agent. */
     otherAnswers: z.record(z.string(), z.string()),
     attribution: leadAttributionSchema.nullable(),

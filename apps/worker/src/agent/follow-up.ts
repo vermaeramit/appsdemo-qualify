@@ -1,10 +1,12 @@
 import {
+  answersToConfirm,
   buildStateNote,
   buildSystemPrompt,
   chooseReplyLanguage,
   chooseReplyOptions,
   isServiceWindowOpen,
   planNextFollowUp,
+  prefillMode,
   renderOpening,
   resolveFollowUps,
   toModelHistory,
@@ -273,6 +275,8 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
         leadName: lead.name,
         replyLanguage,
         followUp: { step: job.step, hoursSilent },
+        unconfirmed: lead.unconfirmedFields,
+        confirmMode: prefillMode(playbook.config),
       }),
       schema: agentTurnSchema,
       reasoningEffort: deps.reasoningEffort,
@@ -281,6 +285,16 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
     const options = chooseReplyOptions({
       definitions: playbook.config.fields,
       askingField: turn.askingField,
+      // A nudge may repeat the "is this right?" question (D-089).
+      confirming: answersToConfirm(
+        playbook.config.fields,
+        lead.fields,
+        lead.unconfirmedFields,
+        prefillMode(playbook.config),
+      )
+        .map((field) => field.key)
+        .filter((key) => turn.confirming.includes(key)),
+      confirmMode: prefillMode(playbook.config),
       status: 'engaged',
       language: replyLanguage,
       suggested: turn.quickReplies,

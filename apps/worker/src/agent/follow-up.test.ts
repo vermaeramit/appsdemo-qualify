@@ -267,6 +267,8 @@ describe('follow-ups', () => {
       quickReplies: [],
       askingField: 'trip_type',
       extracted: [],
+      confirming: [],
+      confirmed: [],
       signals: { urgency: 5, seriousness: 5, buyingSignals: 5, note: '' },
       handoff: { requested: false, reason: null },
       disqualified: { value: false, reason: null },

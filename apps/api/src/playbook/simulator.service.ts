@@ -8,6 +8,7 @@ import {
   type HistoryMessage,
   leadScoreColumns,
   localToday,
+  prefillMode,
   toModelHistory,
 } from '@qualify/core';
 import { type DbHandle, getDefaultPublishedPlaybook, tenants, withTenant } from '@qualify/db';
@@ -89,15 +90,18 @@ export class SimulatorService {
         status: input.status,
         leadName: null,
         replyLanguage,
+        unconfirmed: input.unconfirmed,
+        confirmMode: prefillMode(config),
       }),
       schema: agentTurnSchema,
       cacheKey: `simulate:${workspace.tenantId}`,
     });
     const applied = applyAgentTurn(
       config.fields,
-      { fields: input.fields, status: input.status },
+      { fields: input.fields, status: input.status, unconfirmed: input.unconfirmed },
       output,
       replyLanguage,
+      prefillMode(config),
     );
     const scored = leadScoreColumns({
       config,
@@ -113,6 +117,8 @@ export class SimulatorService {
       reply: applied.reply,
       options: applied.options,
       fields: applied.fields,
+      unconfirmed: applied.unconfirmed,
+      confirmed: applied.confirmed,
       changed: applied.changed,
       rejected: applied.rejected,
       status: applied.status,

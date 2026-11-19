@@ -86,6 +86,7 @@ export function QuestionCard(props: QuestionCardProps) {
   const hasError = Boolean(errors);
   const [keyEdited, setKeyEdited] = useState(false);
   const path = `fields.${index}` as const;
+  const requiredValue = field.required;
   const style = answerStyleOf(field.type);
 
   const changeStyle = (next: AnswerStyle) => {
@@ -250,6 +251,31 @@ export function QuestionCard(props: QuestionCardProps) {
                           A lead is qualified only when every required answer is known
                         </span>
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 rounded-lg bg-muted/50 p-3">
+                    <Controller
+                      control={control}
+                      name={`${path}.confirmWhenPrefilled`}
+                      render={({ field: input }) => (
+                        <Switch
+                          id={`${row.id}-confirm`}
+                          className="mt-0.5"
+                          // Unset follows "Required" (D-089).
+                          checked={input.value ?? requiredValue}
+                          onCheckedChange={input.onChange}
+                        />
+                      )}
+                    />
+                    <div className="space-y-0.5">
+                      <Label htmlFor={`${row.id}-confirm`} className="font-normal">
+                        Confirm when it comes from a form
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        If a lead form or your website already gave this answer, the agent checks it
+                        with the lead before relying on it.
+                      </p>
                     </div>
                   </div>
 

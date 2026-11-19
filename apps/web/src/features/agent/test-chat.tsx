@@ -1,13 +1,23 @@
 import { useRef, useState } from 'react';
+import { normaliseFieldValue, renderOpening, resolveOpening } from '@qualify/core';
 import {
   type AgentLanguage,
   type PlaybookConfig,
+  type PlaybookField,
   playbookConfigSchema,
   type SimulateResponse,
   simulateResponseSchema,
 } from '@qualify/shared';
 import { useMutation } from '@tanstack/react-query';
-import { Bot, FlaskConical, ListChecks, Loader2, RotateCcw, Send } from 'lucide-react';
+import {
+  Bot,
+  ClipboardList,
+  FlaskConical,
+  ListChecks,
+  Loader2,
+  RotateCcw,
+  Send,
+} from 'lucide-react';
 import { GradeBadge } from '@/components/leads/grade-badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,6 +42,8 @@ interface ChatMessage {
 interface ChatState {
   messages: ChatMessage[];
   fields: Record<string, string>;
+  /** Answers that came "from the form" and the lead hasn't confirmed yet (D-089). */
+  unconfirmed: string[];
   status: SimulateResponse['status'];
   language: AgentLanguage | null;
   last: SimulateResponse | null;
@@ -41,6 +53,7 @@ interface ChatState {
 const EMPTY: ChatState = {
   messages: [],
   fields: {},
+  unconfirmed: [],
   status: 'new',
   language: null,
   last: null,
@@ -92,6 +105,7 @@ function ChatBody({ getConfig }: { getConfig: () => PlaybookConfig }) {
           config: parsed.data,
           messages: messages.map(({ from, text: body }) => ({ from, text: body })),
           fields: state.fields,
+          unconfirmed: state.unconfirmed,
           status: state.status,
           language: state.language,
         },
@@ -105,6 +119,7 @@ function ChatBody({ getConfig }: { getConfig: () => PlaybookConfig }) {
           { from: 'agent', text: result.reply, options: result.options },
         ],
         fields: result.fields,
+        unconfirmed: result.unconfirmed,
         status: result.status,
         language: result.language ?? current.language,
         last: result,
@@ -124,6 +139,32 @@ function ChatBody({ getConfig }: { getConfig: () => PlaybookConfig }) {
     turn.mutate(messages);
   };
 
+  /** A lead from a form: its answers are known but not confirmed, and the opening went out. */
+  const startAsFormLead = (answers: Record<string, string>) => {
+    const config = getConfig();
+    const opening = resolveOpening(config);
+    const { text: openingText } = renderOpening(opening, {
+      leadName: 'Rahul Sharma',
+      fields: answers,
+      businessName: config.business.name,
+    });
+    setState({
+      ...EMPTY,
+      fields: answers,
+      unconfirmed: Object.keys(answers),
+      status: 'contacting',
+      messages: [
+        {
+          from: 'agent',
+          text: openingText,
+          options: opening.buttons.length
+            ? { kind: 'buttons', buttons: opening.buttons }
+            : { kind: 'none' },
+        },
+      ],
+    });
+  };
+
   const definitions = getConfig().fields;
   const lastAgent = state.messages.at(-1)?.from === 'agent' ? state.messages.at(-1) : undefined;
 
@@ -132,9 +173,12 @@ function ChatBody({ getConfig }: { getConfig: () => PlaybookConfig }) {
       <div className="flex min-h-[420px] min-w-0 flex-col rounded-xl border">
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-muted/30 p-3">
           {state.messages.length === 0 && (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-              Start like a lead would, e.g. “Hi, I saw your ad. Can you share details?”
-            </p>
+            <div className="space-y-4 py-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                Start like a lead would, e.g. “Hi, I saw your ad. Can you share details?”
+              </p>
+              <FormLeadSetup definitions={definitions} onStart={startAsFormLead} />
+            </div>
           )}
           {state.messages.map((message, index) => (
             <div
@@ -251,11 +295,18 @@ function ChatBody({ getConfig }: { getConfig: () => PlaybookConfig }) {
                 <dd
                   className={cn(
                     'break-words',
-                    state.last?.changed.includes(field.key) && 'font-medium text-success',
+                    (state.last?.changed.includes(field.key) ||
+                      state.last?.confirmed.includes(field.key)) &&
+                      'font-medium text-success',
                     !state.fields[field.key] && 'text-muted-foreground/60',
                   )}
                 >
                   {state.fields[field.key] ?? '—'}
+                  {state.fields[field.key] && state.unconfirmed.includes(field.key) && (
+                    <span className="ml-1.5 rounded-full bg-grade-warm/15 px-1.5 py-0.5 text-[0.65rem] font-medium text-grade-warm">
+                      Not confirmed
+                    </span>
+                  )}
                 </dd>
               </div>
             ))}
@@ -285,6 +336,105 @@ function ChatBody({ getConfig }: { getConfig: () => PlaybookConfig }) {
           </Button>
         </div>
       </aside>
+    </div>
+  );
+}
+
+/** Answers a lead gave in a form, to test how the agent confirms them (D-089). */
+function FormLeadSetup({
+  definitions,
+  onStart,
+}: {
+  definitions: readonly PlaybookField[];
+  onStart: (answers: Record<string, string>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>({});
+  if (!open) {
+    return (
+      <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <ClipboardList data-icon="inline-start" />
+        Start as a form lead
+      </Button>
+    );
+  }
+  const inputFor = (field: PlaybookField) => {
+    const id = `form-answer-${field.key}`;
+    const value = values[field.key] ?? '';
+    const set = (next: string) => setValues((current) => ({ ...current, [field.key]: next }));
+    const choices =
+      field.type === 'choice'
+        ? (field.options ?? [])
+        : field.type === 'yes_no'
+          ? ['yes', 'no']
+          : null;
+    if (choices) {
+      return (
+        <select
+          id={id}
+          value={value}
+          onChange={(event) => set(event.target.value)}
+          className="h-8 w-full rounded-md border bg-background px-2 text-sm"
+        >
+          <option value="">Not in the form</option>
+          {choices.map((choice) => (
+            <option key={choice} value={choice}>
+              {choice}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    return (
+      <Input
+        id={id}
+        className="h-8"
+        type={field.type === 'date_month' ? 'month' : field.type === 'number' ? 'number' : 'text'}
+        placeholder="Not in the form"
+        value={value}
+        onChange={(event) => set(event.target.value)}
+      />
+    );
+  };
+  const answers = Object.fromEntries(
+    definitions.flatMap((field) => {
+      const raw = values[field.key]?.trim();
+      const normalised = raw ? normaliseFieldValue(field, raw) : null;
+      return normalised ? [[field.key, normalised]] : [];
+    }),
+  );
+  return (
+    <div className="mx-auto max-w-md space-y-3 rounded-xl border bg-card p-4 text-left">
+      <p className="text-sm font-medium">Answers from the form</p>
+      <p className="text-xs text-muted-foreground">
+        Fill what the lead chose in the form. The chat starts with your opening message, and the
+        agent confirms these answers the way you set on the Questions tab.
+      </p>
+      <div className="grid gap-2">
+        {definitions.map((field) => (
+          <label
+            key={field.key}
+            className="grid gap-1 text-xs"
+            htmlFor={`form-answer-${field.key}`}
+          >
+            <span className="text-muted-foreground">{field.label}</span>
+            {inputFor(field)}
+          </label>
+        ))}
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          disabled={Object.keys(answers).length === 0}
+          onClick={() => onStart(answers)}
+        >
+          Start chat
+        </Button>
+      </div>
     </div>
   );
 }

@@ -37,6 +37,11 @@ export const playbookFieldSchema = z
     allowOther: z.boolean().optional(),
     /** How to interpret / normalise answers. Written by the tenant. */
     guidance: z.string().max(500).optional(),
+    /**
+     * When the answer came with the lead (Meta lead form, website/API), the agent confirms it in
+     * the chat before relying on it (D-089). Missing = on for required questions.
+     */
+    confirmWhenPrefilled: z.boolean().optional(),
   })
   .refine((field) => field.type !== 'choice' || (field.options?.length ?? 0) >= 2, {
     message: 'choice questions need at least 2 options',
@@ -177,8 +182,11 @@ export const playbookConfigSchema = z.object({
   followUps: playbookFollowUpsSchema.optional(),
   /** Optional for playbooks created before scoring; defaults are derived from the questions. */
   scoring: playbookScoringSchema.optional(),
+  /** How the agent confirms answers that came with the lead (D-089). Missing = `together`. */
+  prefillConfirmation: z.enum(['off', 'together', 'one_by_one']).optional(),
 });
 export type PlaybookConfig = z.infer<typeof playbookConfigSchema>;
+export type PrefillConfirmation = NonNullable<PlaybookConfig['prefillConfirmation']>;
 
 /** Response of GET /api/v1/playbook and PUT /api/v1/playbook. */
 export const playbookResponseSchema = z.object({

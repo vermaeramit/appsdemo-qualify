@@ -54,7 +54,7 @@ The same phone number is the same lead: new answers are merged into it.
 1. The worker sends the **opening message** from the workspace's WhatsApp number:
    - If the lead messaged in the last 24 hours, it sends free-form text with the opening buttons.
    - Otherwise WhatsApp only allows an **approved template**. The playbook's `opening.templateName` is used. Without an approved template, the attempt is shown as failed in Conversations.
-2. When the lead replies, the AI agent continues and asks only what is still missing.
+2. When the lead replies, the AI agent first confirms the answers sent in `fields` (per agent: together, one by one or off; D-089), then asks only what is still missing.
 3. In development, only numbers in `DEV_ALLOWED_NUMBERS` receive messages (safety switch).
 4. A second submission for the same lead within 10 minutes doesn't send another opening.
 
