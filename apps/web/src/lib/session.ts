@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query';
+import { type QueryClient, queryOptions } from '@tanstack/react-query';
 import { type MeResponse, meResponseSchema } from '@qualify/shared';
 import { ApiError, fetchJson } from './api';
 
@@ -15,6 +15,15 @@ export const meQueryOptions = queryOptions({
   },
   staleTime: 60_000,
 });
+
+/**
+ * After the session moved to another workspace (support access, D-092): drop every cached page
+ * of the previous one, then reload the user so the mounted shell shows the new workspace.
+ */
+export async function afterWorkspaceSwitch(queryClient: QueryClient): Promise<void> {
+  queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' });
+  await queryClient.invalidateQueries({ queryKey: meQueryOptions.queryKey });
+}
 
 /** Only allow same-site relative paths as post-login redirects (prevents open redirects). */
 export function safeRedirect(target: string | undefined): string {

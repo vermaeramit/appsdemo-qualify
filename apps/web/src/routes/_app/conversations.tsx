@@ -43,7 +43,7 @@ function ConversationsPage() {
             WhatsApp messages on your connected number. Updates every few seconds.
           </p>
         </div>
-        {canManage(workspace.role) && <AddLeadDialog />}
+        {canManage(workspace) && <AddLeadDialog />}
       </div>
 
       <div className="grid h-[calc(100svh-12rem)] min-h-[420px] overflow-hidden rounded-xl border bg-card md:grid-cols-[320px_1fr]">

@@ -74,7 +74,7 @@ export function FormMappingDialog({ formId, formName }: { formId: string; formNa
 
 function MappingEditor({ formId, onDone }: { formId: string; onDone: () => void }) {
   const workspace = useActiveWorkspace();
-  const editable = canManage(workspace.role);
+  const editable = canManage(workspace);
   const queryClient = useQueryClient();
   const query = useQuery(mappingQueryOptions(formId));
   // The team's changes on top of the saved mapping.

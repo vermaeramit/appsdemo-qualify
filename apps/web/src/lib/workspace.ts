@@ -1,4 +1,7 @@
-import type { WorkspaceRole } from '@qualify/shared';
+import type { MeResponse, WorkspaceRole } from '@qualify/shared';
+
+/** What decides what a user may see and change in the active workspace. */
+type Access = Pick<NonNullable<MeResponse['activeWorkspace']>, 'role' | 'support'>;
 
 const roleLabels: Record<WorkspaceRole, string> = {
   owner: 'Owner',
@@ -8,6 +11,11 @@ const roleLabels: Record<WorkspaceRole, string> = {
 
 export function roleLabel(role: WorkspaceRole): string {
   return roleLabels[role];
+}
+
+/** The sidebar's role line ("Support view" for a platform admin's read-only visit). */
+export function accessLabel(workspace: Access): string {
+  return workspace.support ? 'Support view (read-only)' : roleLabel(workspace.role);
 }
 
 /** URL-safe, unique-enough slug: "Acme Solutions" → "acme-solutions-k3f9". */
@@ -30,7 +38,20 @@ export function initials(name: string): string {
   return (first + last).toUpperCase() || '?';
 }
 
-/** Owners and managers change settings; viewers only read (the API enforces the same). */
-export function canManage(role: WorkspaceRole): boolean {
-  return role === 'owner' || role === 'admin';
+/** Sees what owners and managers see: every page and log (the support view included). */
+export function seesManagerViews(workspace: Access): boolean {
+  return workspace.role === 'owner' || workspace.role === 'admin';
+}
+
+/**
+ * Owners and managers change settings; viewers and the support view (D-092) only read. The API
+ * enforces the same.
+ */
+export function canManage(workspace: Access): boolean {
+  return seesManagerViews(workspace) && !workspace.support;
+}
+
+/** Acts on leads (pause the AI): every member, never the read-only support view. */
+export function canAct(workspace: Access): boolean {
+  return !workspace.support;
 }

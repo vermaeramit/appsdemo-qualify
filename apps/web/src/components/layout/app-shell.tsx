@@ -27,7 +27,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { canManage, initials, roleLabel } from '@/lib/workspace';
+import { SupportBanner } from '@/features/admin/support-banner';
+import { accessLabel, initials, seesManagerViews } from '@/lib/workspace';
 import { CommandPalette } from './command-palette';
 import { UserMenu } from './user-menu';
 
@@ -67,7 +68,7 @@ export function AppShell({ user, workspace, children }: AppShellProps) {
         </div>
         <nav className="flex-1 space-y-0.5 p-2" aria-label="Main">
           {navLinks
-            .filter((link) => !('managerOnly' in link) || canManage(workspace.role))
+            .filter((link) => !('managerOnly' in link) || seesManagerViews(workspace))
             .map(({ to, label, icon: Icon, exact }) => (
               <Link
                 key={to}
@@ -107,7 +108,7 @@ export function AppShell({ user, workspace, children }: AppShellProps) {
             <span className="block truncate text-sm font-medium text-foreground">
               {workspace.name}
             </span>
-            <span className="block text-xs text-muted-foreground">{roleLabel(workspace.role)}</span>
+            <span className="block text-xs text-muted-foreground">{accessLabel(workspace)}</span>
           </span>
         </div>
       </aside>
@@ -123,7 +124,7 @@ export function AppShell({ user, workspace, children }: AppShellProps) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
                 {navLinks
-                  .filter((link) => !('managerOnly' in link) || canManage(workspace.role))
+                  .filter((link) => !('managerOnly' in link) || seesManagerViews(workspace))
                   .map(({ to, label, icon: Icon }) => (
                     <DropdownMenuItem key={to} asChild>
                       <Link to={to}>
@@ -162,6 +163,7 @@ export function AppShell({ user, workspace, children }: AppShellProps) {
             <UserMenu user={user} />
           </div>
         </header>
+        <SupportBanner workspace={workspace} />
         <main className="mx-auto w-full max-w-6xl flex-1 p-4 md:p-6">{children}</main>
       </div>
 

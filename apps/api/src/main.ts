@@ -26,7 +26,9 @@ async function bootstrap(): Promise<void> {
 
   await app.register(helmet);
   await app.register(rateLimit, {
-    max: 300,
+    // Per client IP (trustProxy). Locally the e2e suite drives every page from one IP, so the
+    // limit is only enforced as-is in production.
+    max: env.NODE_ENV === 'production' ? 300 : 3_000,
     timeWindow: '1 minute',
     // Meta delivers webhooks in bursts from shared IPs; they are authenticated by signature.
     allowList: (request) => request.url.startsWith('/api/webhooks/'),

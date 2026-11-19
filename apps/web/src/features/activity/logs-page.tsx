@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { useActiveWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
-import { canManage } from '@/lib/workspace';
+import { seesManagerViews } from '@/lib/workspace';
 import { ActivityList } from './activity-list';
 import { MetaConnectionCard } from './meta-health';
 
@@ -24,7 +24,7 @@ export function LogsPage({ search }: { search: LogsSearch }) {
   const navigate = useNavigate({ from: '/logs' });
   const setSearch = (next: LogsSearch) =>
     void navigate({ search: (current) => ({ ...current, ...next }), replace: true });
-  const manager = canManage(workspace.role);
+  const manager = seesManagerViews(workspace);
 
   return (
     <div className="space-y-5">

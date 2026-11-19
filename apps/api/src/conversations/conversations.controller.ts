@@ -37,6 +37,7 @@ import {
 import { deliveryErrorMessage } from '@qualify/core';
 import { z } from 'zod';
 import { actorName, recordApiActivity } from '../activity/record';
+import { SupportService } from '../admin/support.service';
 import { decodeCursor, encodeCursor } from '../common/cursor';
 import { parseQuery } from '../common/zod-body';
 import { CurrentWorkspace, type WorkspaceContext, WorkspaceGuard } from '../auth/workspace.guard';
@@ -61,7 +62,10 @@ function parseLeadId(value: string): string {
 @Controller('conversations')
 @UseGuards(WorkspaceGuard)
 export class ConversationsController {
-  constructor(@Inject(DB) private readonly handle: DbHandle) {}
+  constructor(
+    @Inject(DB) private readonly handle: DbHandle,
+    @Inject(SupportService) private readonly support: SupportService,
+  ) {}
 
   /** Leads by latest activity, newest first; keyset pagination on (activity, id). */
   @Get()
@@ -163,6 +167,8 @@ export class ConversationsController {
     });
     if (!result) throw new NotFoundException('Conversation not found');
     const { lead, rows, playbook, agentName } = result;
+    // A support view records each conversation it opens (D-092).
+    if (workspace.support && !before) await this.support.noteConversationView(workspace, lead.id);
     const page = rows.slice(0, THREAD_PAGE);
     const oldest = page.at(-1);
 

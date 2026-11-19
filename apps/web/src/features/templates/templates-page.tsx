@@ -47,7 +47,7 @@ const words = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().
 
 /** The WhatsApp account's message templates, their review status, and new ones (M6). */
 export function TemplatesPage() {
-  const manager = canManage(useActiveWorkspace().role);
+  const manager = canManage(useActiveWorkspace());
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ['templates'],

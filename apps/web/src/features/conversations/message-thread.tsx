@@ -19,7 +19,7 @@ import { apiPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { clockTime } from '@/lib/time';
 import { useActiveWorkspace } from '@/lib/use-workspace';
-import { canManage } from '@/lib/workspace';
+import { canAct, canManage } from '@/lib/workspace';
 import { LeadActivityButton } from '@/features/activity/lead-activity';
 import { MetaSilentBanner } from '@/features/activity/meta-health';
 import { DeleteLeadButton } from './delete-lead';
@@ -39,7 +39,8 @@ export function MessageThread({
   onLoadOlder: () => void;
 }) {
   const thread = pages[0]!;
-  const manager = canManage(useActiveWorkspace().role);
+  const workspace = useActiveWorkspace();
+  const manager = canManage(workspace);
   const messages = useMemo(() => {
     const seen = new Set<string>();
     return pages
@@ -97,7 +98,7 @@ export function MessageThread({
               label={thread.lead.name ?? thread.lead.phone}
             />
           )}
-          <AiToggle leadId={thread.lead.id} paused={thread.lead.aiPaused} />
+          {canAct(workspace) && <AiToggle leadId={thread.lead.id} paused={thread.lead.aiPaused} />}
         </div>
         <div
           ref={scrollRef}

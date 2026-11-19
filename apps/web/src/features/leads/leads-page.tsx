@@ -83,7 +83,7 @@ const shortDate = (iso: string) =>
 export function LeadsPage({ search }: { search: LeadsSearch }) {
   const navigate = useNavigate();
   const workspace = useActiveWorkspace();
-  const manager = canManage(workspace.role);
+  const manager = canManage(workspace);
   const limit = search.limit ?? 25;
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const query = useQuery(leadsQueryOptions(search, cursors.at(-1)));

@@ -52,7 +52,7 @@ import { Switch } from '@/components/ui/switch';
 import { apiDelete, apiSend, errorMessage } from '@/lib/api';
 import { timeAgo } from '@/lib/time';
 import { useActiveWorkspace } from '@/lib/use-workspace';
-import { canManage } from '@/lib/workspace';
+import { seesManagerViews } from '@/lib/workspace';
 import { cn } from '@/lib/utils';
 import { EmailReportsSection } from './email-reports';
 import { deliveriesQueryOptions, webhooksQueryOptions } from './queries';
@@ -80,7 +80,7 @@ const okSchema = z.object({ deliveryId: z.uuid() });
 /** Where results go: webhooks to any system, and the Excel export. Owners and managers. */
 export function IntegrationsPage() {
   const workspace = useActiveWorkspace();
-  if (!canManage(workspace.role)) {
+  if (!seesManagerViews(workspace)) {
     return (
       <div className="space-y-5">
         <h1 className="text-2xl font-semibold tracking-tight">Integrations</h1>

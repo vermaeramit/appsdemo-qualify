@@ -11,8 +11,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { errorMessage, fetchJson } from '@/lib/api';
+import { meQueryOptions } from '@/lib/session';
 import { timeAgo } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { OpenSupportDialog, SupportHistoryCard } from './support-access';
 
 const QUALITY: Record<string, string> = {
   GREEN: 'text-success',
@@ -20,20 +22,27 @@ const QUALITY: Record<string, string> = {
   RED: 'text-destructive',
 };
 
-/** Platform operator view: every workspace's usage and number, and queue health. */
+/**
+ * Platform operator view: every workspace's usage and number, queue health, and read-only
+ * support access to a client's workspace with its audit trail (D-092).
+ */
 export function AdminPage() {
   const query = useQuery({
     queryKey: ['admin', 'overview'],
     queryFn: () => fetchJson('/api/admin/overview', adminOverviewSchema),
     refetchInterval: 30_000,
   });
+  const me = useQuery(meQueryOptions);
+  const own = new Set(me.data?.workspaces.map((workspace) => workspace.id) ?? []);
+  const viewing = me.data?.activeWorkspace?.support ? me.data.activeWorkspace.id : null;
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Platform admin</h1>
         <p className="text-sm text-muted-foreground">
-          All workspaces (last 30 days) and background queues. Visible to platform admins only.
+          All workspaces (last 30 days), background queues and support access. Visible to platform
+          admins only.
         </p>
       </div>
 
@@ -79,6 +88,7 @@ export function AdminPage() {
                   <TableHead>Number</TableHead>
                   <TableHead className="text-right">Webhooks</TableHead>
                   <TableHead>Last message</TableHead>
+                  <TableHead>Support</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -122,11 +132,22 @@ export function AdminPage() {
                     <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                       {workspace.lastMessageAt ? timeAgo(workspace.lastMessageAt) : '—'}
                     </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {own.has(workspace.id) ? (
+                        <span className="text-xs text-muted-foreground">Your workspace</span>
+                      ) : viewing === workspace.id ? (
+                        <span className="text-xs font-medium text-primary">Viewing now</span>
+                      ) : (
+                        <OpenSupportDialog workspace={workspace} />
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
+
+          <SupportHistoryCard />
         </>
       )}
     </div>

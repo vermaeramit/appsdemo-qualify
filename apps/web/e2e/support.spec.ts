@@ -1,0 +1,119 @@
+import { expect, type Page, test } from '@playwright/test';
+
+// D-092: a platform admin opens a client's workspace read-only, with a reason, and the visit is
+// recorded on both sides. Needs an address listed in the api's PLATFORM_ADMIN_EMAILS (the
+// account is created on the first run): E2E_PLATFORM_ADMIN_EMAIL=... pnpm test:e2e
+const ADMIN_EMAIL = process.env.E2E_PLATFORM_ADMIN_EMAIL;
+const PASSWORD = 'e2e-password-123';
+
+async function signUp(page: Page, name: string, email: string, workspace: string) {
+  await page.goto('/signup');
+  await page.getByLabel('Full name').fill(name);
+  await page.getByLabel('Work email').fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL(/\/onboarding/);
+  await page.getByLabel('Workspace name').fill(workspace);
+  await page.getByRole('button', { name: 'Create workspace' }).click();
+  await expect(page).toHaveURL(/\/$/);
+}
+
+/** Signs the admin in, or creates the account (with a workspace of its own) the first time. */
+async function signInAdmin(page: Page, email: string) {
+  await page.goto('/login');
+  await page.getByLabel('Work email').fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  // Wait for the outcome, however slow the stack is: signed in, or no such account yet.
+  const unknown = page.getByRole('alert').filter({ hasText: /invalid email or password/i });
+  await Promise.race([
+    page
+      .waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 20_000 })
+      .catch(() => undefined),
+    unknown.waitFor({ timeout: 20_000 }).catch(() => undefined),
+  ]);
+  const signedIn = !new URL(page.url()).pathname.startsWith('/login');
+  if (!signedIn) await signUp(page, 'E2E Support', email, 'E2E Support Desk');
+}
+
+test('support access: read-only visit to a client workspace, recorded on both sides', async ({
+  browser,
+  baseURL,
+}) => {
+  test.skip(!ADMIN_EMAIL, 'Set E2E_PLATFORM_ADMIN_EMAIL to an address in PLATFORM_ADMIN_EMAILS');
+  const unique = Date.now().toString(36);
+  const clientName = `E2E Client ${unique}`;
+
+  // The client: a workspace with one lead (no WhatsApp number, so nothing is sent).
+  const client = await (await browser.newContext()).newPage();
+  await signUp(client, 'E2E Client Owner', `e2e-client-${unique}@example.com`, clientName);
+  await client.getByRole('link', { name: 'Conversations' }).click();
+  await client.getByRole('button', { name: 'Add lead' }).click();
+  await client.getByLabel('WhatsApp number').fill('+91 99999 2' + String(Date.now()).slice(-4));
+  await client.getByLabel('Name', { exact: true }).fill('Support Lead');
+  await client.getByRole('button', { name: 'Add lead and send opening' }).click();
+  await expect(client).toHaveURL(/\/conversations\?lead=/);
+  const leadId = new URL(client.url()).searchParams.get('lead')!;
+
+  // The admin opens it read-only: a reason is required.
+  const admin = await (await browser.newContext()).newPage();
+  await signInAdmin(admin, ADMIN_EMAIL!);
+  await admin.goto('/admin');
+  const row = admin.getByRole('row').filter({ hasText: clientName });
+  await row.getByRole('button', { name: 'Open read-only' }).click();
+  const dialog = admin.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'Open read-only' }).click();
+  await expect(dialog.getByText('Write why you need access')).toBeVisible();
+  await dialog.getByLabel('Reason').fill('E2E: the client asked why a lead got no reply');
+  await dialog.getByRole('button', { name: 'Open read-only' }).click();
+  await expect(admin).toHaveURL(/\/$/);
+  await expect(admin.getByText(`Support view of ${clientName}`)).toBeVisible();
+  await expect(admin.getByText('Support view (read-only)')).toBeVisible();
+
+  // It reads the client's conversation, without the controls that change things.
+  await admin.goto(`/conversations?lead=${leadId}`);
+  await expect(admin.getByText('Support Lead').first()).toBeVisible();
+  await expect(admin.getByRole('button', { name: 'Activity' })).toBeVisible();
+  await expect(admin.getByRole('button', { name: 'Pause AI' })).toHaveCount(0);
+  await expect(admin.getByRole('button', { name: 'Add lead' })).toHaveCount(0);
+  // The API refuses every change and the bulk export.
+  const pause = await admin.request.post(`/api/conversations/${leadId}/pause`, {
+    headers: { origin: baseURL! },
+  });
+  expect(pause.status()).toBe(403);
+  expect(await pause.json()).toMatchObject({ message: 'Support access is read-only' });
+  expect((await admin.request.get('/api/leads/export')).status()).toBe(403);
+  // The lead's Activity names the visit.
+  await admin.getByRole('button', { name: 'Activity' }).click();
+  await expect(
+    admin
+      .getByRole('dialog')
+      .getByText('E2E Support from platform support opened this conversation'),
+  ).toBeVisible();
+  await admin.keyboard.press('Escape');
+
+  // Exit: back to the admin page, with the visit in the history.
+  await admin.getByRole('button', { name: 'Exit support view' }).click();
+  await expect(admin).toHaveURL(/\/admin/);
+  await expect(admin.getByText(`Support view of ${clientName}`)).toHaveCount(0);
+  const visit = admin
+    .getByRole('row')
+    .filter({ hasText: 'E2E: the client asked why a lead got no reply' })
+    .filter({ hasText: clientName });
+  await expect(visit).toContainText(/Ended after \d+ min/);
+  await expect(visit.getByRole('cell').last()).toHaveText('1');
+  // The client's workspace is no longer readable from this browser session.
+  expect((await admin.request.get(`/api/conversations/${leadId}`)).status()).toBe(404);
+
+  // The client sees the visit, with the reason, in its Logs.
+  await client.getByRole('link', { name: 'Logs' }).click();
+  const opened = client.getByText(
+    'E2E Support from platform support opened this workspace (read-only)',
+  );
+  await expect(opened).toBeVisible();
+  await expect(
+    client.getByText('E2E Support from platform support left this workspace'),
+  ).toBeVisible();
+  await opened.click();
+  await expect(client.getByText('E2E: the client asked why a lead got no reply')).toBeVisible();
+});

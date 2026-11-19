@@ -133,6 +133,7 @@ Platform
 | `scheduled_reports` | tenant_id, cron, recipients, filters (jsonb) |
 | `usage_records` | tenant_id, period, ai_leads, llm tokens (in / out / cached), est_cost |
 | `audit_logs` | actor, tenant_id, action, target, at |
+| `support_sessions` | tenant_id, admin (id, name and e-mail copied), auth_session_id, return_workspace_id, reason, started_at, expires_at, ended_at, ip, user agent, viewed_lead_ids; RLS; the app may only insert and set ended_at / viewed_lead_ids (D-092) |
 
 JSONB columns (`fields`, `config`, `scoring`, …) are typed with Zod schemas from `packages/shared` and validated on read and on write.
 
@@ -313,6 +314,7 @@ Respond job
   - monthly restore drill
 - **Environments:** `qualify-staging.appsdemo.in` and `qualify.appsdemo.in`.
 - **Activity log (D-091):** what happened to each lead is written to `activity_log` by the worker (Meta events, AI replies and skips, openings, follow-ups, lead forms, webhook deliveries, job failures) and the api (Add lead, API intake, AI pause/resume), through `recordActivity`, which never throws. The conversation's **Activity** panel shows one lead (all members); **Logs** (`/logs`) shows every lead with source and "problems only" filters (owners and managers). `phone_numbers.last_event_at` notes each webhook from Meta; `GET /api/activity/health` reports "silent" when a message we sent more than 5 minutes ago got no Meta event since (a broken webhook URL or subscription), shown on Logs and as a banner in the conversation. Server logs (Pino → Seq) stay the place for platform-level problems (signature failures, unknown numbers).
+- **Support access (D-092):** a platform admin (`PLATFORM_ADMIN_EMAILS`) opens a client's workspace from `/admin` with a reason (`POST /api/admin/support`). The api records a `support_sessions` row and an `audit_logs` entry, writes "X from platform support opened this workspace (read-only)" to the workspace's activity log, and points the admin's Better Auth session (`activeOrganizationId`) at the workspace. `WorkspaceGuard` accepts a non-member only with an open, unexpired access of that same browser session (and only while the e-mail is still listed); it then sets `role: 'admin'` plus `support` on the context and refuses every method except GET/HEAD/OPTIONS ("Support access is read-only"). Bulk exports are refused too (`rejectInSupport`). Each conversation opened is noted once (`viewed_lead_ids`, and an entry in the lead's activity). Access lasts 60 minutes; `POST /api/admin/support/exit` (or `/api/me` after expiry) ends it and returns the session to the admin's own workspace. The web shows a banner with the time left, hides editing controls (`canManage` / `canAct`), and lists every visit on `/admin`.
 - **Local dev:** Docker Desktop runs Postgres (host port 5434), Redis (6380) and Seq (UI on 5380) from `compose.yaml`. The ports avoid clashes with other local projects. The apps run with hot reload through `pnpm dev`. A Cloudflare Tunnel or ngrok receives Meta webhooks.
 - **CI/CD:** on push to `main`: lint + typecheck + test → images to GHCR → deploy to staging. Production deploys are triggered manually.
 

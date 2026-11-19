@@ -26,7 +26,7 @@ function AgentPage() {
   const workspace = useActiveWorkspace();
   const { agent: agentId } = Route.useSearch();
   const agents = useQuery(agentsQueryOptions);
-  const canEdit = canManage(workspace.role);
+  const canEdit = canManage(workspace);
 
   if (agents.isPending) {
     return agentId ? (

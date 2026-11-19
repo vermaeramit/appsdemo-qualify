@@ -41,6 +41,15 @@ export const workspaceSummarySchema = z.object({
 });
 export type WorkspaceSummary = z.infer<typeof workspaceSummarySchema>;
 
+/** Set while a platform admin views this workspace through support access (D-092). */
+export const supportAccessSchema = z.object({
+  id: z.uuid(),
+  reason: z.string(),
+  startedAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+export type SupportAccess = z.infer<typeof supportAccessSchema>;
+
 /** Response of GET /api/me. */
 export const meResponseSchema = z.object({
   user: z.object({
@@ -51,7 +60,12 @@ export const meResponseSchema = z.object({
     isPlatformAdmin: z.boolean(),
   }),
   activeWorkspace: workspaceSummarySchema
-    .extend({ timezone: z.string(), defaultLanguage: z.string() })
+    .extend({
+      timezone: z.string(),
+      defaultLanguage: z.string(),
+      /** Read-only support view (the role is then "admin" for what it may see, never change). */
+      support: supportAccessSchema.nullable(),
+    })
     .nullable(),
   workspaces: z.array(workspaceSummarySchema),
 });

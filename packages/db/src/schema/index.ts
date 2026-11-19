@@ -8,3 +8,4 @@ export * from './webhooks.ts';
 export * from './media.ts';
 export * from './reports.ts';
 export * from './activity.ts';
+export * from './support.ts';

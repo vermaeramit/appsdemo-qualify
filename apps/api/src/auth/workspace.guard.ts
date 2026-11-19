@@ -8,9 +8,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { and, type DbHandle, eq, member } from '@qualify/db';
-import type { WorkspaceRole } from '@qualify/shared';
+import { SUPPORT_READ_ONLY_MESSAGE, type WorkspaceRole } from '@qualify/shared';
 import { fromNodeHeaders } from 'better-auth/node';
 import type { FastifyRequest } from 'fastify';
+import { SupportService } from '../admin/support.service';
 import { AUTH, DB } from '../tokens';
 import type { Auth } from './auth';
 
@@ -18,7 +19,15 @@ export interface WorkspaceContext {
   tenantId: string;
   userId: string;
   role: WorkspaceRole;
+  /**
+   * Set when a platform admin views the workspace through support access (D-092): the role is
+   * then "admin" for what may be read, and the guard refuses every change.
+   */
+  support?: { id: string; adminName: string; reason: string };
 }
+
+/** Methods that never change anything: the only ones a support view may use. */
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 type RequestWithWorkspace = FastifyRequest & { workspace?: WorkspaceContext };
 
@@ -31,6 +40,7 @@ export class WorkspaceGuard implements CanActivate {
   constructor(
     @Inject(AUTH) private readonly auth: Auth,
     @Inject(DB) private readonly handle: DbHandle,
+    @Inject(SupportService) private readonly support: SupportService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -47,7 +57,20 @@ export class WorkspaceGuard implements CanActivate {
       .from(member)
       .where(and(eq(member.organizationId, tenantId), eq(member.userId, session.user.id)))
       .limit(1);
-    if (!membership) throw new ForbiddenException('Not a member of this workspace');
+    if (!membership) {
+      const access = await this.support.accessFor(session, tenantId);
+      if (!access) throw new ForbiddenException('Not a member of this workspace');
+      if (!READ_METHODS.has(request.method)) {
+        throw new ForbiddenException(SUPPORT_READ_ONLY_MESSAGE);
+      }
+      request.workspace = {
+        tenantId,
+        userId: session.user.id,
+        role: 'admin',
+        support: { id: access.id, adminName: access.adminName, reason: access.reason },
+      };
+      return true;
+    }
 
     request.workspace = {
       tenantId,

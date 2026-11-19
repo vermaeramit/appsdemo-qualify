@@ -43,7 +43,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 /** The connected number as Meta reports it now: status, quality, limit, reviews, webhooks. */
 export function WhatsAppHealthCard() {
-  const manager = canManage(useActiveWorkspace().role);
+  const manager = canManage(useActiveWorkspace());
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: healthKey,

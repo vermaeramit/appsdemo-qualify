@@ -31,13 +31,15 @@ function SettingsPage() {
 
       <WhatsAppHealthCard />
 
-      {canManage(workspace.role) ? (
+      {canManage(workspace) ? (
         <ApiKeysCard />
       ) : (
         <Card>
           <CardContent className="flex items-center gap-3 text-sm text-muted-foreground">
             <ShieldAlert className="size-5" />
-            Only owners and managers can see and create API keys.
+            {workspace.support
+              ? 'API keys are hidden in the read-only support view.'
+              : 'Only owners and managers can see and create API keys.'}
           </CardContent>
         </Card>
       )}

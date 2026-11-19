@@ -1,8 +1,10 @@
-import { ForbiddenException, Controller, Get, Inject, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
 import { count, type DbHandle, member, organization, sql, withTenant } from '@qualify/db';
 import {
   type AdminOverview,
   adminOverviewSchema,
+  openSupportAccessSchema,
+  type SupportHistory,
   CONTACT_QUEUE,
   FOLLOW_UP_QUEUE,
   LEAD_EVENTS_QUEUE,
@@ -12,12 +14,16 @@ import {
   WEBHOOK_DELIVERY_QUEUE,
 } from '@qualify/shared';
 import { Queue } from 'bullmq';
+import type { FastifyRequest } from 'fastify';
 import type { Redis } from 'ioredis';
 import type { AuthSession } from '../auth/auth';
+import { requirePlatformAdmin } from '../auth/platform-admin';
 import { CurrentSession, SessionGuard } from '../auth/session.guard';
+import { parseBody } from '../common/zod-body';
 import type { Env } from '../config/env';
 import { REDIS } from '../queue/queue.module';
 import { DB, ENV } from '../tokens';
+import { SupportService } from './support.service';
 
 const QUEUE_NAMES = [
   QUEUES.metaEvents,
@@ -41,16 +47,6 @@ type Stats = {
   webhooks: number;
 };
 
-/** Emails allowed to see every workspace (PLATFORM_ADMIN_EMAILS, comma-separated). */
-export function platformAdmins(env: Env): Set<string> {
-  return new Set(
-    (env.PLATFORM_ADMIN_EMAILS ?? '')
-      .split(',')
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean),
-  );
-}
-
 /**
  * Platform operator view (M7): every workspace's usage and number, plus queue health. Each
  * workspace is read inside its own tenant scope, so RLS still applies.
@@ -64,15 +60,14 @@ export class AdminController {
     @Inject(DB) private readonly handle: DbHandle,
     @Inject(ENV) private readonly env: Env,
     @Inject(REDIS) redis: Redis,
+    @Inject(SupportService) private readonly support: SupportService,
   ) {
     this.queues = QUEUE_NAMES.map((name) => new Queue(name, { connection: redis }));
   }
 
   @Get('overview')
   async overview(@CurrentSession() current: AuthSession): Promise<AdminOverview> {
-    if (!platformAdmins(this.env).has(current.user.email.toLowerCase())) {
-      throw new ForbiddenException('Only platform admins can see this page');
-    }
+    requirePlatformAdmin(this.env, current.user.email);
     const { db } = this.handle;
     const orgs = await db
       .select({
@@ -141,5 +136,37 @@ export class AdminController {
     );
 
     return adminOverviewSchema.parse({ workspaces, queues, checkedAt: new Date().toISOString() });
+  }
+
+  /** Support accesses across workspaces, newest first (D-092). */
+  @Get('support')
+  async supportHistory(@CurrentSession() current: AuthSession): Promise<SupportHistory> {
+    requirePlatformAdmin(this.env, current.user.email);
+    return { items: await this.support.history() };
+  }
+
+  /** Opens a client's workspace read-only in this browser session, with a reason (D-092). */
+  @Post('support')
+  @HttpCode(200)
+  async openSupport(
+    @CurrentSession() current: AuthSession,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ) {
+    requirePlatformAdmin(this.env, current.user.email);
+    const row = await this.support.open(current, parseBody(openSupportAccessSchema, body), {
+      ipAddress: request.ip ?? null,
+      userAgent: request.headers['user-agent']?.slice(0, 300) ?? null,
+    });
+    return { workspaceId: row.tenantId, expiresAt: row.expiresAt.toISOString() };
+  }
+
+  /** Leaves the support view and opens the admin's own workspace again. */
+  @Post('support/exit')
+  @HttpCode(200)
+  async exitSupport(@CurrentSession() current: AuthSession) {
+    // No admin check: someone removed from PLATFORM_ADMIN_EMAILS must still be able to leave.
+    await this.support.exit(current);
+    return { ok: true };
   }
 }

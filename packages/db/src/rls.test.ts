@@ -24,6 +24,14 @@ import {
   touchNumberEvent,
 } from './activity.ts';
 import { saveWhatsAppConnection } from './whatsapp-connect.ts';
+import {
+  activeSupportSession,
+  endSupportSession,
+  latestSupportSession,
+  listSupportSessions,
+  noteSupportView,
+  openSupportSession,
+} from './support.ts';
 import type { PlaybookConfig } from '@qualify/shared';
 import {
   activityLog,
@@ -41,6 +49,7 @@ import {
   phoneNumbers,
   playbooks,
   playbookVersions,
+  supportSessions,
   tenants,
   webhookDeliveries,
   webhookEndpoints,
@@ -685,5 +694,101 @@ describe('Activity log (connected as qualify_app, D-091)', () => {
     );
     const direct = await app.db.execute(sql`delete from activity_log returning id`);
     expect(direct.rows).toEqual([]);
+  });
+});
+
+describe('Support access (connected as qualify_app, D-092)', () => {
+  const base = {
+    adminUserId: 'admin_1',
+    adminName: 'Platform Admin',
+    adminEmail: 'admin@example.com',
+    returnWorkspaceId: 'org_b',
+    reason: 'Client asked why a lead got no reply',
+    minutes: 60,
+  };
+
+  it('keeps each access in its own workspace and refuses spoofed tenant ids', async () => {
+    const opened = await openSupportSession(app.db, {
+      ...base,
+      tenantId: 'org_a',
+      authSessionId: 'sess_isolation',
+    });
+    expect(opened.expiresAt.getTime()).toBeGreaterThan(Date.now() + 59 * 60_000);
+    const seenByB = await withTenant(app.db, 'org_b', (tx) => listSupportSessions(tx, 50));
+    expect(seenByB.map((row) => row.id)).not.toContain(opened.id);
+    const seenByA = await withTenant(app.db, 'org_a', (tx) => listSupportSessions(tx, 50));
+    expect(seenByA.map((row) => row.id)).toContain(opened.id);
+    expect(await app.db.select().from(supportSessions)).toEqual([]);
+    // The audit entry is written with it, in the same workspace.
+    const audit = await withTenant(app.db, 'org_a', (tx) =>
+      tx.select().from(auditLogs).where(eq(auditLogs.target, opened.id)),
+    );
+    expect(audit.map((row) => row.action)).toEqual(['support.opened']);
+    const spoof = withTenant(app.db, 'org_b', (tx) =>
+      tx.insert(supportSessions).values({
+        ...base,
+        tenantId: 'org_a',
+        authSessionId: 'sess_spoof',
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    );
+    await expect(spoof).rejects.toSatisfy((error) => /row-level security/.test(errorText(error)));
+  });
+
+  it('holds for the same browser session and admin only, until it ends', async () => {
+    await openSupportSession(app.db, { ...base, tenantId: 'org_a', authSessionId: 'sess_live' });
+    expect(await activeSupportSession(app.db, 'org_a', 'sess_live', 'admin_1')).not.toBeNull();
+    expect(await activeSupportSession(app.db, 'org_a', 'sess_other', 'admin_1')).toBeNull();
+    expect(await activeSupportSession(app.db, 'org_a', 'sess_live', 'admin_2')).toBeNull();
+    expect(await activeSupportSession(app.db, 'org_b', 'sess_live', 'admin_1')).toBeNull();
+
+    const lead = crypto.randomUUID();
+    const access = (await activeSupportSession(app.db, 'org_a', 'sess_live', 'admin_1'))!;
+    expect(await noteSupportView(app.db, 'org_a', access.id, lead)).toBe(true);
+    expect(await noteSupportView(app.db, 'org_a', access.id, lead)).toBe(false);
+    expect(await noteSupportView(app.db, 'org_b', access.id, crypto.randomUUID())).toBe(false);
+
+    const ended = await endSupportSession(app.db, 'org_a', 'sess_live');
+    expect(ended?.endedAt).not.toBeNull();
+    expect(ended?.viewedLeadIds).toEqual([lead]);
+    expect(await endSupportSession(app.db, 'org_a', 'sess_live')).toBeNull();
+    expect(await activeSupportSession(app.db, 'org_a', 'sess_live', 'admin_1')).toBeNull();
+    expect((await latestSupportSession(app.db, 'org_a', 'sess_live'))?.returnWorkspaceId).toBe(
+      'org_b',
+    );
+    const audit = await withTenant(app.db, 'org_a', (tx) =>
+      tx.select().from(auditLogs).where(eq(auditLogs.target, access.id)),
+    );
+    expect(audit.map((row) => row.action).sort()).toEqual(['support.ended', 'support.opened']);
+  });
+
+  it('does not hold once expired', async () => {
+    await openSupportSession(app.db, {
+      ...base,
+      tenantId: 'org_a',
+      authSessionId: 'sess_expired',
+      minutes: -1,
+    });
+    expect(await activeSupportSession(app.db, 'org_a', 'sess_expired', 'admin_1')).toBeNull();
+    expect(await endSupportSession(app.db, 'org_a', 'sess_expired')).toBeNull();
+  });
+
+  it('cannot rewrite or delete the record', async () => {
+    const opened = await openSupportSession(app.db, {
+      ...base,
+      tenantId: 'org_a',
+      authSessionId: 'sess_tamper',
+    });
+    const rewrite = withTenant(app.db, 'org_a', (tx) =>
+      tx
+        .update(supportSessions)
+        .set({ reason: 'nothing to see' })
+        .where(eq(supportSessions.id, opened.id)),
+    );
+    await expect(rewrite).rejects.toSatisfy((error) => /permission denied/.test(errorText(error)));
+    const remove = withTenant(app.db, 'org_a', (tx) =>
+      tx.delete(supportSessions).where(eq(supportSessions.id, opened.id)),
+    );
+    await expect(remove).rejects.toSatisfy((error) => /permission denied/.test(errorText(error)));
   });
 });

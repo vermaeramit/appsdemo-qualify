@@ -26,7 +26,7 @@ import { auditLogs, type DbHandle, deleteLeadCompletely, withTenant } from '@qua
 import { z } from 'zod';
 import { DB } from '../tokens';
 import type { FastifyReply } from 'fastify';
-import { requireManager } from '../auth/roles';
+import { rejectInSupport, requireManager } from '../auth/roles';
 import { CurrentWorkspace, type WorkspaceContext, WorkspaceGuard } from '../auth/workspace.guard';
 import { parseBody, parseQuery } from '../common/zod-body';
 import { LeadIntakeService } from './lead-intake.service';
@@ -59,6 +59,7 @@ export class LeadsController {
     @Res() reply: FastifyReply,
   ): Promise<void> {
     requireManager(workspace);
+    rejectInSupport(workspace, 'Excel export');
     const { stream, filename } = await this.leads.export(
       workspace,
       parseQuery(leadFiltersSchema, query),
