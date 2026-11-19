@@ -1,5 +1,16 @@
-import type { PlaybookConfig, PlaybookField, PrefillConfirmation } from '@qualify/shared';
+import {
+  type PlaybookConfig,
+  type PlaybookField,
+  type PrefillConfirmation,
+  storedConfirmingSchema,
+} from '@qualify/shared';
 import type { LeadFields } from './fields.ts';
+
+/** Keys a stored message asked the lead to confirm (none for templates and human replies). */
+export function confirmingIn(payload: unknown): string[] {
+  const parsed = storedConfirmingSchema.safeParse(payload);
+  return parsed.success ? parsed.data.confirming : [];
+}
 
 /**
  * Answers that came with the lead (a Meta lead form, a website form through the API) are often
@@ -28,6 +39,24 @@ export function answersToConfirm(
   return definitions
     .filter((field) => pending.has(field.key) && fields[field.key] && confirmsWhenPrefilled(field))
     .sort((a, b) => a.priority - b.priority);
+}
+
+/**
+ * Keys a reply really asks the lead to confirm: the ones the model says it is confirming that
+ * still wait for confirmation. Only these get the confirm buttons, and only these can be
+ * confirmed by the lead's next answer.
+ */
+export function confirmationAsked(
+  definitions: readonly PlaybookField[],
+  fields: LeadFields,
+  unconfirmed: readonly string[],
+  mode: PrefillConfirmation,
+  modelConfirming: readonly string[],
+): string[] {
+  const claimed = new Set(modelConfirming);
+  return answersToConfirm(definitions, fields, unconfirmed, mode)
+    .map((field) => field.key)
+    .filter((key) => claimed.has(key));
 }
 
 /** Keys still unconfirmed after the lead confirmed some, or stated the values themselves. */

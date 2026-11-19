@@ -21,6 +21,8 @@ export const simulateRequestSchema = z.object({
   fields: z.record(z.string(), z.string().max(300)).default({}),
   /** Keys of `fields` that came with the lead (a form) and aren't confirmed yet (D-089). */
   unconfirmed: z.array(z.string()).max(20).default([]),
+  /** Keys the previous agent reply asked the lead to confirm (its response's `confirming`). */
+  asked: z.array(z.string()).max(20).default([]),
   status: leadStatusSchema.default('new'),
   language: agentLanguageSchema.nullable().default(null),
 });
@@ -40,6 +42,8 @@ export const simulateResponseSchema = z.object({
   unconfirmed: z.array(z.string()),
   /** Keys the lead just confirmed. */
   confirmed: z.array(z.string()),
+  /** Keys this reply asks the lead to confirm: send them back as `asked` with the next turn. */
+  confirming: z.array(z.string()),
   changed: z.array(z.string()),
   rejected: z.array(z.object({ key: z.string(), value: z.string(), reason: z.string() })),
   status: leadStatusSchema,

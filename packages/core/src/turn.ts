@@ -9,7 +9,7 @@ import type {
 import { isQualificationComplete, type LeadFields, mergeExtractedFields } from './fields.ts';
 import { chooseReplyOptions, type ReplyOptions } from './interactive.ts';
 import { clampSignal, sanitizeReply } from './policy.ts';
-import { answersToConfirm, remainingUnconfirmed } from './prefill.ts';
+import { answersToConfirm, confirmationAsked, remainingUnconfirmed } from './prefill.ts';
 
 const CLOSED_STATUSES = new Set(['qualified', 'handoff', 'disqualified']);
 /** Before the first real exchange: a lead who wrote in (new) or got our opening (contacting). */
@@ -24,6 +24,8 @@ export interface AppliedTurn {
   unconfirmed: string[];
   /** Keys the lead confirmed (or restated) in this turn. */
   confirmed: string[];
+  /** Keys this reply asks the lead to confirm (store them: the next turn needs them). */
+  confirming: string[];
   status: LeadStatus;
   /** True when a human must take over (handoff). */
   aiPaused: boolean;
@@ -47,6 +49,11 @@ export function applyAgentTurn(
     status: string;
     signals?: LeadSignals | null;
     unconfirmed?: readonly string[];
+    /**
+     * Keys our previous message asked the lead to confirm. A "yes" only confirms these: a yes
+     * to the opening ("Can I ask you a few questions?") confirms nothing.
+     */
+    asked?: readonly string[];
   },
   turn: AgentTurn,
   replyLanguage: AgentLanguage = 'en',
@@ -55,9 +62,11 @@ export function applyAgentTurn(
   const merged = mergeExtractedFields(definitions, lead.fields, turn.extracted);
   // A confirmed answer, or one the lead stated again in the chat, no longer needs confirming.
   const before = lead.unconfirmed ?? [];
+  const asked = new Set(lead.asked ?? []);
   const rejectedKeys = new Set(merged.rejected.map((item) => item.key));
   const stated = turn.extracted.map((item) => item.key).filter((key) => !rejectedKeys.has(key));
-  const unconfirmed = remainingUnconfirmed(before, [...turn.confirmed, ...stated]);
+  const confirmedNow = turn.confirmed.filter((key) => asked.has(key));
+  const unconfirmed = remainingUnconfirmed(before, [...confirmedNow, ...stated]);
   const confirmed = before.filter((key) => !unconfirmed.includes(key));
   const toConfirm = answersToConfirm(definitions, merged.fields, unconfirmed, confirmMode);
   // Once the lead reached an end state, follow-up chit-chat ("thanks", "ok") must not
@@ -82,12 +91,18 @@ export function applyAgentTurn(
   }
 
   const language = turn.language === 'other' ? null : turn.language;
+  // Only while still qualifying: a closing or handoff message asks nothing.
+  const confirming =
+    status === 'engaged' || OPENING_STATUSES.has(status)
+      ? confirmationAsked(definitions, merged.fields, unconfirmed, confirmMode, turn.confirming)
+      : [];
   return {
     fields: merged.fields,
     changed: merged.changed,
     rejected: merged.rejected,
     unconfirmed,
     confirmed,
+    confirming,
     status,
     aiPaused,
     becameQualified,
@@ -97,9 +112,7 @@ export function applyAgentTurn(
       definitions,
       askingField: turn.askingField,
       // Only keys that really wait for confirmation get the confirm buttons.
-      confirming: answersToConfirm(definitions, lead.fields, before, confirmMode)
-        .map((field) => field.key)
-        .filter((key) => turn.confirming.includes(key)),
+      confirming,
       confirmMode,
       status,
       language: replyLanguage,

@@ -106,6 +106,8 @@ function ChatBody({ getConfig }: { getConfig: () => PlaybookConfig }) {
           messages: messages.map(({ from, text: body }) => ({ from, text: body })),
           fields: state.fields,
           unconfirmed: state.unconfirmed,
+          // Only what the previous reply asked about can be confirmed now.
+          asked: state.last?.confirming ?? [],
           status: state.status,
           language: state.language,
         },

@@ -110,8 +110,19 @@ describe('prompt and state note', () => {
       confirmMode: 'together',
     });
     expect(note).toContain(
-      'Answers to confirm (came with the lead, not confirmed yet): destination=Dubai; travel_month=2026-12',
+      'Answers to confirm (came with the lead, not confirmed yet): destination=Dubai; travel_month=2026-12. Not asked yet',
     );
+    const asked = buildStateNote({
+      today: '2026-11-19',
+      fields: prefilled,
+      definitions: fields,
+      status: 'engaged',
+      leadName: 'Neha',
+      unconfirmed,
+      confirmMode: 'one_by_one',
+      asked: ['destination'],
+    });
+    expect(asked).toContain('Your previous message asked the lead to confirm: destination.');
     expect(note).toContain('Missing required fields (ask in this order): none');
     expect(note).toContain('only the answers to confirm are left');
     const off = buildStateNote({
@@ -145,12 +156,14 @@ describe('applyAgentTurn with answers to confirm', () => {
       buttons: ['Haan, sahi hai', 'Kuch badalna hai'],
     });
     expect(applied.unconfirmed).toEqual(unconfirmed);
+    // Stored with the reply: the lead's next answer can confirm only these.
+    expect(applied.confirming).toEqual(['destination', 'travel_month']);
   });
 
   it('closes once the lead confirms, keeping only what still waits', () => {
     const applied = applyAgentTurn(
       fields,
-      { ...lead, status: 'engaged' },
+      { ...lead, status: 'engaged', asked: ['destination', 'travel_month'] },
       turn({ confirmed: ['destination', 'travel_month'], reply: 'Thank you!' }),
       'en',
       'together',
@@ -159,6 +172,30 @@ describe('applyAgentTurn with answers to confirm', () => {
     expect(applied.becameQualified).toBe(true);
     expect(applied.confirmed).toEqual(['destination', 'travel_month']);
     expect(applied.unconfirmed).toEqual(['passport']);
+  });
+
+  it('ignores a yes to a question that did not ask to confirm (the opening)', () => {
+    // Opening: "Can I ask you 2-3 quick questions?" -> "Yes, sure". The answers stay unconfirmed.
+    const applied = applyAgentTurn(
+      fields,
+      lead,
+      turn({ confirmed: ['destination', 'travel_month'], reply: 'Great! How many people?' }),
+      'en',
+      'together',
+    );
+    expect(applied.confirmed).toEqual([]);
+    expect(applied.unconfirmed).toEqual(unconfirmed);
+    expect(applied.status).toBe('engaged');
+    // Only the asked key counts when the previous message asked about one answer.
+    const one = applyAgentTurn(
+      fields,
+      { ...lead, status: 'engaged', asked: ['destination'] },
+      turn({ confirmed: ['destination', 'travel_month'] }),
+      'en',
+      'one_by_one',
+    );
+    expect(one.confirmed).toEqual(['destination']);
+    expect(one.unconfirmed).toEqual(['travel_month', 'passport']);
   });
 
   it('treats a corrected value as confirmed', () => {

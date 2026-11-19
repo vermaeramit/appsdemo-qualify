@@ -305,6 +305,7 @@ describe('processRespond', () => {
     expect(requests[0]!.system).toContain('# Answers that came with the lead');
     expect(requests[0]!.stateNote).toContain('Answers to confirm (came with the lead');
     expect(requests[0]!.stateNote).toContain('destination=Dubai');
+    expect(requests[0]!.stateNote).toContain('Not asked yet');
     expect(client.sendButtons).toHaveBeenCalledWith(
       expect.objectContaining({ buttons: ['Haan, sahi hai', 'Kuch badalna hai'] }),
     );
@@ -318,6 +319,10 @@ describe('processRespond', () => {
       confirmed: ['destination', 'travelers', 'departure_city', 'budget'],
     });
     expect(await processRespond({ tenantId: TENANT, leadId: id }, deps())).toBe('replied');
+    // The previous reply's question is known, so the lead's yes confirms those answers.
+    expect(requests[1]!.stateNote).toContain(
+      'Your previous message asked the lead to confirm: destination, travel_month, travelers, departure_city, budget.',
+    );
     const lead = await getLead(id);
     expect(lead).toMatchObject({ status: 'qualified', unconfirmedFields: [] });
     expect(lead.fields.travel_month).toBe('2027-01');

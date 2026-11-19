@@ -60,6 +60,7 @@ function confirmationSection(mode: PrefillConfirmation): string {
     'Some leads filled a form (a Meta lead form or a website form) before the chat. The state note lists those answers under "Answers to confirm". People often tap form answers in a hurry, so confirm them before relying on them:',
     CONFIRM_STYLE[mode],
     "- Answer the lead's own questions first, as usual, then confirm.",
+    '- The lead has not seen these answers in the chat until you mention them. A "yes" confirms only the answers your previous message asked about (the state note says which): a yes to the opening message or to any other question confirms nothing, so mention the answers and ask.',
     '- When the lead says they are correct ("yes", "haan", "sahi hai", a thumbs up…), put those keys in `confirmed`. When the lead gives a different value, extract the new value (it counts as confirmed). When the lead says something is wrong but not what is right, ask for the right value and set `askingField` to that key.',
     "- Don't ask again what the lead has confirmed. After the answers are confirmed, continue with the missing required fields.",
     '',
@@ -164,6 +165,8 @@ export interface StateNoteInput {
   /** Answers that came with the lead and aren't confirmed yet (D-089). */
   unconfirmed?: readonly string[];
   confirmMode?: PrefillConfirmation;
+  /** Keys our previous message asked the lead to confirm. */
+  asked?: readonly string[];
 }
 
 function adLine(ad: StateNoteInput['ad']): string {
@@ -195,8 +198,13 @@ export function buildStateNote(input: StateNoteInput): string {
     : missing.length === 0
       ? 'no, only the answers to confirm are left: once the lead confirms them, send the closing message'
       : 'no';
+  const pending = new Set(input.unconfirmed ?? []);
+  const asked = (input.asked ?? []).filter((key) => pending.has(key));
+  const askedText = asked.length
+    ? `Your previous message asked the lead to confirm: ${asked.join(', ')}.`
+    : 'Not asked yet: the lead has not seen them in the chat.';
   const confirmLine = toConfirm.length
-    ? `\nAnswers to confirm (came with the lead, not confirmed yet): ${toConfirm.join('; ')}`
+    ? `\nAnswers to confirm (came with the lead, not confirmed yet): ${toConfirm.join('; ')}. ${askedText}`
     : '';
 
   return `<state>

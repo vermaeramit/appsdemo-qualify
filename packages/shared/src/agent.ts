@@ -32,6 +32,9 @@ export const agentTurnSchema = z.object({
 });
 export type AgentTurn = z.infer<typeof agentTurnSchema>;
 
+/** The part of a stored AI message's payload that says which answers it asked to confirm. */
+export const storedConfirmingSchema = z.object({ confirming: z.array(z.string()).max(50) });
+
 export const leadStatusSchema = z.enum([
   'new',
   /** We sent the opening (form/API lead) and are waiting for the first reply. */

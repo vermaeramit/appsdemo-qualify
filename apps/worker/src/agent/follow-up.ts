@@ -1,5 +1,6 @@
 import {
-  answersToConfirm,
+  confirmationAsked,
+  confirmingIn,
   buildStateNote,
   buildSystemPrompt,
   chooseReplyLanguage,
@@ -277,23 +278,24 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
         followUp: { step: job.step, hoursSilent },
         unconfirmed: lead.unconfirmedFields,
         confirmMode: prefillMode(playbook.config),
+        asked: confirmingIn(history.filter((m) => m.direction === 'outbound').at(-1)?.payload),
       }),
       schema: agentTurnSchema,
       reasoningEffort: deps.reasoningEffort,
       cacheKey: `playbook:${playbook.versionId}`,
     });
+    // A nudge may repeat the "is this right?" question (D-089).
+    const confirming = confirmationAsked(
+      playbook.config.fields,
+      lead.fields,
+      lead.unconfirmedFields,
+      prefillMode(playbook.config),
+      turn.confirming,
+    );
     const options = chooseReplyOptions({
       definitions: playbook.config.fields,
       askingField: turn.askingField,
-      // A nudge may repeat the "is this right?" question (D-089).
-      confirming: answersToConfirm(
-        playbook.config.fields,
-        lead.fields,
-        lead.unconfirmedFields,
-        prefillMode(playbook.config),
-      )
-        .map((field) => field.key)
-        .filter((key) => turn.confirming.includes(key)),
+      confirming,
       confirmMode: prefillMode(playbook.config),
       status: 'engaged',
       language: replyLanguage,
@@ -315,6 +317,7 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
         mode: 'freeform',
         options,
         askingField: turn.askingField,
+        confirming,
         model: usage.model,
         usage,
       },

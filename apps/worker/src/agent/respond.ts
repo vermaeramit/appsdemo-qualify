@@ -1,5 +1,6 @@
 import {
   applyAgentTurn,
+  confirmingIn,
   prefillMode,
   buildStateNote,
   chooseReplyLanguage,
@@ -176,6 +177,8 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
     agentLanguageSchema.safeParse(tenant?.defaultLanguage).data ?? 'hinglish';
   const definitions = playbook.config.fields;
   const confirmMode = prefillMode(playbook.config);
+  // Answers our last message asked the lead to confirm: only these can be confirmed now.
+  const asked = confirmingIn(latestOutbound?.payload);
   const replyLanguage = chooseReplyLanguage({
     latestLeadText: latestInbound.body,
     previous: lead.language,
@@ -203,6 +206,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
         ad: freshAd(lead.attribution, now()),
         unconfirmed: lead.unconfirmedFields,
         confirmMode,
+        asked,
       }),
       schema: agentTurnSchema,
       reasoningEffort: deps.reasoningEffort,
@@ -230,7 +234,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
   // 6. Apply the turn (same pure logic the eval harness uses).
   const applied = applyAgentTurn(
     definitions,
-    { ...lead, unconfirmed: lead.unconfirmedFields },
+    { ...lead, unconfirmed: lead.unconfirmedFields, asked },
     turn,
     replyLanguage,
     confirmMode,
@@ -281,7 +285,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
           model: usage.model,
           usage,
           extracted: turn.extracted,
-          confirming: turn.confirming,
+          confirming: applied.confirming,
           confirmed: applied.confirmed,
           rejected: applied.rejected,
           handoff: turn.handoff,

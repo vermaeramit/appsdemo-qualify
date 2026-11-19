@@ -92,13 +92,19 @@ export class SimulatorService {
         replyLanguage,
         unconfirmed: input.unconfirmed,
         confirmMode: prefillMode(config),
+        asked: input.asked,
       }),
       schema: agentTurnSchema,
       cacheKey: `simulate:${workspace.tenantId}`,
     });
     const applied = applyAgentTurn(
       config.fields,
-      { fields: input.fields, status: input.status, unconfirmed: input.unconfirmed },
+      {
+        fields: input.fields,
+        status: input.status,
+        unconfirmed: input.unconfirmed,
+        asked: input.asked,
+      },
       output,
       replyLanguage,
       prefillMode(config),
@@ -119,6 +125,7 @@ export class SimulatorService {
       fields: applied.fields,
       unconfirmed: applied.unconfirmed,
       confirmed: applied.confirmed,
+      confirming: applied.confirming,
       changed: applied.changed,
       rejected: applied.rejected,
       status: applied.status,
