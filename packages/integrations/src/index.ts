@@ -6,3 +6,4 @@ export * from './meta/webhook.ts';
 export * from './phone.ts';
 export * from './webhooks.ts';
 export * from './mailer.ts';
+export * from './ai-access.ts';

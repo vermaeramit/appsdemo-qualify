@@ -25,6 +25,16 @@ import {
 } from './activity.ts';
 import { saveWhatsAppConnection } from './whatsapp-connect.ts';
 import {
+  aiPlatformSpendThisMonth,
+  aiPriceTable,
+  getAiSettings,
+  listAiModels,
+  loadAiAccess,
+  recordAiUsage,
+  saveAiModels,
+  saveAiSettings,
+} from './ai.ts';
+import {
   activeSupportSession,
   endSupportSession,
   latestSupportSession,
@@ -35,6 +45,8 @@ import {
 import type { PlaybookConfig } from '@qualify/shared';
 import {
   activityLog,
+  aiSettings,
+  aiUsage,
   apiKeys,
   auditLogs,
   emailReportRuns,
@@ -790,5 +802,145 @@ describe('Support access (connected as qualify_app, D-092)', () => {
       tx.delete(supportSessions).where(eq(supportSessions.id, opened.id)),
     );
     await expect(remove).rejects.toSatisfy((error) => /permission denied/.test(errorText(error)));
+  });
+});
+
+describe('AI provider per workspace (connected as qualify_app, D-094)', () => {
+  it('seeds the price list, and saving moves the price date only when a price changes', async () => {
+    const before = await listAiModels(app.db);
+    expect(before.map((model) => model.id)).toContain('gpt-5.4-mini');
+    const mini = before.find((model) => model.id === 'gpt-5.4-mini')!;
+    await saveAiModels(app.db, [
+      {
+        id: 'gpt-5.4-mini',
+        inputUsd: 0.75,
+        cachedUsd: 0.075,
+        outputUsd: 4.5,
+        enabled: true,
+        source: 'openrouter',
+      },
+      {
+        id: 'gpt-test-1',
+        label: 'Test',
+        inputUsd: 1,
+        cachedUsd: 0.1,
+        outputUsd: 2,
+        enabled: false,
+        source: 'manual',
+      },
+    ]);
+    const after = await listAiModels(app.db);
+    const sameMini = after.find((model) => model.id === 'gpt-5.4-mini')!;
+    expect(sameMini.pricesUpdatedAt.getTime()).toBe(mini.pricesUpdatedAt.getTime());
+    expect(sameMini.source).toBe(mini.source);
+    await saveAiModels(app.db, [
+      {
+        id: 'gpt-test-1',
+        inputUsd: 3,
+        cachedUsd: 0.3,
+        outputUsd: 6,
+        enabled: true,
+        source: 'openrouter',
+      },
+    ]);
+    const changed = (await listAiModels(app.db)).find((model) => model.id === 'gpt-test-1')!;
+    expect(changed).toMatchObject({
+      label: 'Test',
+      inputUsd: 3,
+      enabled: true,
+      source: 'openrouter',
+    });
+    expect((await aiPriceTable(app.db))['gpt-test-1']).toEqual({
+      input: 3,
+      cached: 0.3,
+      output: 6,
+    });
+  });
+
+  it('keeps settings and usage per workspace and refuses spoofed tenant ids', async () => {
+    await withTenant(app.db, 'org_a', (tx) =>
+      saveAiSettings(tx, 'org_a', {
+        mode: 'own_key',
+        apiKeyEnc: 'enc',
+        apiKeyHint: 'sk-…abcd',
+        model: 'gpt-5.4-mini',
+      }),
+    );
+    expect(await withTenant(app.db, 'org_b', (tx) => getAiSettings(tx))).toBeNull();
+    expect((await withTenant(app.db, 'org_a', (tx) => getAiSettings(tx)))?.mode).toBe('own_key');
+    expect(await app.db.select().from(aiSettings)).toEqual([]);
+    const spoof = withTenant(app.db, 'org_b', (tx) =>
+      tx.insert(aiSettings).values({ tenantId: 'org_a', mode: 'platform' }),
+    );
+    await expect(spoof).rejects.toSatisfy((error) => /row-level security/.test(errorText(error)));
+    expect(
+      await recordAiUsage(app.db, {
+        tenantId: 'org_a',
+        purpose: 'reply',
+        model: 'gpt-5.4-mini',
+        keySource: 'own',
+        inputTokens: 100,
+        cachedInputTokens: 0,
+        outputTokens: 10,
+        costUsd: 0.001,
+      }),
+    ).toBeNull();
+    expect(await withTenant(app.db, 'org_b', (tx) => tx.select().from(aiUsage))).toEqual([]);
+    // The usage record is append-only for the app.
+    const rewrite = withTenant(app.db, 'org_a', (tx) => tx.update(aiUsage).set({ costUsd: 0 }));
+    await expect(rewrite).rejects.toSatisfy((error) => /permission denied/.test(errorText(error)));
+  });
+
+  it('adds up this month spend on the AppsDemo key only', async () => {
+    await withTenant(app.db, 'org_b', (tx) =>
+      saveAiSettings(tx, 'org_b', { mode: 'platform', model: 'gpt-5.4-mini', monthlyLimitUsd: 5 }),
+    );
+    const base = {
+      tenantId: 'org_b',
+      purpose: 'reply' as const,
+      model: 'gpt-5.4-mini',
+      inputTokens: 1,
+      cachedInputTokens: 0,
+      outputTokens: 1,
+    };
+    await recordAiUsage(app.db, { ...base, keySource: 'platform', costUsd: 1.25 });
+    await recordAiUsage(app.db, { ...base, keySource: 'platform', costUsd: 0.75 });
+    await recordAiUsage(app.db, { ...base, keySource: 'own', costUsd: 9 });
+    await withTenant(app.db, 'org_b', (tx) =>
+      tx.insert(aiUsage).values({
+        ...base,
+        keySource: 'platform',
+        costUsd: 50,
+        at: new Date(Date.now() - 62 * 86_400_000),
+      }),
+    );
+    expect(await withTenant(app.db, 'org_b', (tx) => aiPlatformSpendThisMonth(tx))).toBeCloseTo(2);
+    const access = await loadAiAccess(app.db, 'org_b');
+    expect(access.settings?.monthlyLimitUsd).toBe(5);
+    expect(access.platformSpentUsd).toBeCloseTo(2);
+  });
+
+  it('a deleted lead keeps its usage rows (the lead link is cleared)', async () => {
+    const lead = await withTenant(app.db, 'org_a', async (tx) => {
+      const [created] = await tx
+        .insert(leads)
+        .values({ tenantId: 'org_a', phoneE164: '+919811100099', name: 'Usage', source: 'api' })
+        .returning({ id: leads.id });
+      return created!.id;
+    });
+    await recordAiUsage(app.db, {
+      tenantId: 'org_a',
+      leadId: lead,
+      purpose: 'reply',
+      model: 'gpt-5.4-mini',
+      keySource: 'own',
+      inputTokens: 5,
+      cachedInputTokens: 0,
+      outputTokens: 5,
+      costUsd: 0.01,
+    });
+    await withTenant(app.db, 'org_a', (tx) => tx.delete(leads).where(eq(leads.id, lead)));
+    const rows = await withTenant(app.db, 'org_a', (tx) => tx.select().from(aiUsage));
+    expect(rows.some((row) => row.costUsd === 0.01 && row.leadId === null)).toBe(true);
   });
 });

@@ -1,5 +1,4 @@
 import {
-  aiCostUsd,
   applyAgentTurn,
   confirmingIn,
   prefillMode,
@@ -24,11 +23,11 @@ import {
   withTenant,
 } from '@qualify/db';
 import {
+  aiDeniedMessage,
+  type AiResolver,
   decryptSecret,
   isAllowedRecipient,
-  type LlmClient,
   type LlmUsage,
-  type ReasoningEffort,
   toWaId,
 } from '@qualify/integrations';
 import {
@@ -62,10 +61,8 @@ export interface RespondDeps {
   emitLeadEvent?: EmitLeadEvent;
   db: Database;
   logger: Pick<Logger, 'info' | 'warn' | 'error'>;
-  /** Null when no AI provider is configured: the agent stays silent. */
-  llm: LlmClient | null;
-  model: string;
-  reasoningEffort: ReasoningEffort;
+  /** The workspace's AI (its own key, AppsDemo's, or off; D-094). */
+  ai: AiResolver;
   masterKey: Buffer | null;
   createClient: (accessToken: string) => AgentMessagingClient;
   allowlist: readonly string[];
@@ -116,10 +113,6 @@ const SKIPPED: Partial<Record<RespondOutcome, SkipEntry>> = {
       "AI didn't reply: the lead's last message is more than 24 hours old (WhatsApp allows only templates then)",
   },
   skipped_not_allowed: { level: 'warn', message: `AI didn't reply: ${DEV_SWITCH_REASON}` },
-  skipped_no_ai: {
-    level: 'error',
-    message: "AI didn't reply: the AI is turned off on the server (no AI provider key)",
-  },
   skipped_no_playbook: {
     level: 'error',
     message: "AI didn't reply: there is no published AI agent for this lead",
@@ -168,8 +161,6 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
   const now = deps.now ?? (() => new Date());
   const log = { tenantId: job.tenantId, leadId: job.leadId };
 
-  if (!deps.llm) return 'skipped_no_ai';
-
   // 1. Load everything we need in one tenant-scoped transaction.
   const context = await withTenant(db, job.tenantId, async (tx) => {
     const [lead] = await tx.select().from(leads).where(eq(leads.id, job.leadId)).limit(1);
@@ -208,7 +199,31 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
     return 'skipped_window_closed';
   }
 
-  // 3. WhatsApp client for this tenant's number (+ "typing…" while we think).
+  // 3. The workspace's AI: its own key or AppsDemo's, the model, the monthly limit (D-094).
+  const resolution = await deps.ai.forTenant(job.tenantId, {
+    purpose: 'reply',
+    leadId: job.leadId,
+  });
+  if (!resolution.ok) {
+    await deps.activity?.({
+      ...log,
+      source: 'agent',
+      kind: 'agent.skipped',
+      level: resolution.reason === 'limit' ? 'warn' : 'error',
+      message: `AI didn't reply: ${aiDeniedMessage(resolution)}`,
+      detail:
+        resolution.reason === 'limit'
+          ? {
+              'Spent this month': `$${(resolution.spentUsd ?? 0).toFixed(2)}`,
+              'Monthly limit': `$${resolution.limitUsd ?? 0}`,
+            }
+          : {},
+    });
+    return 'skipped_no_ai';
+  }
+  const ai = resolution.access;
+
+  // 4. WhatsApp client for this tenant's number (+ "typing…" while we think).
   const client = await createTenantClient(deps, job.tenantId, latestInbound.phoneNumberId);
   if (!client) {
     await deps.activity?.({
@@ -228,7 +243,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
       .catch((error: unknown) => logger.warn({ ...log, err: error }, 'Typing indicator failed'));
   }
 
-  // 4. Ask the model for the next turn.
+  // 5. Ask the model for the next turn.
   const allowedLanguages = (tenant?.allowedLanguages ?? ['hinglish', 'en', 'hi'])
     .map((code) => agentLanguageSchema.safeParse(code))
     .flatMap((parsed) => (parsed.success ? [parsed.data] : []));
@@ -248,8 +263,8 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
   let turn: AgentTurn;
   let usage: LlmUsage;
   try {
-    ({ output: turn, usage } = await deps.llm.generateStructured({
-      model: deps.model,
+    ({ output: turn, usage } = await ai.llm.generateStructured({
+      model: ai.model,
       system: buildSystemPrompt(playbook.config, {
         allowedLanguages: allowedLanguages.length ? allowedLanguages : ['hinglish', 'en', 'hi'],
         defaultLanguage,
@@ -268,7 +283,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
         asked,
       }),
       schema: agentTurnSchema,
-      reasoningEffort: deps.reasoningEffort,
+      reasoningEffort: ai.reasoningEffort,
       cacheKey: `playbook:${playbook.versionId}`,
     }));
   } catch (error) {
@@ -276,7 +291,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
     throw error; // BullMQ retries
   }
 
-  // 5. The lead may have written again while the model was thinking: answer the newest state.
+  // 6. The lead may have written again while the model was thinking: answer the newest state.
   const [newest] = await withTenant(db, job.tenantId, (tx) =>
     tx
       .select({ id: messages.id })
@@ -290,7 +305,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
     return 'superseded';
   }
 
-  // 6. Apply the turn (same pure logic the eval harness uses).
+  // 7. Apply the turn (same pure logic the eval harness uses).
   const applied = applyAgentTurn(
     definitions,
     { ...lead, unconfirmed: lead.unconfirmedFields, asked },
@@ -316,7 +331,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
     previous: lead.scoreDetails,
   });
 
-  // 7. Send.
+  // 8. Send.
   const sent = await sendWithOptions(client, {
     phoneNumberId: latestInbound.phoneNumberId,
     to: toWaId(lead.phoneE164),
@@ -326,7 +341,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
   const waMessageId = sent.waMessageId;
   if (sent.error) logger.error({ ...log, error: sent.error }, 'Failed to send AI reply');
 
-  // 8. Persist the reply and the lead's new state.
+  // 9. Persist the reply and the lead's new state.
   const stored = await withTenant(db, job.tenantId, async (tx) => {
     const [row] = await tx
       .insert(messages)
@@ -389,7 +404,7 @@ async function respond(job: RespondJob, deps: RespondDeps): Promise<RespondOutco
     await deps.emitLeadEvent?.({ tenantId: job.tenantId, leadId: job.leadId, type: event });
   }
 
-  const cost = aiCostUsd(usage);
+  const cost = await ai.costOf(usage);
   const learnt = applied.changed.map((key) => `${key}=${applied.fields[key] ?? ''}`);
   await deps.activity?.([
     {

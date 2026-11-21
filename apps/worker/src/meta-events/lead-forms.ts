@@ -26,8 +26,7 @@ import {
 import {
   decryptSecret,
   type LeadgenValue,
-  type LlmClient,
-  type ReasoningEffort,
+  type AiResolver,
   toE164,
   type WhatsAppClient,
 } from '@qualify/integrations';
@@ -52,9 +51,8 @@ export interface LeadFormDeps {
   masterKey: Buffer | null;
   createClient: (pageAccessToken: string) => LeadFormClient;
   /** Maps a new form's questions to the playbook; without it, matching by wording is used. */
-  llm: LlmClient | null;
-  model: string;
-  reasoningEffort: ReasoningEffort;
+  /** The workspace's AI (D-094): maps new forms; without it, forms are matched by wording. */
+  ai: AiResolver;
   enqueueContact: (job: ContactJob) => Promise<void>;
   /** Activity log (D-091). */
   activity?: RecordActivity;
@@ -148,7 +146,7 @@ export async function handleLeadgen(
 
   let mapping = context.stored?.mapping;
   if (!mapping) {
-    const worked = await mapForm(deps, questions, definitions);
+    const worked = await mapForm(deps, tenantId, questions, definitions);
     mapping = worked.mapping;
     await withTenant(db, tenantId, (tx) =>
       tx
@@ -293,18 +291,21 @@ function formAttribution(
 /** AI mapping (validated), or matching by wording when no AI is configured or it fails. */
 async function mapForm(
   deps: LeadFormDeps,
+  tenantId: string,
   questions: readonly FormQuestion[],
   definitions: readonly PlaybookField[],
 ): Promise<{ mapping: FormMapping; source: 'ai' | 'auto' }> {
-  if (deps.llm) {
+  const resolution = await deps.ai.forTenant(tenantId, { purpose: 'form_mapping' });
+  if (resolution.ok) {
+    const ai = resolution.access;
     try {
       const request = buildFormMappingRequest(questions, definitions);
-      const { output } = await deps.llm.generateStructured({
-        model: deps.model,
+      const { output } = await ai.llm.generateStructured({
+        model: ai.model,
         system: request.system,
         messages: [{ role: 'user', content: request.prompt }],
         schema: formMappingOutputSchema,
-        reasoningEffort: deps.reasoningEffort,
+        reasoningEffort: ai.reasoningEffort,
       });
       const proposed = Object.fromEntries(
         output.mappings.map((entry) => [entry.formKey, entry.fieldKey]),

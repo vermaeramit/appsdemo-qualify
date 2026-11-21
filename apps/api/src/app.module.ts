@@ -19,6 +19,8 @@ import { MetaLeadsController } from './meta-leads/meta-leads.controller';
 import { WebhooksOutController } from './webhooks-out/webhooks-out.controller';
 import { WhatsAppHealthController } from './whatsapp/whatsapp-health.controller';
 import { AdminController } from './admin/admin.controller';
+import { AiController } from './ai/ai.controller';
+import { AiService } from './ai/ai.service';
 import { SupportService } from './admin/support.service';
 import { LiveController } from './live/live.controller';
 import { LiveService } from './live/live.service';
@@ -95,6 +97,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
     WebhooksOutController,
     WhatsAppHealthController,
     AdminController,
+    AiController,
     LiveController,
     OnboardingController,
     TemplatesController,
@@ -119,6 +122,7 @@ import { WhatsAppAccessService } from './whatsapp/whatsapp-access.service';
     ReportsService,
     WebhooksOutService,
     SupportService,
+    AiService,
   ],
 })
 export class AppModule {}

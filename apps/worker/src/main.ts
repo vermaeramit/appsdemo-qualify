@@ -1,8 +1,8 @@
 import './load-env.ts';
 import { createDb, pruneActivity } from '@qualify/db';
+import { createWorkerAi } from './ai.ts';
 import {
   ALLOW_ALL,
-  createLlmClient,
   createMailer,
   parseAllowlist,
   parseMasterKey,
@@ -81,9 +81,15 @@ const activity = createActivityRecorder(db, logger);
 const allowlist = parseAllowlist(env.DEV_ALLOWED_NUMBERS);
 const isProduction = env.NODE_ENV === 'production';
 const masterKey = env.ENCRYPTION_MASTER_KEY ? parseMasterKey(env.ENCRYPTION_MASTER_KEY) : null;
-const llm = env.OPENAI_API_KEY
-  ? createLlmClient({ provider: env.LLM_PROVIDER, apiKey: env.OPENAI_API_KEY })
-  : null;
+/** Each workspace's AI: its own OpenAI key, AppsDemo's (OPENAI_API_KEY), or off (D-094). */
+const ai = createWorkerAi({
+  db,
+  logger,
+  platformKey: env.OPENAI_API_KEY ?? null,
+  masterKey,
+  defaultModel: env.AI_MODEL_CHAT,
+  reasoningEffort: env.AI_REASONING_EFFORT,
+});
 const whatsapp = (accessToken: string) =>
   new WhatsAppClient({
     accessToken,
@@ -113,8 +119,10 @@ if ('off' in mail) logger.warn(mail.off);
 else logger.info({ smtp: new URL(mail.url).host }, 'Scheduled e-mail reports enabled');
 if (!masterKey) logger.warn('ENCRYPTION_MASTER_KEY not set: messages are stored but not answered');
 logger.info(
-  llm ? { model: env.AI_MODEL_CHAT, reasoningEffort: env.AI_REASONING_EFFORT } : { model: null },
-  llm ? 'AI agent enabled' : 'AI agent disabled: OPENAI_API_KEY not set',
+  { defaultModel: env.AI_MODEL_CHAT, reasoningEffort: env.AI_REASONING_EFFORT },
+  env.OPENAI_API_KEY
+    ? "AI per workspace: own keys, or AppsDemo's key where switched on"
+    : "AI per workspace: own keys only (OPENAI_API_KEY not set, so AppsDemo's key is unavailable)",
 );
 
 const respondQueue = new Queue<RespondJob>(RESPOND_QUEUE, { connection });
@@ -242,9 +250,7 @@ const metaEventsWorker = new Worker(
       leadForms: {
         masterKey,
         createClient: whatsapp,
-        llm,
-        model: env.AI_MODEL_CHAT,
-        reasoningEffort: env.AI_REASONING_EFFORT,
+        ai,
         enqueueContact,
         activity,
       },
@@ -259,9 +265,7 @@ const respondWorker = new Worker(
     const outcome = await processRespond(respondJobSchema.parse(job.data), {
       db,
       logger,
-      llm,
-      model: env.AI_MODEL_CHAT,
-      reasoningEffort: env.AI_REASONING_EFFORT,
+      ai,
       masterKey,
       createClient: whatsapp,
       allowlist,
@@ -302,9 +306,7 @@ const followUpWorker = new Worker(
     const outcome = await processFollowUp(followUpJobSchema.parse(job.data), {
       db,
       logger,
-      llm,
-      model: env.AI_MODEL_CHAT,
-      reasoningEffort: env.AI_REASONING_EFFORT,
+      ai,
       masterKey,
       createClient: whatsapp,
       allowlist,

@@ -3,6 +3,7 @@ import { ShieldAlert } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { CopyButton } from '@/components/copy-button';
+import { AiSettingsCard } from '@/features/settings/ai-settings-card';
 import { ApiKeysCard } from '@/features/settings/api-keys-card';
 import { WhatsAppHealthCard } from '@/features/settings/whatsapp-health-card';
 import { useActiveWorkspace } from '@/lib/use-workspace';
@@ -30,6 +31,8 @@ function SettingsPage() {
       </div>
 
       <WhatsAppHealthCard />
+
+      <AiSettingsCard />
 
       {canManage(workspace) ? (
         <ApiKeysCard />

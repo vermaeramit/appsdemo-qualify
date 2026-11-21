@@ -1,6 +1,5 @@
 import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import {
-  aiCostUsd,
   applyAgentTurn,
   buildStateNote,
   buildSystemPrompt,
@@ -12,7 +11,7 @@ import {
   toModelHistory,
 } from '@qualify/core';
 import { type DbHandle, getDefaultPublishedPlaybook, tenants, withTenant } from '@qualify/db';
-import { createLlmClient, type LlmClient } from '@qualify/integrations';
+import { aiDeniedMessage } from '@qualify/integrations';
 import {
   type AgentLanguage,
   agentLanguageSchema,
@@ -22,8 +21,8 @@ import {
   simulateResponseSchema,
 } from '@qualify/shared';
 import type { WorkspaceContext } from '../auth/workspace.guard';
-import type { Env } from '../config/env';
-import { DB, ENV } from '../tokens';
+import { AiService } from '../ai/ai.service';
+import { DB } from '../tokens';
 
 const ALL_LANGUAGES: AgentLanguage[] = ['hinglish', 'en', 'hi'];
 
@@ -33,21 +32,22 @@ const ALL_LANGUAGES: AgentLanguage[] = ['hinglish', 'en', 'hi'];
  */
 @Injectable()
 export class SimulatorService {
-  private readonly llm: LlmClient | null;
-
   constructor(
     @Inject(DB) private readonly handle: DbHandle,
-    @Inject(ENV) private readonly env: Env,
-  ) {
-    this.llm = env.OPENAI_API_KEY
-      ? createLlmClient({ provider: env.LLM_PROVIDER, apiKey: env.OPENAI_API_KEY })
-      : null;
-  }
+    @Inject(AiService) private readonly ai: AiService,
+  ) {}
 
   async simulate(workspace: WorkspaceContext, input: SimulateRequest): Promise<SimulateResponse> {
-    if (!this.llm) {
-      throw new ServiceUnavailableException('The AI is not configured on the server.');
+    // The workspace's own AI (D-094): the test chat counts against AppsDemo's monthly limit too.
+    const resolution = await this.ai.resolver.forTenant(workspace.tenantId, {
+      purpose: 'test_chat',
+    });
+    if (!resolution.ok) {
+      throw new ServiceUnavailableException(
+        `The test chat can't run: ${aiDeniedMessage(resolution)}.`,
+      );
     }
+    const access = resolution.access;
     const { config, tenant } = await withTenant(this.handle.db, workspace.tenantId, async (tx) => {
       const [tenant] = await tx.select().from(tenants).limit(1);
       const config = input.config ?? (await getDefaultPublishedPlaybook(tx))?.config;
@@ -78,9 +78,9 @@ export class SimulatorService {
     const timeZone = tenant?.timezone ?? 'Asia/Kolkata';
     const today = localToday(timeZone);
 
-    const { output, usage } = await this.llm.generateStructured({
-      model: this.env.AI_MODEL_CHAT,
-      reasoningEffort: this.env.AI_REASONING_EFFORT,
+    const { output, usage } = await access.llm.generateStructured({
+      model: access.model,
+      reasoningEffort: access.reasoningEffort,
       system: buildSystemPrompt(config, { allowedLanguages, defaultLanguage }),
       messages: toModelHistory(history),
       stateNote: buildStateNote({
@@ -135,7 +135,7 @@ export class SimulatorService {
         model: usage.model,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
-        costUsd: aiCostUsd(usage),
+        costUsd: await access.costOf(usage),
         latencyMs: usage.latencyMs,
       },
     });

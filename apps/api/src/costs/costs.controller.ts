@@ -1,5 +1,6 @@
 import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
 import { AI_PRICES_AS_OF, aiCostUsd } from '@qualify/core';
+import { AiService } from '../ai/ai.service';
 import { type DbHandle, sql, type Transaction, withTenant } from '@qualify/db';
 import { MetaApiError, type PricingAnalyticsPoint } from '@qualify/integrations';
 import {
@@ -45,6 +46,7 @@ export class CostsController {
   constructor(
     @Inject(DB) private readonly handle: DbHandle,
     @Inject(WhatsAppAccessService) private readonly whatsapp: WhatsAppAccessService,
+    @Inject(AiService) private readonly ai: AiService,
   ) {}
 
   @Get()
@@ -148,6 +150,8 @@ export class CostsController {
       { replies: number; inputTokens: number; cachedInputTokens: number; outputTokens: number }
     >();
     const dailyAi = new Map(bounds.days.map((day) => [day, { costUsd: 0, replies: 0 }]));
+    // Prices from the platform's list (D-094).
+    const { prices, asOf } = await this.ai.priceTable();
     for (const row of usage) {
       const model = row.model ?? 'unknown';
       const totals = byModel.get(model) ?? {
@@ -161,12 +165,15 @@ export class CostsController {
       totals.cachedInputTokens += row.cached;
       totals.outputTokens += row.output;
       byModel.set(model, totals);
-      const cost = aiCostUsd({
-        model,
-        inputTokens: row.input,
-        cachedInputTokens: row.cached,
-        outputTokens: row.output,
-      });
+      const cost = aiCostUsd(
+        {
+          model,
+          inputTokens: row.input,
+          cachedInputTokens: row.cached,
+          outputTokens: row.output,
+        },
+        prices,
+      );
       const day = dailyAi.get(row.day);
       if (day) {
         day.replies += row.replies;
@@ -176,7 +183,7 @@ export class CostsController {
     const models = [...byModel.entries()].map(([model, totals]) => ({
       model,
       ...totals,
-      costUsd: aiCostUsd({ model, ...totals }),
+      costUsd: aiCostUsd({ model, ...totals }, prices),
     }));
 
     const billable = (
@@ -211,7 +218,7 @@ export class CostsController {
         outputTokens: models.reduce((sum, model) => sum + model.outputTokens, 0),
         byModel: models.sort((a, b) => (b.costUsd ?? 0) - (a.costUsd ?? 0)),
         daily: [...dailyAi.entries()].map(([day, value]) => ({ day, ...value })),
-        pricesAsOf: AI_PRICES_AS_OF,
+        pricesAsOf: asOf ?? AI_PRICES_AS_OF,
       },
       billable: billable.map((row) => ({
         messageId: row.id,

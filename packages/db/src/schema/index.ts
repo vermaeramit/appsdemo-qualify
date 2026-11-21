@@ -9,3 +9,4 @@ export * from './media.ts';
 export * from './reports.ts';
 export * from './activity.ts';
 export * from './support.ts';
+export * from './ai.ts';

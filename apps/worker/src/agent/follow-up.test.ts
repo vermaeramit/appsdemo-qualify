@@ -18,6 +18,7 @@ import { ALLOWED, PHONE_NUMBER_ID, startTestDb, TENANT, type TestDb } from '../t
 import { processContact } from './contact.ts';
 import { type FollowUpDeps, type FollowUpScheduler, processFollowUp } from './follow-up.ts';
 import type { AgentMessagingClient } from './send.ts';
+import { testAi } from '../test/test-ai.ts';
 
 const masterKey = randomBytes(32);
 const lock = createMemoryLock();
@@ -72,9 +73,7 @@ function deps(overrides: Partial<FollowUpDeps> = {}): FollowUpDeps {
   return {
     db: testDb.app.db,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    llm: fakeLlm,
-    model: 'fake-model',
-    reasoningEffort: 'low',
+    ai: testAi(fakeLlm),
     masterKey,
     createClient: () => client as unknown as AgentMessagingClient,
     allowlist: [ALLOWED, ...PHONES],

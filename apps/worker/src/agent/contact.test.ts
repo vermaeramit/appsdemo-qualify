@@ -30,6 +30,7 @@ import {
 import { processContact, type ContactDeps } from './contact.ts';
 import { processRespond } from './respond.ts';
 import type { AgentMessagingClient } from './send.ts';
+import { testAi } from '../test/test-ai.ts';
 
 const masterKey = randomBytes(32);
 let testDb: TestDb;
@@ -268,9 +269,7 @@ describe('processContact (opening message)', () => {
       {
         db: testDb.app.db,
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-        llm,
-        model: 'fake',
-        reasoningEffort: 'low',
+        ai: testAi(llm, { model: 'fake' }),
         masterKey,
         createClient: () => client as unknown as AgentMessagingClient,
         allowlist: ['919800000011'],

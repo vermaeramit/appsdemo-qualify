@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { adminWorkspaceAiSchema } from './ai.js';
 
 /** GET /api/admin/overview — platform operator view across workspaces (M7). */
 export const adminOverviewSchema = z.object({
@@ -18,6 +19,8 @@ export const adminOverviewSchema = z.object({
       phone: z.string().nullable(),
       qualityRating: z.string().nullable(),
       webhooks: z.number().int(),
+      /** AI provider (D-094). */
+      ai: adminWorkspaceAiSchema,
     }),
   ),
   queues: z.array(

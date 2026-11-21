@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startTestDb, TENANT, type TestDb } from '../test/test-db.ts';
 import type { LeadFormClient } from './lead-forms.ts';
 import { processMetaEvent, type ProcessorDeps } from './process-meta-event.ts';
+import { testAi } from '../test/test-ai.ts';
 
 const masterKey = randomBytes(32);
 let testDb: TestDb;
@@ -64,9 +65,7 @@ function deps(): ProcessorDeps {
     leadForms: {
       masterKey,
       createClient: () => graph as unknown as LeadFormClient,
-      llm: null,
-      model: 'fake-model',
-      reasoningEffort: 'low',
+      ai: testAi(null),
       enqueueContact,
     },
   };

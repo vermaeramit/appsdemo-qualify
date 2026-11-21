@@ -239,6 +239,20 @@
       "when": 1795082269759,
       "tag": "0033_support_sessions_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795240167316,
+      "tag": "0034_ai_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1795240170007,
+      "tag": "0035_ai_settings_rls",
+      "breakpoints": true
     }
   ]
 }

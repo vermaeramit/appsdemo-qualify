@@ -25,13 +25,7 @@ import {
   whatsappAccounts,
   withTenant,
 } from '@qualify/db';
-import {
-  decryptSecret,
-  isAllowedRecipient,
-  type LlmClient,
-  type ReasoningEffort,
-  toWaId,
-} from '@qualify/integrations';
+import { decryptSecret, isAllowedRecipient, type AiResolver, toWaId } from '@qualify/integrations';
 import {
   type AgentLanguage,
   agentLanguageSchema,
@@ -130,9 +124,8 @@ export interface FollowUpDeps {
   emitLeadEvent?: EmitLeadEvent;
   db: Database;
   logger: Pick<Logger, 'info' | 'warn' | 'error'>;
-  llm: LlmClient | null;
-  model: string;
-  reasoningEffort: ReasoningEffort;
+  /** The workspace's AI (D-094): without it, follow-ups use the approved template. */
+  ai: AiResolver;
   masterKey: Buffer | null;
   createClient: (accessToken: string) => AgentMessagingClient;
   allowlist: readonly string[];
@@ -307,7 +300,13 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
   let outcome: FollowUpOutcome;
   let stored: { id: string; createdAt: Date };
 
-  if (windowOpen && deps.llm) {
+  // The workspace's AI writes the nudge inside the window; off or over its limit: template.
+  const resolution = windowOpen
+    ? await deps.ai.forTenant(job.tenantId, { purpose: 'follow_up', leadId: job.leadId })
+    : null;
+  const ai = resolution?.ok ? resolution.access : null;
+
+  if (windowOpen && ai) {
     // Inside the 24 h window: the AI writes a short, contextual nudge (free for the business).
     const allowedLanguages = (tenant?.allowedLanguages ?? ['hinglish', 'en', 'hi'])
       .map((code) => agentLanguageSchema.safeParse(code))
@@ -323,8 +322,8 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
       allowed: languages,
       fallback: defaultLanguage,
     });
-    const { output: turn, usage } = await deps.llm.generateStructured({
-      model: deps.model,
+    const { output: turn, usage } = await ai.llm.generateStructured({
+      model: ai.model,
       system: buildSystemPrompt(playbook.config, { allowedLanguages: languages, defaultLanguage }),
       messages: toModelHistory(history),
       stateNote: buildStateNote({
@@ -343,7 +342,7 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
         asked: confirmingIn(history.filter((m) => m.direction === 'outbound').at(-1)?.payload),
       }),
       schema: agentTurnSchema,
-      reasoningEffort: deps.reasoningEffort,
+      reasoningEffort: ai.reasoningEffort,
       cacheKey: `playbook:${playbook.versionId}`,
     });
     // A nudge may repeat the "is this right?" question (D-089).

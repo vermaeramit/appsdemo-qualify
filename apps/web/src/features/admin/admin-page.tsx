@@ -14,6 +14,7 @@ import { errorMessage, fetchJson } from '@/lib/api';
 import { meQueryOptions } from '@/lib/session';
 import { timeAgo } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { AiModelsCard, WorkspaceAiCell } from './ai-admin';
 import { OpenSupportDialog, SupportHistoryCard } from './support-access';
 
 const QUALITY: Record<string, string> = {
@@ -88,6 +89,7 @@ export function AdminPage() {
                   <TableHead>Number</TableHead>
                   <TableHead className="text-right">Webhooks</TableHead>
                   <TableHead>Last message</TableHead>
+                  <TableHead>AI</TableHead>
                   <TableHead>Support</TableHead>
                 </TableRow>
               </TableHeader>
@@ -132,6 +134,9 @@ export function AdminPage() {
                     <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                       {workspace.lastMessageAt ? timeAgo(workspace.lastMessageAt) : '—'}
                     </TableCell>
+                    <TableCell className="min-w-40">
+                      <WorkspaceAiCell workspace={workspace} />
+                    </TableCell>
                     <TableCell className="whitespace-nowrap">
                       {own.has(workspace.id) ? (
                         <span className="text-xs text-muted-foreground">Your workspace</span>
@@ -146,6 +151,8 @@ export function AdminPage() {
               </TableBody>
             </Table>
           </div>
+
+          <AiModelsCard />
 
           <SupportHistoryCard />
         </>

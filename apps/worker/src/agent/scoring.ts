@@ -1,6 +1,6 @@
 import { buildSummaryRequest, type HistoryMessage, leadScoreColumns } from '@qualify/core';
 import { type Database, eq, leads, withTenant } from '@qualify/db';
-import type { LlmClient, ReasoningEffort } from '@qualify/integrations';
+import type { AiResolver } from '@qualify/integrations';
 import type { LeadScoreDetails, PlaybookConfig } from '@qualify/shared';
 import type { Logger } from '../logger.ts';
 
@@ -17,9 +17,7 @@ export const FINAL_STATUSES = new Set(['qualified', 'handoff', 'disqualified', '
 export async function writeSummary(
   deps: {
     db: Database;
-    llm: LlmClient | null;
-    model: string;
-    reasoningEffort: ReasoningEffort;
+    ai: AiResolver;
     logger: Pick<Logger, 'info' | 'warn' | 'error'>;
   },
   input: {
@@ -31,14 +29,21 @@ export async function writeSummary(
     scoreDetails: LeadScoreDetails;
   },
 ): Promise<void> {
-  if (!deps.llm || !input.history.some((message) => message.direction === 'inbound')) return;
+  if (!input.history.some((message) => message.direction === 'inbound')) return;
   try {
+    // The workspace's AI (D-094); no summary when it is off or over its limit.
+    const resolution = await deps.ai.forTenant(input.tenantId, {
+      purpose: 'summary',
+      leadId: input.leadId,
+    });
+    if (!resolution.ok) return;
+    const ai = resolution.access;
     const request = buildSummaryRequest(input.config, input.history, input.fields);
-    const { text, usage } = await deps.llm.generateText({
-      model: deps.model,
+    const { text, usage } = await ai.llm.generateText({
+      model: ai.model,
       system: request.system,
       messages: [{ role: 'user', content: request.prompt }],
-      reasoningEffort: deps.reasoningEffort,
+      reasoningEffort: ai.reasoningEffort,
     });
     await withTenant(deps.db, input.tenantId, (tx) =>
       tx

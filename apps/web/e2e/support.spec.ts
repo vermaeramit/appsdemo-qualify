@@ -117,3 +117,52 @@ test('support access: read-only visit to a client workspace, recorded on both si
   await opened.click();
   await expect(client.getByText('E2E: the client asked why a lead got no reply')).toBeVisible();
 });
+
+// D-094: for a client without an OpenAI account, the platform admin switches on AppsDemo's key
+// with a monthly limit; the client sees it in Settings and Logs, and it can be switched off again.
+test("AI access: the platform admin switches AppsDemo's key on and off for a client", async ({
+  browser,
+}) => {
+  test.skip(!ADMIN_EMAIL, 'Set E2E_PLATFORM_ADMIN_EMAIL to an address in PLATFORM_ADMIN_EMAILS');
+  const unique = Date.now().toString(36);
+  const clientName = `E2E AI Client ${unique}`;
+  const client = await (await browser.newContext()).newPage();
+  await signUp(client, 'E2E AI Owner', `e2e-ai-client-${unique}@example.com`, clientName);
+  await client.getByRole('link', { name: 'Settings' }).click();
+  await expect(client.getByText('AI off', { exact: true })).toBeVisible();
+
+  const admin = await (await browser.newContext()).newPage();
+  await signInAdmin(admin, ADMIN_EMAIL!);
+  await admin.goto('/admin');
+  // The price list is there, with the model clients get by default.
+  await expect(admin.getByText('AI models & prices')).toBeVisible();
+  await expect(admin.getByRole('cell', { name: /^gpt-5\.4-mini/ })).toBeVisible();
+
+  const row = admin.getByRole('row').filter({ hasText: clientName });
+  await expect(row.getByText('AI off')).toBeVisible();
+  await row.getByRole('button', { name: `Manage AI for ${clientName}` }).click();
+  const dialog = admin.getByRole('dialog');
+  await dialog.getByLabel('Monthly limit (USD)').fill('5');
+  await dialog.getByRole('button', { name: "Use AppsDemo's key" }).click();
+  await expect(row.getByText("AppsDemo's key")).toBeVisible();
+  await expect(row.getByText(/\$0 \/ \$5/)).toBeVisible();
+
+  // The client sees AppsDemo's key, the limit, and the change in its Logs.
+  await client.reload();
+  await expect(client.getByText("AppsDemo's key", { exact: true })).toBeVisible();
+  await expect(client.getByText('$0 of $5')).toBeVisible();
+  await expect(client.getByText('AppsDemo provides the AI for this workspace')).toBeVisible();
+  await client.getByRole('link', { name: 'Logs' }).click();
+  await expect(
+    client.getByText(
+      "E2E Support from platform support switched on AppsDemo's AI key for this workspace",
+    ),
+  ).toBeVisible();
+
+  // Off again: no own key saved, so the AI is off.
+  await row.getByRole('button', { name: `Manage AI for ${clientName}` }).click();
+  await admin.getByRole('dialog').getByRole('button', { name: "Stop AppsDemo's key" }).click();
+  await expect(row.getByText('AI off')).toBeVisible();
+  await client.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(client.getByText('AI off', { exact: true })).toBeVisible();
+});

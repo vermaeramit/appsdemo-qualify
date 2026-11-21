@@ -1,8 +1,24 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { count, type DbHandle, member, organization, sql, withTenant } from '@qualify/db';
 import {
   type AdminOverview,
   adminOverviewSchema,
+  type AdminWorkspaceAi,
+  type AiModelList,
+  type ImportedAiPrices,
+  saveAiModelsSchema,
+  setWorkspaceAiSchema,
   openSupportAccessSchema,
   type SupportHistory,
   CONTACT_QUEUE,
@@ -23,6 +39,7 @@ import { parseBody } from '../common/zod-body';
 import type { Env } from '../config/env';
 import { REDIS } from '../queue/queue.module';
 import { DB, ENV } from '../tokens';
+import { AiService } from '../ai/ai.service';
 import { SupportService } from './support.service';
 
 const QUEUE_NAMES = [
@@ -45,6 +62,10 @@ type Stats = {
   phone: string | null;
   quality: string | null;
   webhooks: number;
+  ai_mode: 'off' | 'own_key' | 'platform' | null;
+  ai_model: string | null;
+  ai_limit: number | null;
+  ai_spent: number;
 };
 
 /**
@@ -61,6 +82,7 @@ export class AdminController {
     @Inject(ENV) private readonly env: Env,
     @Inject(REDIS) redis: Redis,
     @Inject(SupportService) private readonly support: SupportService,
+    @Inject(AiService) private readonly ai: AiService,
   ) {
     this.queues = QUEUE_NAMES.map((name) => new Queue(name, { connection: redis }));
   }
@@ -99,7 +121,14 @@ export class AdminController {
               (select max(created_at)::text from messages) as last_message_at,
               (select display_phone from phone_numbers where status = 'active' limit 1) as phone,
               (select quality_rating from phone_numbers where status = 'active' limit 1) as quality,
-              (select count(*)::int from webhook_endpoints where active) as webhooks`),
+              (select count(*)::int from webhook_endpoints where active) as webhooks,
+              (select mode from ai_settings limit 1) as ai_mode,
+              (select model from ai_settings limit 1) as ai_model,
+              (select monthly_limit_usd from ai_settings limit 1) as ai_limit,
+              (select coalesce(sum(u.cost_usd), 0)::float8 from ai_usage u
+                where u.key_source = 'platform'
+                  and u.at >= (select date_trunc('month', now() at time zone t.timezone)
+                                      at time zone t.timezone from tenants t limit 1)) as ai_spent`),
         )
       ).rows;
       workspaces.push({
@@ -119,6 +148,12 @@ export class AdminController {
         phone: stats?.phone ?? null,
         qualityRating: stats?.quality ?? null,
         webhooks: stats?.webhooks ?? 0,
+        ai: this.ai.overviewAi({
+          mode: stats?.ai_mode ?? null,
+          model: stats?.ai_model ?? null,
+          monthlyLimitUsd: stats?.ai_limit ?? null,
+          spentUsd: stats?.ai_spent ?? 0,
+        }),
       });
     }
 
@@ -168,5 +203,46 @@ export class AdminController {
     // No admin check: someone removed from PLATFORM_ADMIN_EMAILS must still be able to leave.
     await this.support.exit(current);
     return { ok: true };
+  }
+
+  // ── AI models, prices and AppsDemo's key per workspace (D-094) ──────────────────────────
+
+  @Get('ai/models')
+  async aiModels(@CurrentSession() current: AuthSession): Promise<AiModelList> {
+    requirePlatformAdmin(this.env, current.user.email);
+    return { models: await this.ai.models() };
+  }
+
+  /** Adds or updates models (prices, label, whether workspaces may pick them). */
+  @Put('ai/models')
+  async saveAiModels(
+    @CurrentSession() current: AuthSession,
+    @Body() body: unknown,
+  ): Promise<AiModelList> {
+    requirePlatformAdmin(this.env, current.user.email);
+    return { models: await this.ai.saveModels(parseBody(saveAiModelsSchema, body)) };
+  }
+
+  /** Current OpenAI list prices (from OpenRouter) next to ours, to review before saving. */
+  @Post('ai/models/import')
+  @HttpCode(200)
+  importAiPrices(@CurrentSession() current: AuthSession): Promise<ImportedAiPrices> {
+    requirePlatformAdmin(this.env, current.user.email);
+    return this.ai.importPrices();
+  }
+
+  /** AppsDemo's key on for a workspace (model, monthly limit), or off again. */
+  @Put('workspaces/:id/ai')
+  setWorkspaceAi(
+    @CurrentSession() current: AuthSession,
+    @Param('id') workspaceId: string,
+    @Body() body: unknown,
+  ): Promise<AdminWorkspaceAi> {
+    requirePlatformAdmin(this.env, current.user.email);
+    return this.ai.setWorkspaceAi(
+      workspaceId,
+      parseBody(setWorkspaceAiSchema, body),
+      current.user.name,
+    );
   }
 }

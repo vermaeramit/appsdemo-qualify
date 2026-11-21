@@ -1,12 +1,13 @@
 // Integration test of the AI respond engine: real Postgres (RLS), fake LLM, fake WhatsApp.
 import { randomBytes } from 'node:crypto';
 import { eq, leads, messages, withTenant } from '@qualify/db';
-import type { LlmClient, StructuredRequest } from '@qualify/integrations';
+import type { AiUsageRecord, LlmClient, StructuredRequest } from '@qualify/integrations';
 import type { AgentTurn, RespondJob } from '@qualify/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
 import { createActivityRecorder } from '../activity.ts';
 import { createMemoryLock } from '../lock.ts';
+import { testAi } from '../test/test-ai.ts';
 import type { FollowUpScheduler } from './follow-up.ts';
 import {
   activityOf,
@@ -88,9 +89,7 @@ function deps(overrides: Partial<RespondDeps> = {}): RespondDeps {
   return {
     db: testDb.app.db,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    llm: fakeLlm,
-    model: 'fake-model',
-    reasoningEffort: 'low',
+    ai: testAi(fakeLlm),
     masterKey,
     createClient: () => client as unknown as AgentMessagingClient,
     allowlist: [
@@ -436,10 +435,53 @@ describe('processRespond', () => {
     ).toMatchObject({ level: 'error', message: 'AI reply not sent: network down' });
   });
 
-  it('stays silent when no AI provider is configured', async () => {
-    const id = await createLead('919800000007', 'Hi');
-    expect(await processRespond({ tenantId: TENANT, leadId: id }, deps({ llm: null }))).toBe(
-      'skipped_no_ai',
+  it('stays silent when the AI is off for the workspace, and says why (D-094)', async () => {
+    const id = await createLead('919811177711', 'Hi');
+    expect(
+      await processRespond(
+        { tenantId: TENANT, leadId: id },
+        deps({ ai: testAi(null), allowlist: ['919811177711'] }),
+      ),
+    ).toBe('skipped_no_ai');
+    expect(
+      (await activityOf(testDb.app.db, id)).find((entry) => entry.kind === 'agent.skipped'),
+    ).toMatchObject({
+      level: 'error',
+      message: expect.stringContaining('the AI is off for this workspace'),
+    });
+  });
+
+  it("stops at the monthly limit on AppsDemo's key, and records usage below it (D-094)", async () => {
+    const over = await createLead('919811177712', 'Hi');
+    const limited = testAi(fakeLlm, {
+      state: { mode: 'platform', monthlyLimitUsd: 2, platformSpentUsd: 2.5 },
+    });
+    expect(
+      await processRespond(
+        { tenantId: TENANT, leadId: over },
+        deps({ ai: limited, allowlist: ['919811177712'] }),
+      ),
+    ).toBe('skipped_no_ai');
+    expect(
+      (await activityOf(testDb.app.db, over)).find((entry) => entry.kind === 'agent.skipped'),
+    ).toMatchObject({
+      level: 'warn',
+      message: expect.stringContaining('AI limit ($2)'),
+      detail: { 'Spent this month': '$2.50', 'Monthly limit': '$2' },
+    });
+
+    const records: AiUsageRecord[] = [];
+    const under = await createLead('919811177713', 'Hi');
+    await processRespond(
+      { tenantId: TENANT, leadId: under },
+      deps({ ai: testAi(fakeLlm, { records }), allowlist: ['919811177713'] }),
     );
+    expect(records[0]).toMatchObject({
+      tenantId: TENANT,
+      leadId: under,
+      purpose: 'reply',
+      model: 'fake-model',
+      keySource: 'platform',
+    });
   });
 });
