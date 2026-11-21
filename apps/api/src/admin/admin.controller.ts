@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Inject,
@@ -18,7 +19,10 @@ import {
   type AiModelList,
   type ImportedAiPrices,
   saveAiModelsSchema,
+  saveSmtpSettingsSchema,
+  sendTestEmailSchema,
   setWorkspaceAiSchema,
+  type SmtpSettingsView,
   openSupportAccessSchema,
   type SupportHistory,
   CONTACT_QUEUE,
@@ -40,6 +44,7 @@ import type { Env } from '../config/env';
 import { REDIS } from '../queue/queue.module';
 import { DB, ENV } from '../tokens';
 import { AiService } from '../ai/ai.service';
+import { EmailSettingsService } from './email-settings.service';
 import { SupportService } from './support.service';
 
 const QUEUE_NAMES = [
@@ -83,6 +88,7 @@ export class AdminController {
     @Inject(REDIS) redis: Redis,
     @Inject(SupportService) private readonly support: SupportService,
     @Inject(AiService) private readonly ai: AiService,
+    @Inject(EmailSettingsService) private readonly email: EmailSettingsService,
   ) {
     this.queues = QUEUE_NAMES.map((name) => new Queue(name, { connection: redis }));
   }
@@ -244,5 +250,40 @@ export class AdminController {
       parseBody(setWorkspaceAiSchema, body),
       current.user.name,
     );
+  }
+
+  // ── The platform's SMTP server for the e-mails it sends (D-095) ─────────────────────────
+
+  @Get('email')
+  emailSettings(@CurrentSession() current: AuthSession): Promise<SmtpSettingsView> {
+    requirePlatformAdmin(this.env, current.user.email);
+    return this.email.view(current.user.email);
+  }
+
+  /** Saves the SMTP server once it accepts the connection (password left empty = keep it). */
+  @Put('email')
+  async saveEmailSettings(
+    @CurrentSession() current: AuthSession,
+    @Body() body: unknown,
+  ): Promise<SmtpSettingsView> {
+    requirePlatformAdmin(this.env, current.user.email);
+    await this.email.save(parseBody(saveSmtpSettingsSchema, body), current.user.name);
+    return this.email.view(current.user.email);
+  }
+
+  /** Removes the saved server: SMTP_URL / MAIL_FROM from the .env apply again. */
+  @Delete('email')
+  async clearEmailSettings(@CurrentSession() current: AuthSession): Promise<SmtpSettingsView> {
+    requirePlatformAdmin(this.env, current.user.email);
+    await this.email.clear(current.user.name);
+    return this.email.view(current.user.email);
+  }
+
+  @Post('email/test')
+  @HttpCode(200)
+  sendTestEmail(@CurrentSession() current: AuthSession, @Body() body: unknown) {
+    requirePlatformAdmin(this.env, current.user.email);
+    const { to } = parseBody(sendTestEmailSchema, body ?? {});
+    return this.email.sendTest(to ?? current.user.email);
   }
 }

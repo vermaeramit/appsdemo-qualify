@@ -1,14 +1,8 @@
 import './load-env.ts';
 import { createDb, pruneActivity } from '@qualify/db';
 import { createWorkerAi } from './ai.ts';
-import {
-  ALLOW_ALL,
-  createMailer,
-  parseAllowlist,
-  parseMasterKey,
-  resolveMailSettings,
-  WhatsAppClient,
-} from '@qualify/integrations';
+import { createMailSource } from './mail.ts';
+import { ALLOW_ALL, parseAllowlist, parseMasterKey, WhatsAppClient } from '@qualify/integrations';
 import {
   ACTIVITY_PRUNE_QUEUE,
   ACTIVITY_RETENTION_DAYS,
@@ -108,15 +102,16 @@ if (!isProduction) {
     );
   }
 }
-const mail = resolveMailSettings({
+/** Scheduled reports: the admin's SMTP server, else SMTP_URL, else Mailpit in development (D-095). */
+const mailer = createMailSource({
+  db,
+  logger,
+  masterKey,
   production: isProduction,
   appName: env.APP_NAME,
   smtpUrl: env.SMTP_URL,
   mailFrom: env.MAIL_FROM,
 });
-const mailer = 'off' in mail ? null : createMailer({ url: mail.url, from: mail.from });
-if ('off' in mail) logger.warn(mail.off);
-else logger.info({ smtp: new URL(mail.url).host }, 'Scheduled e-mail reports enabled');
 if (!masterKey) logger.warn('ENCRYPTION_MASTER_KEY not set: messages are stored but not answered');
 logger.info(
   { defaultModel: env.AI_MODEL_CHAT, reasoningEffort: env.AI_REASONING_EFFORT },

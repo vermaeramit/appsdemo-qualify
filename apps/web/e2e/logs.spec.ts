@@ -17,7 +17,7 @@ test('activity log: conversation Activity panel and the Logs page with filters',
   await expect(page).toHaveURL(/\/$/);
 
   // A lead added from the dashboard.
-  await page.getByRole('link', { name: 'Conversations' }).click();
+  await page.getByRole('link', { name: 'Conversations', exact: true }).click();
   await page.getByRole('button', { name: 'Add lead' }).click();
   await page.getByLabel('WhatsApp number').fill('+91 99999 1' + String(Date.now()).slice(-4));
   await page.getByLabel('Name', { exact: true }).fill('Log Lead');

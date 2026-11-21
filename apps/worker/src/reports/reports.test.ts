@@ -31,7 +31,7 @@ const mailer: Mailer = {
 const deps = () => ({
   db: testDb.app.db,
   logger,
-  mailer,
+  mailer: async () => mailer,
   appBaseUrl: 'https://qualify.example.com',
   productName: 'AppsDemo Qualify',
 });
@@ -223,7 +223,9 @@ describe('report send', () => {
   it('fails clearly when e-mail is not set up', async () => {
     const report = await createReport();
     const job = await manualRun(report.id);
-    expect(await processReportSend(job, once, { ...deps(), mailer: null })).toBe('failed');
+    expect(await processReportSend(job, once, { ...deps(), mailer: async () => null })).toBe(
+      'failed',
+    );
     expect((await runRow(job.runId)).error).toMatch(/SMTP_URL/);
   });
 });

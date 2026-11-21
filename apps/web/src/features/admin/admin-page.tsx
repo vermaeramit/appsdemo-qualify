@@ -15,6 +15,7 @@ import { meQueryOptions } from '@/lib/session';
 import { timeAgo } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { AiModelsCard, WorkspaceAiCell } from './ai-admin';
+import { EmailSettingsCard } from './email-settings-card';
 import { OpenSupportDialog, SupportHistoryCard } from './support-access';
 
 const QUALITY: Record<string, string> = {
@@ -153,6 +154,8 @@ export function AdminPage() {
           </div>
 
           <AiModelsCard />
+
+          <EmailSettingsCard />
 
           <SupportHistoryCard />
         </>

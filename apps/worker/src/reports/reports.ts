@@ -46,8 +46,8 @@ export class ReportRetryError extends Error {}
 export interface ReportDeps {
   db: Database;
   logger: Pick<Logger, 'info' | 'warn' | 'error'>;
-  /** Null when SMTP_URL isn't set: runs are marked failed with a clear message. */
-  mailer: Mailer | null;
+  /** The current mailer (D-095); null when no SMTP server is set: runs fail with a clear message. */
+  mailer: () => Promise<Mailer | null>;
   appBaseUrl: string;
   productName: string;
 }
@@ -150,10 +150,11 @@ export async function processReportSend(
     return row ?? null;
   });
   if (!run) return 'gone';
-  if (!deps.mailer) {
+  const mailer = await deps.mailer();
+  if (!mailer) {
     await markRun(deps, job, {
       status: 'failed',
-      error: 'E-mail sending is not set up on the server (SMTP_URL).',
+      error: 'E-mail sending is not set up (Platform admin → Email, or SMTP_URL on the server).',
     });
     return 'failed';
   }
@@ -240,7 +241,7 @@ export async function processReportSend(
   });
 
   try {
-    const sent = await deps.mailer.send({
+    const sent = await mailer.send({
       to: run.recipients,
       subject: email.subject,
       html: email.html,

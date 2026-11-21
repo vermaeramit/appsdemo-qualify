@@ -253,6 +253,13 @@
       "when": 1795240170007,
       "tag": "0035_ai_settings_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795250460145,
+      "tag": "0036_smtp_settings",
+      "breakpoints": true
     }
   ]
 }

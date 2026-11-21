@@ -20,7 +20,6 @@ import {
   type Transaction,
   withTenant,
 } from '@qualify/db';
-import { resolveMailSettings } from '@qualify/integrations';
 import {
   type CreateEmailReport,
   type EmailReport,
@@ -40,6 +39,7 @@ import type { WorkspaceContext } from '../auth/workspace.guard';
 import { postgresTimeZone } from '../common/time-zone';
 import type { Env } from '../config/env';
 import { REPORT_SEND_QUEUE_TOKEN } from '../queue/queue.module';
+import { EmailSettingsService } from '../admin/email-settings.service';
 import { DB, ENV } from '../tokens';
 
 /** A workspace keeps a handful of reports; more is a sign of misuse. */
@@ -90,20 +90,8 @@ export class ReportsService {
     @Inject(DB) private readonly handle: DbHandle,
     @Inject(ENV) private readonly env: Env,
     @Inject(REPORT_SEND_QUEUE_TOKEN) private readonly sendQueue: Queue<ReportSendJob>,
+    @Inject(EmailSettingsService) private readonly email: EmailSettingsService,
   ) {}
-
-  /** Whether the server can send e-mail (same rule as the worker). */
-  get emailConfigured(): boolean {
-    return !(
-      'off' in
-      resolveMailSettings({
-        production: this.env.NODE_ENV === 'production',
-        appName: this.env.APP_NAME,
-        smtpUrl: this.env.SMTP_URL,
-        mailFrom: this.env.MAIL_FROM,
-      })
-    );
-  }
 
   async list(workspace: WorkspaceContext): Promise<EmailReportList> {
     const reports = await withTenant(this.handle.db, workspace.tenantId, async (tx) => {
@@ -121,7 +109,10 @@ export class ReportsService {
         ),
       );
     });
-    return emailReportListSchema.parse({ reports, emailConfigured: this.emailConfigured });
+    return emailReportListSchema.parse({
+      reports,
+      emailConfigured: await this.email.isConfigured(),
+    });
   }
 
   async create(workspace: WorkspaceContext, input: CreateEmailReport): Promise<EmailReport> {
@@ -211,8 +202,8 @@ export class ReportsService {
 
   /** "Send now": the current period so far, e-mailed by the worker within seconds. */
   async sendNow(workspace: WorkspaceContext, id: string): Promise<EmailReportRun> {
-    if (!this.emailConfigured) {
-      throw new BadRequestException('E-mail sending is not set up on this server');
+    if (!(await this.email.isConfigured())) {
+      throw new BadRequestException('E-mail sending is not set up (Platform admin → Email)');
     }
     const run = await withTenant(this.handle.db, workspace.tenantId, async (tx) => {
       await this.find(tx, id);

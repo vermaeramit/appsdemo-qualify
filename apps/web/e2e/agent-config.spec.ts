@@ -170,7 +170,7 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
   );
 
   // Add a lead like a lead form would; it opens in Conversations.
-  await page.getByRole('link', { name: 'Conversations' }).click();
+  await page.getByRole('link', { name: 'Conversations', exact: true }).click();
   await page.getByRole('button', { name: 'Add lead' }).click();
   await page.getByLabel('WhatsApp number').fill('+91 99999 0' + String(Date.now()).slice(-4));
   await page.getByLabel('Name', { exact: true }).fill('Form Lead');

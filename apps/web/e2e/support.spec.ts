@@ -47,7 +47,7 @@ test('support access: read-only visit to a client workspace, recorded on both si
   // The client: a workspace with one lead (no WhatsApp number, so nothing is sent).
   const client = await (await browser.newContext()).newPage();
   await signUp(client, 'E2E Client Owner', `e2e-client-${unique}@example.com`, clientName);
-  await client.getByRole('link', { name: 'Conversations' }).click();
+  await client.getByRole('link', { name: 'Conversations', exact: true }).click();
   await client.getByRole('button', { name: 'Add lead' }).click();
   await client.getByLabel('WhatsApp number').fill('+91 99999 2' + String(Date.now()).slice(-4));
   await client.getByLabel('Name', { exact: true }).fill('Support Lead');
@@ -165,4 +165,53 @@ test("AI access: the platform admin switches AppsDemo's key on and off for a cli
   await expect(row.getByText('AI off')).toBeVisible();
   await client.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(client.getByText('AI off', { exact: true })).toBeVisible();
+});
+
+// D-095: the platform's SMTP server is set on the admin page: checked before saving, a test
+// e-mail goes through it (Mailpit in the dev stack), and removing it falls back to the .env.
+test('Email settings: save an SMTP server, send a test e-mail, remove it', async ({
+  browser,
+  request,
+}) => {
+  test.skip(!ADMIN_EMAIL, 'Set E2E_PLATFORM_ADMIN_EMAIL to an address in PLATFORM_ADMIN_EMAILS');
+  const admin = await (await browser.newContext()).newPage();
+  await signInAdmin(admin, ADMIN_EMAIL!);
+  await admin.goto('/admin');
+  await expect(admin.getByText('Email (SMTP)')).toBeVisible();
+
+  // A server that refuses the connection is not saved.
+  await admin.getByLabel('SMTP server', { exact: true }).fill('localhost');
+  await admin.getByRole('combobox', { name: 'Security' }).click();
+  await admin.getByRole('option', { name: /None/ }).click();
+  await admin.getByLabel('Port', { exact: true }).fill('1');
+  await admin.getByLabel('Sender name', { exact: true }).fill('E2E Reports');
+  await admin.getByLabel('Sender e-mail', { exact: true }).fill('reports@e2e.test');
+  await admin.getByRole('button', { name: 'Check connection and save' }).click();
+  await expect(admin.getByText(/The SMTP server refused the connection/)).toBeVisible();
+
+  // Mailpit (the dev stack's SMTP) is accepted, saved, and carries the test e-mail.
+  await admin.getByLabel('Port', { exact: true }).fill('1025');
+  await admin.getByRole('button', { name: 'Check connection and save' }).click();
+  await expect(
+    admin.getByText('The SMTP server accepted the connection. Settings saved.'),
+  ).toBeVisible();
+  await expect(admin.getByText('Sending', { exact: true })).toBeVisible();
+  const recipient = `smtp-test-${Date.now().toString(36)}@example.com`;
+  await admin.getByLabel('Send a test e-mail to', { exact: true }).fill(recipient);
+  await admin.getByRole('button', { name: 'Send test e-mail' }).click();
+  await expect(admin.getByText(`Test e-mail sent to ${recipient}`)).toBeVisible();
+  await expect
+    .poll(async () => {
+      const response = await request.get(
+        `http://localhost:8025/api/v1/search?query=${encodeURIComponent(`to:${recipient}`)}`,
+      );
+      const body = (await response.json()) as { messages: { From: { Name: string } }[] };
+      return body.messages[0]?.From.Name ?? null;
+    })
+    .toBe('E2E Reports');
+
+  // Removed: back to the development default.
+  await admin.getByRole('button', { name: 'Remove saved server' }).click();
+  await admin.getByRole('alertdialog').getByRole('button', { name: 'Remove' }).click();
+  await expect(admin.getByText('Development', { exact: true })).toBeVisible();
 });

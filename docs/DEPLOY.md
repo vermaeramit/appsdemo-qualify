@@ -14,7 +14,7 @@ built by GitHub Actions and pulled from GHCR. Files: [`Dockerfile`](../Dockerfil
 - The Meta app values (`docs/META_SETUP.md`) and an OpenAI API key.
 - For scheduled e-mail reports: an SMTP account at a transactional e-mail provider (Brevo,
   ZeptoMail or Amazon SES) with the sender domain verified (SPF and DKIM records in DNS). Put its
-  URL in `SMTP_URL` and the sender in `MAIL_FROM`. Without them reports are kept but not sent, and
+  URL in `SMTP_URL` and the sender in `MAIL_FROM`, or enter the server on the platform admin page (Email (SMTP), D-095), which takes precedence. Without them reports are kept but not sent, and
   the Integrations page says so.
 
 ## 2. Prepare the server (once)

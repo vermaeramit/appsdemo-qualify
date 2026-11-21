@@ -135,6 +135,7 @@ Platform
 | `audit_logs` | actor, tenant_id, action, target, at |
 | `ai_settings` | tenant_id (pk), mode (off / own_key / platform), api_key_enc (AES-256-GCM), api_key_hint, model, monthly_limit_usd, platform_by; RLS; no row = off (D-094) |
 | `ai_usage` | tenant_id, at, lead_id, purpose (reply / follow_up / summary / form_mapping / test_chat), model, key_source (own / platform), tokens, cost_usd; RLS, append-only for the app (D-094) |
+| `smtp_settings` | platform-level, one row: host, port, security (starttls / ssl / none), username, password_enc (AES-256-GCM), from_name, from_email, updated_by; set on the admin page (D-095) |
 | `ai_models` | platform-level price list: id, label, input/cached/output USD per 1M tokens, enabled (clients may pick), source (manual / openrouter), prices_updated_at (D-094) |
 | `support_sessions` | tenant_id, admin (id, name and e-mail copied), auth_session_id, return_workspace_id, reason, started_at, expires_at, ended_at, ip, user agent, viewed_lead_ids; RLS; the app may only insert and set ended_at / viewed_lead_ids (D-092) |
 

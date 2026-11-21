@@ -22,3 +22,4 @@ export * from './agents.js';
 export * from './reports.js';
 export * from './activity.js';
 export * from './ai.js';
+export * from './email-settings.js';
