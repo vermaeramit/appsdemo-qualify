@@ -203,7 +203,7 @@ function WorkspaceAiDialog({
   );
 }
 
-type Draft = Pick<AiModel, 'id' | 'label' | 'enabled'> & {
+type Draft = Pick<AiModel, 'id' | 'label' | 'enabled' | 'source'> & {
   inputUsd: string;
   cachedUsd: string;
   outputUsd: string;
@@ -213,10 +213,115 @@ const toDraft = (model: AiModel): Draft => ({
   id: model.id,
   label: model.label,
   enabled: model.enabled,
+  source: model.source,
   inputUsd: String(model.inputUsd),
   cachedUsd: String(model.cachedUsd),
   outputUsd: String(model.outputUsd),
 });
+
+const EMPTY_DRAFT: Draft = {
+  id: '',
+  label: null,
+  enabled: true,
+  source: 'manual',
+  inputUsd: '',
+  cachedUsd: '',
+  outputUsd: '',
+};
+
+/** OpenAI models with their list prices (the same list "Import latest prices" uses). */
+const catalogQueryOptions = queryOptions({
+  queryKey: ['admin', 'ai-catalog'] as const,
+  queryFn: () => apiSend('POST', '/api/admin/ai/models/import', undefined, importedAiPricesSchema),
+  staleTime: 10 * 60_000,
+});
+
+const MANUAL = '__manual';
+
+/**
+ * The new row's model: a dropdown of OpenAI models not in the list yet (picking one fills its
+ * label and prices), or "Other" to type an id.
+ */
+function NewModelPicker({ draft, onChange }: { draft: Draft; onChange: (draft: Draft) => void }) {
+  const catalog = useQuery(catalogQueryOptions);
+  const [typing, setTyping] = useState(false);
+  const choices = (catalog.data?.models ?? []).filter((model) => model.current === null);
+
+  if (typing || catalog.isError) {
+    return (
+      <div className="space-y-1">
+        <Input
+          aria-label="New model id"
+          placeholder="gpt-…"
+          value={draft.id}
+          onChange={(event) => onChange({ ...draft, id: event.target.value, source: 'manual' })}
+          className="h-8 font-mono text-xs"
+        />
+        {catalog.isError ? (
+          <p className="text-xs text-muted-foreground">
+            Couldn't load OpenAI's models: type the id.
+          </p>
+        ) : (
+          <button
+            type="button"
+            className="text-xs text-primary hover:underline"
+            onClick={() => setTyping(false)}
+          >
+            Pick from the list
+          </button>
+        )}
+      </div>
+    );
+  }
+  if (catalog.isPending) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" />
+        Loading OpenAI models…
+      </div>
+    );
+  }
+  return (
+    <Select
+      value={draft.id || undefined}
+      onValueChange={(id) => {
+        if (id === MANUAL) {
+          setTyping(true);
+          onChange({ ...EMPTY_DRAFT, enabled: draft.enabled });
+          return;
+        }
+        const model = choices.find((choice) => choice.id === id);
+        if (!model) return;
+        onChange({
+          ...draft,
+          id: model.id,
+          label: model.label,
+          source: 'openrouter',
+          inputUsd: String(model.inputUsd),
+          cachedUsd: String(model.cachedUsd),
+          outputUsd: String(model.outputUsd),
+        });
+      }}
+    >
+      <SelectTrigger aria-label="New model" className="h-8 w-64 font-mono text-xs">
+        <SelectValue placeholder="Choose an OpenAI model" />
+      </SelectTrigger>
+      <SelectContent className="max-h-80">
+        {choices.map((model) => (
+          <SelectItem key={model.id} value={model.id} className="font-mono text-xs">
+            {model.id}
+            <span className="ml-2 font-sans text-muted-foreground">
+              {money(model.inputUsd)} in / {money(model.outputUsd)} out
+            </span>
+          </SelectItem>
+        ))}
+        <SelectItem value={MANUAL} className="text-xs">
+          Other (type the id)
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
 
 const priceOk = (value: string) =>
   value.trim() !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
@@ -259,7 +364,7 @@ export function AiModelsCard() {
     inputUsd: Number(draft.inputUsd),
     cachedUsd: Number(draft.cachedUsd),
     outputUsd: Number(draft.outputUsd),
-    source: 'manual' as const,
+    source: draft.source,
   });
 
   return (
@@ -284,20 +389,7 @@ export function AiModelsCard() {
             )}
             Import latest prices
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              setAdding({
-                id: '',
-                label: null,
-                enabled: true,
-                inputUsd: '',
-                cachedUsd: '',
-                outputUsd: '',
-              })
-            }
-          >
+          <Button size="sm" variant="outline" onClick={() => setAdding(EMPTY_DRAFT)}>
             <Plus data-icon="inline-start" />
             Add model
           </Button>
@@ -332,7 +424,14 @@ export function AiModelsCard() {
                   const original = query.data.models.find((model) => model.id === draft.id);
                   const update = (patch: Partial<Draft>) =>
                     isNew
-                      ? setAdding({ ...draft, ...patch })
+                      ? // A price typed by hand is no longer the imported list price.
+                        setAdding({
+                          ...draft,
+                          ...patch,
+                          ...('inputUsd' in patch || 'cachedUsd' in patch || 'outputUsd' in patch
+                            ? { source: 'manual' as const }
+                            : {}),
+                        })
                       : setDrafts((current) => ({
                           ...current,
                           [draft.id]: { ...draft, ...patch },
@@ -341,13 +440,7 @@ export function AiModelsCard() {
                     <TableRow key={isNew ? '__new' : draft.id}>
                       <TableCell className="min-w-44">
                         {isNew ? (
-                          <Input
-                            aria-label="New model id"
-                            placeholder="gpt-…"
-                            value={draft.id}
-                            onChange={(event) => update({ id: event.target.value })}
-                            className="h-8 font-mono text-xs"
-                          />
+                          <NewModelPicker draft={draft} onChange={setAdding} />
                         ) : (
                           <>
                             <div className="font-mono text-xs font-medium">{draft.id}</div>

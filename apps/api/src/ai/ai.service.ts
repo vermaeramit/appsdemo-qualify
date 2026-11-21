@@ -233,26 +233,32 @@ export class AiService {
 
   /** Current list prices from OpenRouter, next to ours, to review before saving. */
   async importPrices(): Promise<ImportedAiPrices> {
-    let imported;
-    try {
-      imported = await fetchOpenRouterPrices();
-    } catch (error) {
-      this.logger.warn(`Price import failed: ${String(error)}`);
-      throw new ServiceUnavailableException("Couldn't load prices from OpenRouter. Try again.");
-    }
+    // OpenAI's own model list (free; with AppsDemo's key) keeps out what its API doesn't serve.
+    const [imported, served] = await Promise.all([
+      fetchOpenRouterPrices().catch((error: unknown) => {
+        this.logger.warn(`Price import failed: ${String(error)}`);
+        throw new ServiceUnavailableException("Couldn't load prices from OpenRouter. Try again.");
+      }),
+      this.env.OPENAI_API_KEY
+        ? checkOpenAiKey(this.env.OPENAI_API_KEY)
+        : Promise.resolve({ ok: false as const }),
+    ]);
+    const openAiIds = served.ok && served.models.length ? new Set(served.models) : null;
     const current = new Map((await listAiModels(this.handle.db)).map((row) => [row.id, row]));
     return {
       source: 'openrouter',
       fetchedAt: new Date().toISOString(),
-      models: imported.map((model) => {
-        const ours = current.get(model.id);
-        return {
-          ...model,
-          current: ours
-            ? { inputUsd: ours.inputUsd, cachedUsd: ours.cachedUsd, outputUsd: ours.outputUsd }
-            : null,
-        };
-      }),
+      models: imported
+        .filter((model) => !openAiIds || openAiIds.has(model.id) || current.has(model.id))
+        .map((model) => {
+          const ours = current.get(model.id);
+          return {
+            ...model,
+            current: ours
+              ? { inputUsd: ours.inputUsd, cachedUsd: ours.cachedUsd, outputUsd: ours.outputUsd }
+              : null,
+          };
+        }),
     };
   }
 

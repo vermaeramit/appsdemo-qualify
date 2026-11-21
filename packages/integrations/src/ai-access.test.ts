@@ -182,6 +182,11 @@ describe('OpenAI key check and price import (D-094)', () => {
             pricing: { prompt: '0.000001', completion: '0.000002' },
           },
           { id: 'anthropic/other', pricing: { prompt: '0.000001', completion: '0.000002' } },
+          { id: 'openai/gpt-oss-120b', pricing: { prompt: '0.0000001', completion: '0.0000005' } },
+          {
+            id: 'openai/gpt-audio-mini',
+            pricing: { prompt: '0.0000006', completion: '0.0000024' },
+          },
           { id: 'openai/free-thing' },
         ],
       });

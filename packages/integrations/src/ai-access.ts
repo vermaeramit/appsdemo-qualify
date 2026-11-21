@@ -227,11 +227,14 @@ export interface ImportedPrice {
   outputUsd: number;
 }
 
+const NOT_FOR_CHAT = /(audio|image|realtime|tts|transcribe|search|embedding)/i;
+
 const perMillion = (perToken: number) => Math.round(perToken * 1_000_000 * 1_000_000) / 1_000_000;
 
 /**
  * Current OpenAI list prices from OpenRouter's public model list (no key needed; its prices for
- * OpenAI models are OpenAI's own). Batch and variant entries ("openai/x:batch") are left out.
+ * OpenAI models are OpenAI's own). Batch and variant entries ("openai/x:batch") and open-weight
+ * models (gpt-oss, not served by OpenAI's API) are left out.
  */
 export async function fetchOpenRouterPrices(
   fetchImpl: typeof fetch = fetch,
@@ -243,6 +246,9 @@ export async function fetchOpenRouterPrices(
   for (const model of parsed.data) {
     if (!model.id.startsWith('openai/') || model.id.includes(':')) continue;
     const id = model.id.slice('openai/'.length);
+    // Open-weight models (gpt-oss) are hosted elsewhere: OpenAI's API doesn't serve them. Audio,
+    // image, realtime, search and embedding models can't run the text agent.
+    if (id.startsWith('gpt-oss') || NOT_FOR_CHAT.test(id)) continue;
     const { prompt, completion, input_cache_read: cached } = model.pricing ?? {};
     if (!/^[a-z0-9][a-z0-9.-]*$/i.test(id) || prompt === undefined || completion === undefined) {
       continue;
