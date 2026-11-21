@@ -61,7 +61,7 @@ const STATE_VIEW: Record<
     label: 'Approved',
     icon: CircleCheck,
     className: 'text-success',
-    text: 'Approved by Meta. Use it to contact leads outside the 24-hour window.',
+    text: 'Approved by Meta. It switches on by itself for the next lead outside the 24-hour window, or click Use this template now.',
   },
   rejected: {
     label: 'Rejected',

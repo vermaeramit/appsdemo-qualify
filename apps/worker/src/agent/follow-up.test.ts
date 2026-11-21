@@ -184,6 +184,7 @@ beforeEach(() => {
     sendButtons: ok(),
     sendList: ok(),
     sendTemplate: ok(),
+    findTemplates: vi.fn(async () => ({ data: [] })),
     markRead: vi.fn(async () => undefined),
     uploadMedia: vi.fn(async () => 'wa-media-1'),
     sendMedia: ok(),

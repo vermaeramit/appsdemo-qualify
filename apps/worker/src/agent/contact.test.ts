@@ -1,6 +1,6 @@
 // Integration test of the opening flow for form/API leads: real Postgres (RLS), fake WhatsApp.
 import { randomBytes } from 'node:crypto';
-import { travelPlaybookTemplate } from '@qualify/core';
+import { openingTemplateName, resolveOpening, travelPlaybookTemplate } from '@qualify/core';
 import {
   createPublishedPlaybook,
   eq,
@@ -100,6 +100,8 @@ beforeEach(() => {
     markRead: vi.fn(async () => undefined),
     uploadMedia: vi.fn(async () => 'wa-media-1'),
     sendMedia: ok(),
+    // Nothing submitted to Meta unless a test says otherwise.
+    findTemplates: vi.fn(async () => ({ data: [] })),
   };
 });
 
@@ -116,8 +118,58 @@ describe('processContact (opening message)', () => {
     expect(entry).toMatchObject({
       kind: 'outreach.opening_failed',
       level: 'error',
-      message: expect.stringContaining('No approved opening template'),
+      message: expect.stringContaining("the opening template hasn't been submitted to Meta yet"),
     });
+  });
+
+  it('says the opening template is still in review at Meta (D-096)', async () => {
+    const current = await withTenant(testDb.app.db, TENANT, (tx) =>
+      getDefaultPublishedPlaybook(tx),
+    );
+    const name = openingTemplateName(resolveOpening(current!.config));
+    client.findTemplates = vi.fn(async () => ({
+      data: [{ id: 't1', name, status: 'PENDING', language: 'en', category: 'MARKETING' }],
+    }));
+    const leadId = await createApiLead('919800000071');
+    expect(
+      await processContact({ tenantId: TENANT, leadId }, deps({ allowlist: ['919800000071'] })),
+    ).toBe('no_template');
+    expect(client.findTemplates).toHaveBeenCalledWith('WABA_DEV', name);
+    const [entry] = await activityOf(testDb.app.db, leadId);
+    expect(entry).toMatchObject({
+      kind: 'outreach.opening_failed',
+      message: expect.stringContaining(`"${name}" is still in review at Meta`),
+    });
+  });
+
+  it('switches on the opening template Meta approved and sends it (D-096)', async () => {
+    const before = await withTenant(testDb.app.db, TENANT, (tx) => getDefaultPublishedPlaybook(tx));
+    const name = openingTemplateName(resolveOpening(before!.config));
+    client.findTemplates = vi.fn(async () => ({
+      data: [{ id: 't1', name, status: 'APPROVED', language: 'en', category: 'MARKETING' }],
+    }));
+    const leadId = await createApiLead('919800000072');
+    expect(
+      await processContact({ tenantId: TENANT, leadId }, deps({ allowlist: ['919800000072'] })),
+    ).toBe('sent_template');
+    expect(client.sendTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({ templateName: name, language: 'en' }),
+    );
+    // The agent now has it switched on: a new published version, used without asking Meta again.
+    const after = await withTenant(testDb.app.db, TENANT, (tx) => getDefaultPublishedPlaybook(tx));
+    expect(after!.versionNo).toBe(before!.versionNo + 1);
+    expect(after!.config.opening?.templateName).toBe(name);
+    const kinds = (await activityOf(testDb.app.db, leadId)).map((entry) => entry.kind);
+    expect(kinds).toEqual(['outreach.template_activated', 'outreach.opening_sent']);
+    client.findTemplates.mockClear();
+    const next = await createApiLead('919800000073');
+    expect(
+      await processContact(
+        { tenantId: TENANT, leadId: next },
+        deps({ allowlist: ['919800000073'] }),
+      ),
+    ).toBe('sent_template');
+    expect(client.findTemplates).not.toHaveBeenCalled();
   });
 
   it('sends the approved template with name and business as parameters', async () => {

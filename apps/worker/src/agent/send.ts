@@ -5,7 +5,7 @@ export type AgentMessagingClient = Pick<
   WhatsAppClient,
   'sendText' | 'sendButtons' | 'sendList' | 'sendTemplate' | 'markRead'
 > &
-  Partial<Pick<WhatsAppClient, 'uploadMedia' | 'sendMedia'>>;
+  Partial<Pick<WhatsAppClient, 'uploadMedia' | 'sendMedia' | 'findTemplates'>>;
 
 export interface SendResult {
   waMessageId: string | null;

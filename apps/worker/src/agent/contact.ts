@@ -38,6 +38,7 @@ import {
   sendWithOptions,
   sendCaptionedMedia,
 } from './send.ts';
+import { activateTemplate, checkTemplate, templateNotReadyReason } from './template-activation.ts';
 
 export interface ContactDeps {
   db: Database;
@@ -126,6 +127,7 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
       .select({
         phoneNumberId: phoneNumbers.phoneNumberId,
         accessTokenEnc: whatsappAccounts.accessTokenEnc,
+        wabaId: whatsappAccounts.wabaId,
       })
       .from(phoneNumbers)
       .innerJoin(whatsappAccounts, eq(phoneNumbers.whatsappAccountId, whatsappAccounts.id))
@@ -198,6 +200,36 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
     }
   }
 
+  // Outside the window: the approved template for this text, switched on by itself once Meta
+  // approved it (D-096), or the exact reason there is none yet.
+  let template = opening.templateName
+    ? { name: opening.templateName, language: opening.templateLanguage }
+    : null;
+  let templateProblem: string | null = null;
+  if (client && !windowOpen && !template) {
+    const check = await checkTemplate(client, number.wabaId, 'opening', opening);
+    if (check.state === 'approved') {
+      template = { name: check.name, language: check.language };
+      const switched = await activateTemplate(db, {
+        tenantId: job.tenantId,
+        playbookId: playbook.playbookId,
+        kind: 'opening',
+        name: check.name,
+        language: check.language,
+      });
+      if (switched) {
+        await deps.activity?.({
+          ...log,
+          source: 'outreach',
+          kind: 'outreach.template_activated',
+          message: `Meta approved the opening template "${check.name}": it is now used for this agent`,
+        });
+      }
+    } else {
+      templateProblem = templateNotReadyReason('opening', check);
+    }
+  }
+
   let sent: SendResult;
   let outcome: ContactOutcome;
   if (!client) {
@@ -231,13 +263,13 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
             header,
           });
     outcome = sent.waMessageId ? 'sent_freeform' : 'send_failed';
-  } else if (opening.templateName) {
+  } else if (template) {
     try {
       const result = await client.sendTemplate({
         phoneNumberId: number.phoneNumberId,
         to,
-        templateName: opening.templateName,
-        language: opening.templateLanguage,
+        templateName: template.name,
+        language: template.language,
         bodyParams: rendered.params,
         header: header ?? undefined,
       });
@@ -251,8 +283,9 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
     sent = {
       waMessageId: null,
       error: {
-        message:
-          'No approved opening template is configured, and the lead has not messaged in the last 24 hours (WhatsApp only allows templates then).',
+        message: templateProblem
+          ? `${templateProblem.charAt(0).toUpperCase()}${templateProblem.slice(1)}. The lead hasn't written in the last 24 hours, so WhatsApp only allows an approved template.`
+          : 'No approved opening template is configured, and the lead has not messaged in the last 24 hours (WhatsApp only allows templates then).',
       },
       type: 'template',
     };
@@ -274,7 +307,7 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
           kind: 'opening',
           mode:
             outcome === 'skipped_not_allowed' ? 'blocked' : windowOpen ? 'freeform' : 'template',
-          templateName: windowOpen ? null : opening.templateName,
+          templateName: windowOpen ? null : (template?.name ?? null),
           buttons: opening.buttons,
         },
         waMessageId: sent.waMessageId,
@@ -302,16 +335,16 @@ async function contact(job: ContactJob, deps: ContactDeps): Promise<ContactOutco
     message: sent.waMessageId
       ? windowOpen
         ? `Opening sent: ${quote(rendered.text)}`
-        : `Opening sent with the template "${opening.templateName ?? ''}"`
+        : `Opening sent with the template "${template?.name ?? ''}"`
       : outcome === 'skipped_not_allowed'
         ? `Opening not sent: ${DEV_SWITCH_REASON}`
-        : `Opening not sent: ${sendErrorReason(sent.error)}`,
+        : templateProblem
+          ? `Opening not sent: ${templateProblem}`
+          : `Opening not sent: ${sendErrorReason(sent.error)}`,
     detail: {
       ...(sent.waMessageId ? {} : sendErrorDetail(sent.error)),
       Mode: mode,
-      ...(!windowOpen && opening.templateName
-        ? { Template: `${opening.templateName} (${opening.templateLanguage})` }
-        : {}),
+      ...(!windowOpen && template ? { Template: `${template.name} (${template.language})` } : {}),
       ...(header ? { Header: 'Image, video or PDF attached' } : {}),
       Message: rendered.text,
       ...(sent.waMessageId ? { 'WhatsApp message id': sent.waMessageId } : {}),

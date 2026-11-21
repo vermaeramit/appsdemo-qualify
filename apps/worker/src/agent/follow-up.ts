@@ -50,6 +50,7 @@ import { scoreColumns, writeSummary } from './scoring.ts';
 import { type AgentMessagingClient, describeSendError, sendWithOptions } from './send.ts';
 import { type EmitLeadEvent } from '../webhooks/webhooks.ts';
 import { headerMediaFor } from './media.ts';
+import { activateTemplate, checkTemplate, templateNotReadyReason } from './template-activation.ts';
 
 /** Schedules and cancels a lead's follow-up jobs (BullMQ in production, in memory in tests). */
 export interface FollowUpScheduler {
@@ -222,6 +223,7 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
       .select({
         phoneNumberId: phoneNumbers.phoneNumberId,
         accessTokenEnc: whatsappAccounts.accessTokenEnc,
+        wabaId: whatsappAccounts.wabaId,
       })
       .from(phoneNumbers)
       .innerJoin(whatsappAccounts, eq(phoneNumbers.whatsappAccountId, whatsappAccounts.id))
@@ -306,6 +308,39 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
     : null;
   const ai = resolution?.ok ? resolution.access : null;
 
+  // Outside the window WhatsApp only allows an approved template: the one for this text, switched
+  // on by itself once Meta approved it (D-096), or the exact reason there is none yet.
+  let template =
+    !windowOpen || !ai
+      ? settings.template.templateName
+        ? { name: settings.template.templateName, language: settings.template.templateLanguage }
+        : null
+      : null;
+  let templateProblem: string | null = null;
+  if ((!windowOpen || !ai) && !template) {
+    const check = await checkTemplate(client, number.wabaId, 'followup', settings.template);
+    if (check.state === 'approved') {
+      template = { name: check.name, language: check.language };
+      const switched = await activateTemplate(db, {
+        tenantId: job.tenantId,
+        playbookId: playbook.playbookId,
+        kind: 'followup',
+        name: check.name,
+        language: check.language,
+      });
+      if (switched) {
+        await deps.activity?.({
+          ...log,
+          source: 'outreach',
+          kind: 'outreach.template_activated',
+          message: `Meta approved the follow-up template "${check.name}": it is now used for this agent`,
+        });
+      }
+    } else {
+      templateProblem = templateNotReadyReason('followup', check);
+    }
+  }
+
   if (windowOpen && ai) {
     // Inside the 24 h window: the AI writes a short, contextual nudge (free for the business).
     const allowedLanguages = (tenant?.allowedLanguages ?? ['hinglish', 'en', 'hi'])
@@ -386,7 +421,7 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
       error: sent.error,
     });
     outcome = sent.waMessageId ? 'sent_freeform' : 'send_failed';
-  } else if (settings.template.templateName) {
+  } else if (template) {
     // Outside the window WhatsApp only allows an approved template.
     const rendered = renderOpening(settings.template, {
       leadName: lead.name,
@@ -410,8 +445,8 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
         await client.sendTemplate({
           phoneNumberId: number.phoneNumberId,
           to,
-          templateName: settings.template.templateName,
-          language: settings.template.templateLanguage,
+          templateName: template.name,
+          language: template.language,
           bodyParams: rendered.params,
           header: header ?? undefined,
         })
@@ -427,7 +462,7 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
         kind: 'followup',
         step: job.step,
         mode: 'template',
-        templateName: settings.template.templateName,
+        templateName: template.name,
         buttons: settings.template.buttons,
       },
       waMessageId,
@@ -447,8 +482,9 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
       payload: { kind: 'followup', step: job.step, mode: 'template', templateName: null },
       waMessageId: null,
       error: {
-        message:
-          'Not sent: no approved follow-up template, and the lead has not written in the last 24 hours (WhatsApp only allows templates then).',
+        message: templateProblem
+          ? `Not sent: ${templateProblem}. The lead hasn't written in the last 24 hours, so WhatsApp only allows an approved template.`
+          : 'Not sent: no approved follow-up template, and the lead has not written in the last 24 hours (WhatsApp only allows templates then).',
       },
     });
     await scheduleNext(deps, job, settings, settings.steps.length, stored);
