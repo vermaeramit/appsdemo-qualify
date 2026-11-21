@@ -18,6 +18,11 @@ export const createLeadRequestSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   source: z.enum(['api', 'meta_form']).default('api'),
   campaign: z.string().trim().max(200).optional(),
+  /**
+   * The agent that handles this lead (AI agents → Agent settings → Agent ID, D-097). Left out:
+   * the agent its campaign is routed to, else the default agent.
+   */
+  agentId: z.uuid('Use an agent ID from AI agents → Agent settings').optional(),
   /** Answers the lead already gave (e.g. on a form), keyed by playbook field key. Never asked again. */
   fields: z
     .record(z.string().regex(/^[a-z][a-z0-9_]{1,40}$/), z.string().trim().min(1).max(200))

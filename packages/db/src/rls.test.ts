@@ -566,6 +566,41 @@ describe('Lead form tables and Page routing (connected as qualify_app)', () => {
     const elsewhere = await resolve('org_b', { channel: 'meta_form', at, formId: 'form_intl' });
     expect(elsewhere?.playbookId).not.toBe(routed.playbookId);
   });
+
+  it('a lead added for an agent stays with it, ahead of the routes (D-097)', async () => {
+    const config = (name: string) => ({ persona: { name } }) as unknown as PlaybookConfig;
+    const chosen = await withTenant(app.db, 'org_a', (tx) =>
+      createPublishedPlaybook(tx, {
+        tenantId: 'org_a',
+        name: 'Chosen',
+        templateKey: null,
+        config: config('Chosen'),
+        isDefault: false,
+      }),
+    );
+    const resolve = (
+      tenantId: string,
+      attribution: Parameters<typeof resolvePlaybookForAttribution>[1],
+    ) => withTenant(app.db, tenantId, (tx) => resolvePlaybookForAttribution(tx, attribution));
+    const at = new Date().toISOString();
+    // Chosen beats a campaign that routes elsewhere.
+    expect(
+      (
+        await resolve('org_a', {
+          channel: 'api',
+          at,
+          campaign: 'Europe Summer',
+          agentId: chosen!.playbookId,
+        })
+      )?.playbookId,
+    ).toBe(chosen!.playbookId);
+    // An agent that doesn't exist (deleted, or another workspace's): the usual rules apply.
+    const gone = await resolve('org_a', { channel: 'api', at, agentId: crypto.randomUUID() });
+    expect(gone?.playbookId).not.toBe(chosen!.playbookId);
+    expect(gone).not.toBeNull();
+    const elsewhere = await resolve('org_b', { channel: 'api', at, agentId: chosen!.playbookId });
+    expect(elsewhere?.playbookId).not.toBe(chosen!.playbookId);
+  });
 });
 
 describe('Activity log (connected as qualify_app, D-091)', () => {

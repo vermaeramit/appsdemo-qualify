@@ -3,6 +3,8 @@ import { leadScoreColumns, localToday, normaliseFieldValue } from '@qualify/core
 import {
   auditLogs,
   type DbHandle,
+  eq,
+  playbooks,
   resolvePlaybookForAttribution,
   tenants,
   upsertLeadFromIntake,
@@ -57,10 +59,32 @@ export class LeadIntakeService {
       channel: input.source,
       at: new Date().toISOString(),
       ...(input.campaign ? { campaign: input.campaign.slice(0, 200) } : {}),
+      ...(input.agentId ? { agentId: input.agentId } : {}),
     };
     const result = await withTenant(this.handle.db, workspace.tenantId, async (tx) => {
-      // The agent this campaign routes to (D-086), else the default agent.
+      if (input.agentId) {
+        const [chosen] = await tx
+          .select({ id: playbooks.id })
+          .from(playbooks)
+          .where(eq(playbooks.id, input.agentId))
+          .limit(1);
+        if (!chosen) {
+          throw new BadRequestException({
+            message: 'Invalid request body',
+            issues: [{ path: 'agentId', message: 'No agent with this ID in the workspace' }],
+          });
+        }
+      }
+      // The agent it was added for (D-097), else the one its campaign routes to (D-086), else
+      // the default agent.
       const playbook = await resolvePlaybookForAttribution(tx, attribution);
+      const [agent] = playbook
+        ? await tx
+            .select({ name: playbooks.name })
+            .from(playbooks)
+            .where(eq(playbooks.id, playbook.playbookId))
+            .limit(1)
+        : [];
       const definitions = playbook?.config.fields ?? [];
       const accepted: Record<string, string> = {};
       const ignoredFields: string[] = [];
@@ -104,7 +128,7 @@ export class LeadIntakeService {
         target: leadId,
         metadata: { source: input.source, campaign: input.campaign ?? null, ignoredFields },
       });
-      return { leadId, isNewLead, ignoredFields, accepted };
+      return { leadId, isNewLead, ignoredFields, accepted, agentName: agent?.name ?? null };
     });
 
     // Activity log (D-091): where the lead came from and which answers were kept.
@@ -122,6 +146,7 @@ export class LeadIntakeService {
       detail: {
         Source: LEAD_SOURCE_LABELS[input.source],
         ...(input.campaign ? { Campaign: input.campaign } : {}),
+        ...(result.agentName ? { Agent: result.agentName } : {}),
         ...(answers.length ? { Answers: answers.join('; ') } : {}),
         ...(result.ignoredFields.length
           ? { 'Ignored answers (no matching question)': result.ignoredFields.join(', ') }

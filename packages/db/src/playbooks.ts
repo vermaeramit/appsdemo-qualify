@@ -155,13 +155,18 @@ export async function getLatestPublishedVersion(
 }
 
 /**
- * The agent for a new enquiry: the first non-default agent whose routes match where the lead
- * came from (form, ad, campaign), else the default agent (call inside withTenant).
+ * The agent for a new enquiry: the agent it was added for (dashboard or API, D-097), else the
+ * first non-default agent whose routes match where the lead came from (form, ad, campaign), else
+ * the default agent (call inside withTenant).
  */
 export async function resolvePlaybookForAttribution(
   tx: Transaction,
   attribution: LeadAttribution | null | undefined,
 ): Promise<PublishedPlaybook | null> {
+  if (attribution?.agentId) {
+    const chosen = await getLatestPublishedVersion(tx, attribution.agentId);
+    if (chosen) return chosen;
+  }
   if (attribution) {
     const candidates = await tx
       .select({ id: playbooks.id, routes: playbooks.routes })

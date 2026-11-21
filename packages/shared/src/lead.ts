@@ -56,5 +56,7 @@ export const leadAttributionSchema = z.object({
   pageId: z.string().max(64).optional(),
   /** Free text from the API caller. */
   campaign: z.string().max(200).optional(),
+  /** The agent chosen when the lead was added (dashboard or API, D-097): it handles the lead. */
+  agentId: z.uuid().optional(),
 });
 export type LeadAttribution = z.infer<typeof leadAttributionSchema>;

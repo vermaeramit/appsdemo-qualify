@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { CopyButton } from '@/components/copy-button';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -244,6 +245,23 @@ export function AgentSettingsDialog({
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="agent-settings-id">Agent ID (for the API)</Label>
+            <div className="flex gap-2">
+              <Input
+                id="agent-settings-id"
+                readOnly
+                value={agent.id}
+                className="font-mono text-xs"
+                onFocus={(event) => event.target.select()}
+              />
+              <CopyButton text={agent.id} label="Copy agent ID" />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Send it as <code className="font-mono">agentId</code> with a lead (POST /v1/leads) so
+              this agent handles it.
+            </p>
           </div>
           {!agent.isDefault &&
             ROUTE_TYPES.map((group) => {

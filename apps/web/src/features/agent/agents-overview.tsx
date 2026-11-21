@@ -1,8 +1,19 @@
-import type { AgentSummary } from '@qualify/shared';
+import { agentListSchema, type AgentSummary } from '@qualify/shared';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
+import { toast } from 'sonner';
 import { Bot, ChevronRight, Plus, Route as RouteIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { apiSend, errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { NewAgentDialog } from './agent-dialogs';
 import { routeText } from './routing';
@@ -21,6 +32,8 @@ export function AgentsOverview({ agents, canEdit }: { agents: AgentSummary[]; ca
           its form, ad or campaign is routed to; every other lead goes to the default agent.
         </p>
       </div>
+
+      {canEdit && agents.length > 1 && <DefaultAgentPicker agents={agents} />}
 
       <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {canEdit && (
@@ -57,6 +70,49 @@ export function AgentsOverview({ agents, canEdit }: { agents: AgentSummary[]; ca
           </motion.li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Which agent takes every lead that isn't added for, or routed to, another agent (D-097). */
+function DefaultAgentPicker({ agents }: { agents: AgentSummary[] }) {
+  const queryClient = useQueryClient();
+  const current = agents.find((agent) => agent.isDefault);
+  const change = useMutation({
+    mutationFn: (id: string) =>
+      apiSend('PATCH', `/api/agents/${id}`, { isDefault: true }, agentListSchema),
+    onSuccess: async (list) => {
+      const agent = list.agents.find((candidate) => candidate.isDefault);
+      await queryClient.invalidateQueries({ queryKey: ['agents'] });
+      await queryClient.invalidateQueries({ queryKey: ['playbook'] });
+      toast.success(`${agent?.name ?? 'The agent'} is now the default agent`);
+    },
+    onError: (error) => toast.error(errorMessage(error, 'Could not change the default agent.')),
+  });
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border bg-card p-3">
+      <Label htmlFor="default-agent" className="shrink-0">
+        Default agent
+      </Label>
+      <Select
+        value={current?.id}
+        onValueChange={(id) => id !== current?.id && change.mutate(id)}
+        disabled={change.isPending}
+      >
+        <SelectTrigger id="default-agent" className="w-56">
+          <SelectValue placeholder="Choose the default agent" />
+        </SelectTrigger>
+        <SelectContent>
+          {agents.map((agent) => (
+            <SelectItem key={agent.id} value={agent.id}>
+              {agent.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">
+        Handles every lead that isn't added for, or routed to, another agent.
+      </p>
     </div>
   );
 }

@@ -40,6 +40,7 @@ Use it from a website form, a CRM, or Postman (Meta lead forms arrive the same w
 | `name` | Optional. Used in the opening ("Hi Rahul!"). |
 | `source` | `api` (default) or `meta_form`. |
 | `campaign` | Optional, stored in the audit log. |
+| `agentId` | Optional. The AI agent that handles the lead (dashboard → AI agents → Agent settings → Agent ID). Left out: the agent the campaign is routed to, else the default agent. |
 | `fields` | Optional answers the lead already gave, keyed by the playbook question key. The agent never asks them again. Unknown keys and values that don't fit the question type are ignored and listed in `ignoredFields`. |
 
 Response `202`:

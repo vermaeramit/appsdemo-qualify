@@ -9,7 +9,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { UserPlus } from 'lucide-react';
-import { Controller, type Resolver, useForm } from 'react-hook-form';
+import { Controller, type Resolver, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { FormAlert } from '@/components/form/form-alert';
 import { FormField } from '@/components/form/form-field';
@@ -32,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { playbookQueryOptions } from '@/features/agent/queries';
+import { agentPlaybookQueryOptions, agentsQueryOptions } from '@/features/agent/queries';
 import { apiSend, errorMessage } from '@/lib/api';
 
 interface AddLeadValues {
@@ -40,6 +40,8 @@ interface AddLeadValues {
   name: string;
   source: 'meta_form' | 'api';
   campaign: string;
+  /** '' = automatic: the agent the campaign routes to, else the default agent (D-097). */
+  agentId: string;
   // Unanswered option questions stay undefined.
   fields: Record<string, string | undefined>;
 }
@@ -49,6 +51,7 @@ const EMPTY: AddLeadValues = {
   name: '',
   source: 'meta_form',
   campaign: '',
+  agentId: '',
   fields: {},
 };
 
@@ -64,6 +67,7 @@ function toRequest(values: AddLeadValues): CreateLeadRequest {
     source: values.source,
     ...(values.name?.trim() ? { name: values.name.trim() } : {}),
     ...(values.campaign?.trim() ? { campaign: values.campaign.trim() } : {}),
+    ...(values.agentId ? { agentId: values.agentId } : {}),
     ...(Object.keys(fields).length ? { fields } : {}),
   };
 }
@@ -112,10 +116,14 @@ export function AddLeadDialog() {
 function AddLeadForm({ onDone }: { onDone: () => void }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const playbook = useQuery(playbookQueryOptions);
-  const questions = playbook.data?.config.fields ?? [];
   const [formError, setFormError] = useState<string | null>(null);
   const form = useForm<AddLeadValues>({ resolver, defaultValues: EMPTY });
+  const agents = useQuery(agentsQueryOptions).data?.agents ?? [];
+  const defaultAgent = agents.find((agent) => agent.isDefault);
+  const agentId = useWatch({ control: form.control, name: 'agentId' });
+  // The questions of the agent that will handle the lead (the default agent when automatic).
+  const playbook = useQuery(agentPlaybookQueryOptions(agentId || undefined));
+  const questions = playbook.data?.config.fields ?? [];
   const { errors, isSubmitting } = form.formState;
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -187,6 +195,43 @@ function AddLeadForm({ onDone }: { onDone: () => void }) {
             {...form.register('campaign')}
           />
         </FormField>
+        {agents.length > 1 && (
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="lead-agent">AI agent</Label>
+            <Controller
+              control={form.control}
+              name="agentId"
+              render={({ field }) => (
+                <Select
+                  value={field.value || 'auto'}
+                  onValueChange={(value) => {
+                    field.onChange(value === 'auto' ? '' : value);
+                    // Answers belong to the chosen agent's questions.
+                    form.setValue('fields', {});
+                  }}
+                >
+                  <SelectTrigger id="lead-agent" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">
+                      Automatic: by campaign rules, else {defaultAgent?.name ?? 'the default agent'}
+                    </SelectItem>
+                    {agents.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>
+                        {agent.name}
+                        {agent.isDefault ? ' (default)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            <p className="text-xs text-muted-foreground">
+              The whole conversation stays with this agent.
+            </p>
+          </div>
+        )}
       </div>
 
       {questions.length > 0 && (

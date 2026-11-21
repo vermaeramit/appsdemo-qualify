@@ -228,6 +228,11 @@ export function ApiDocsPage() {
               ['source', 'No', '"api" (default) or "meta_form".'],
               ['campaign', 'No', 'Free text, kept in the audit log.'],
               [
+                'agentId',
+                'No',
+                'The AI agent that handles the lead (AI agents → Agent settings → Agent ID). Left out: the agent its campaign is routed to, else the default agent.',
+              ],
+              [
                 'fields',
                 'No',
                 'Answers the lead already gave, keyed by your question keys (below). The agent never asks them again. Unknown keys and values that don’t fit are ignored and listed in ignoredFields.',
