@@ -14,7 +14,15 @@ import type { AgentTurn, FollowUpJob } from '@qualify/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
 import { createMemoryLock } from '../lock.ts';
-import { ALLOWED, PHONE_NUMBER_ID, startTestDb, TENANT, type TestDb } from '../test/test-db.ts';
+import {
+  activityOf,
+  ALLOWED,
+  PHONE_NUMBER_ID,
+  startTestDb,
+  TENANT,
+  type TestDb,
+} from '../test/test-db.ts';
+import { createActivityRecorder } from '../activity.ts';
 import { processContact } from './contact.ts';
 import { type FollowUpDeps, type FollowUpScheduler, processFollowUp } from './follow-up.ts';
 import type { AgentMessagingClient } from './send.ts';
@@ -163,6 +171,8 @@ beforeAll(async () => {
         opening: { ...config.opening!, templateName: 'qualify_opening_test' },
         followUps: {
           ...config.followUps!,
+          // Paid template follow-ups allowed (D-098); v1 keeps the default: free window only.
+          templateOutsideWindow: true,
           template: { ...config.followUps!.template, templateName: 'qualify_followup_test' },
         },
       },
@@ -300,8 +310,8 @@ describe('follow-ups', () => {
     expect(lead.summary).toBeNull();
   });
 
-  it('explain a missing template and go straight to the final check', async () => {
-    // Pinned to v1: the travel template without an approved follow-up template.
+  it('go only inside the free window by default: nothing outside it, then the final check (D-098)', async () => {
+    // Pinned to v1: the travel template's default, follow-ups only inside the free window.
     const leadId = await createLead('919800000026', {
       status: 'contacting',
       playbookVersionId: testDb.playbookVersionId,
@@ -309,7 +319,43 @@ describe('follow-ups', () => {
     const openingId = await addMessage(leadId, 'outbound', 'Hi Rahul!', { kind: 'opening' });
 
     expect(
-      await processFollowUp(job(leadId, openingId), deps({ allowlist: ['919800000026'] })),
+      await processFollowUp(
+        job(leadId, openingId),
+        deps({
+          allowlist: ['919800000026'],
+          activity: createActivityRecorder(testDb.app.db, { warn: vi.fn() }),
+        }),
+      ),
+    ).toBe('skipped_outside_free_window');
+    expect(client.sendTemplate).not.toHaveBeenCalled();
+    expect(client.findTemplates).not.toHaveBeenCalled();
+    expect((await leadMessages(leadId)).map((m) => m.id)).toEqual([openingId]);
+    expect(scheduled.map((entry) => entry.job.kind)).toEqual(['unresponsive']);
+    expect(
+      (await activityOf(testDb.app.db, leadId)).find(
+        (entry) => entry.kind === 'outreach.followup_skipped',
+      ),
+    ).toMatchObject({ message: expect.stringContaining('free 24-hour window has closed') });
+  });
+
+  it('with paid templates allowed but none approved, explain why and go to the final check', async () => {
+    const pinned = await withTenant(testDb.app.db, TENANT, async (tx) => {
+      const current = await getDefaultPublishedPlaybook(tx);
+      const config = travelPlaybookTemplate('Sunrise Holidays');
+      return publishPlaybookVersion(tx, {
+        tenantId: TENANT,
+        playbookId: current!.playbookId,
+        config: { ...config, followUps: { ...config.followUps!, templateOutsideWindow: true } },
+      });
+    });
+    const leadId = await createLead('919800000028', {
+      status: 'contacting',
+      playbookVersionId: pinned.versionId,
+    });
+    const openingId = await addMessage(leadId, 'outbound', 'Hi Rahul!', { kind: 'opening' });
+
+    expect(
+      await processFollowUp(job(leadId, openingId), deps({ allowlist: ['919800000028'] })),
     ).toBe('no_template');
     const attempt = (await leadMessages(leadId)).find((m) => m.id !== openingId)!;
     expect(attempt.status).toBe('failed');

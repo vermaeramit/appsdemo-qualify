@@ -72,8 +72,9 @@ export function FollowUpsEditor({ readOnly, dirty }: { readOnly: boolean; dirty:
           <CardTitle>Follow-ups</CardTitle>
           <CardDescription>
             For leads who stop replying. Within 24 hours of the lead’s last message the AI writes a
-            short reminder that asks the pending question again (free). After that, WhatsApp only
-            allows the approved template below (paid per message).
+            short reminder that asks the pending question again (free). After that WhatsApp only
+            allows an approved template, which costs per message, so it is off unless you switch it
+            on below.
           </CardDescription>
           <CardAction>
             <Controller
@@ -251,6 +252,30 @@ export function FollowUpsEditor({ readOnly, dirty }: { readOnly: boolean; dirty:
               />
             </div>
 
+            <Controller
+              control={control}
+              name="followUps.templateOutsideWindow"
+              render={({ field }) => (
+                <div className="flex items-start gap-3 rounded-lg border p-3">
+                  <Switch
+                    id="followups-paid"
+                    checked={field.value === true}
+                    onCheckedChange={field.onChange}
+                  />
+                  <Label htmlFor="followups-paid" className="block font-normal">
+                    <span className="block text-sm font-medium">
+                      Also follow up after the free 24-hour window (paid)
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Off: follow-ups go only while the lead’s last message is less than 24 hours
+                      old, so a lead who never replied gets none. On: after that, the approved
+                      template below is sent (Meta charges per message).
+                    </span>
+                  </Label>
+                </div>
+              )}
+            />
+
             <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
               {steps.length
                 ? `Timeline after our last unanswered message: follow-ups at ${cumulative
@@ -264,14 +289,16 @@ export function FollowUpsEditor({ readOnly, dirty }: { readOnly: boolean; dirty:
         </CardContent>
       </Card>
 
-      <TemplateMessageEditor
-        base="followUps.template"
-        kind="followup"
-        title="Follow-up template"
-        description="Sent when the lead hasn’t written in the last 24 hours (WhatsApp only allows an approved template then). Variables like {{1}} are filled for each lead."
-        readOnly={readOnly}
-        dirty={dirty}
-      />
+      {settings.templateOutsideWindow === true && (
+        <TemplateMessageEditor
+          base="followUps.template"
+          kind="followup"
+          title="Follow-up template"
+          description="Sent when the lead hasn’t written in the last 24 hours (WhatsApp only allows an approved template then). Variables like {{1}} are filled for each lead."
+          readOnly={readOnly}
+          dirty={dirty}
+        />
+      )}
     </div>
   );
 }

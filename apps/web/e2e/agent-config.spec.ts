@@ -85,7 +85,13 @@ test('agent configuration, test lead and API keys from the dashboard', async ({ 
 
   // Follow-ups are configurable: change the first reminder and publish.
   await page.getByRole('tab', { name: 'Follow-ups' }).click();
+  // Free window only by default (D-098): the paid template appears once it is allowed.
+  await expect(page.getByText('Follow-up template')).toHaveCount(0);
+  const paid = page.getByRole('switch', { name: /Also follow up after the free 24-hour window/ });
+  await paid.click();
   await expect(page.getByText('Follow-up template')).toBeVisible();
+  await paid.click();
+  await expect(page.getByText('Follow-up template')).toHaveCount(0);
   await page.getByLabel('Hours before follow-up 1').fill('2');
   await page.getByRole('button', { name: 'Publish v3' }).click();
   await expect(page.getByText('Published version 3')).toBeVisible();

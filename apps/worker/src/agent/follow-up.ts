@@ -25,7 +25,13 @@ import {
   whatsappAccounts,
   withTenant,
 } from '@qualify/db';
-import { decryptSecret, isAllowedRecipient, type AiResolver, toWaId } from '@qualify/integrations';
+import {
+  aiDeniedMessage,
+  decryptSecret,
+  isAllowedRecipient,
+  type AiResolver,
+  toWaId,
+} from '@qualify/integrations';
 import {
   type AgentLanguage,
   agentLanguageSchema,
@@ -151,7 +157,8 @@ export type FollowUpOutcome =
   | 'skipped_disabled'
   | 'skipped_no_playbook'
   | 'skipped_not_allowed'
-  | 'skipped_no_number';
+  | 'skipped_no_number'
+  | 'skipped_outside_free_window';
 
 export class FollowUpBusyError extends Error {
   constructor() {
@@ -308,16 +315,15 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
     : null;
   const ai = resolution?.ok ? resolution.access : null;
 
-  // Outside the window WhatsApp only allows an approved template: the one for this text, switched
-  // on by itself once Meta approved it (D-096), or the exact reason there is none yet.
+  // Paid template follow-ups only when the agent allows them (D-098); then the template for this
+  // text, switched on by itself once Meta approved it (D-096), or the exact reason there is none.
+  const useTemplate = (!windowOpen || !ai) && settings.templateOutsideWindow === true;
   let template =
-    !windowOpen || !ai
-      ? settings.template.templateName
-        ? { name: settings.template.templateName, language: settings.template.templateLanguage }
-        : null
+    useTemplate && settings.template.templateName
+      ? { name: settings.template.templateName, language: settings.template.templateLanguage }
       : null;
   let templateProblem: string | null = null;
-  if ((!windowOpen || !ai) && !template) {
+  if (useTemplate && !template) {
     const check = await checkTemplate(client, number.wabaId, 'followup', settings.template);
     if (check.state === 'approved') {
       template = { name: check.name, language: check.language };
@@ -421,6 +427,22 @@ async function followUp(job: FollowUpJob, deps: FollowUpDeps): Promise<FollowUpO
       error: sent.error,
     });
     outcome = sent.waMessageId ? 'sent_freeform' : 'send_failed';
+  } else if (!settings.templateOutsideWindow) {
+    // Follow-ups go only inside the free 24-hour window (D-098): nothing is sent. A closed window
+    // stays closed until the lead writes (which ends the follow-ups), so go to the final check.
+    const reason = windowOpen
+      ? `the AI can't write it (${resolution && !resolution.ok ? aiDeniedMessage(resolution) : 'unavailable'}), and follow-ups go only inside the free 24-hour window, not as paid templates`
+      : "the lead's free 24-hour window has closed, and follow-ups go only inside it";
+    await deps.activity?.({
+      ...log,
+      source: 'outreach',
+      kind: 'outreach.followup_skipped',
+      level: windowOpen ? 'warn' : 'info',
+      message: `Follow-up ${job.step + 1} not sent: ${reason}`,
+    });
+    await scheduleNext(deps, job, settings, settings.steps.length, lastOurs);
+    logger.info(log, 'Follow-up skipped: outside the free window');
+    return 'skipped_outside_free_window';
   } else if (template) {
     // Outside the window WhatsApp only allows an approved template.
     const rendered = renderOpening(settings.template, {

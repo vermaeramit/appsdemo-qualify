@@ -93,6 +93,11 @@ export const playbookFollowUpsSchema = z
     }),
     /** IANA time zone for quiet hours, e.g. "Asia/Kolkata". */
     timezone: z.string().min(1).max(64),
+    /**
+     * When the lead's free 24-hour window has closed: true = send the approved template (a paid
+     * message); false or left out = no follow-up, they only go inside the free window (D-098).
+     */
+    templateOutsideWindow: z.boolean().optional(),
     /** Approved template for follow-ups outside the 24 h window (same shape as the opening). */
     template: playbookOpeningSchema,
   })
