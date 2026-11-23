@@ -40,7 +40,8 @@ export default defineConfig([
 
   {
     // Route files export a `Route` object by design; the router plugin code-splits them.
-    files: ['apps/web/src/routes/**/*.tsx'],
+    // The website's server entry only runs at build time (pre-rendering), never in the browser.
+    files: ['apps/web/src/routes/**/*.tsx', 'apps/site/src/entry-server.tsx'],
     rules: { 'react-refresh/only-export-components': 'off' },
   },
 

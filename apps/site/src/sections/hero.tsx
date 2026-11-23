@@ -1,11 +1,12 @@
 import { ArrowDown, BadgeCheck, Clock3, Sparkles, Zap } from 'lucide-react';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { WhatsAppIcon } from '../components/icons';
 import { GRADE_STYLES } from '../components/grades';
 import { Bubble, GradeBadge, PhoneFrame, ReplyButtons, Typing } from '../components/phone';
+import { useReducedMotion } from '../components/reduced-motion';
 import { demoHref } from '../config';
-import { type ChatEvent, DEMO_CHATS } from '../content';
+import { type ChatEvent, DEMO_CHATS, type DemoChat } from '../content';
 
 interface PlayerState {
   chat: number;
@@ -15,14 +16,15 @@ interface PlayerState {
 }
 
 /**
- * Plays the demo chats one after another. The first chat starts complete (the same on the server
- * and in the browser, so hydration matches), then the next ones play message by message.
+ * Plays the chats one after another (one chat replays itself). The first chat starts complete
+ * (the same on the server and in the browser, so hydration matches), then the chats play message by
+ * message.
  */
-function useChatPlayer(): PlayerState {
+function useChatPlayer(chats: readonly DemoChat[]): PlayerState {
   const reduced = useReducedMotion();
   const [state, setState] = useState<PlayerState>({
     chat: 0,
-    shown: DEMO_CHATS[0]!.events.length,
+    shown: chats[0]!.events.length,
     typing: false,
     tapping: null,
   });
@@ -35,7 +37,7 @@ function useChatPlayer(): PlayerState {
 
     function play(chat: number) {
       timers.length = 0;
-      const events = DEMO_CHATS[chat]!.events;
+      const events = chats[chat]!.events;
       setState({ chat, shown: 0, typing: false, tapping: null });
       let t = 0;
       events.forEach((event, index) => {
@@ -60,12 +62,12 @@ function useChatPlayer(): PlayerState {
           at(t, shown);
         }
       });
-      timers.push(window.setTimeout(() => play((chat + 1) % DEMO_CHATS.length), t + 4200));
+      timers.push(window.setTimeout(() => play((chat + 1) % chats.length), t + 4200));
     }
 
-    timers.push(window.setTimeout(() => play(1 % DEMO_CHATS.length), 3800));
+    timers.push(window.setTimeout(() => play(1 % chats.length), 3800));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [reduced]);
+  }, [reduced, chats]);
 
   return state;
 }
@@ -102,9 +104,10 @@ function ChatScreen({ events, state }: { events: ChatEvent[]; state: PlayerState
   );
 }
 
-function HeroPhone() {
-  const state = useChatPlayer();
-  const chat = DEMO_CHATS[state.chat]!;
+/** A phone playing WhatsApp chats that end with the lead's score card. */
+export function ChatPhone({ chats }: { chats: readonly DemoChat[] }) {
+  const state = useChatPlayer(chats);
+  const chat = chats[state.chat]!;
   const score = chat.events.slice(0, state.shown).find((event) => event.kind === 'score');
 
   return (
@@ -308,7 +311,7 @@ export function Hero() {
           </ul>
         </div>
 
-        <HeroPhone />
+        <ChatPhone chats={DEMO_CHATS} />
       </div>
     </section>
   );

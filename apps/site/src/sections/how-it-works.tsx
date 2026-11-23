@@ -1,6 +1,7 @@
 import { Gauge, Inbox, ListChecks, MessageCircle, Users } from 'lucide-react';
-import { AnimatePresence, motion, useInView, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useInView } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
+import { useReducedMotion } from '../components/reduced-motion';
 import { Scene } from '../components/scenes';
 import { SectionHeading } from '../components/section';
 import { STEPS, type Step } from '../content';

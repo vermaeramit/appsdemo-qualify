@@ -9,10 +9,11 @@ import {
   ScrollText,
   Webhook,
 } from 'lucide-react';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { ScoreRing } from '../sections/hero';
 import { WhatsAppIcon } from './icons';
+import { useReducedMotion } from './reduced-motion';
 import { GradeBadge } from './phone';
 
 /** A counter that ticks while `play` is on (the scene is visible), for looping scene animations. */

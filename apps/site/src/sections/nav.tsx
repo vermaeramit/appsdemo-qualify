@@ -5,11 +5,12 @@ import { WhatsAppIcon } from '../components/icons';
 import { Logo } from '../components/logo';
 import { appHref, demoHref } from '../config';
 
-const LINKS = [
-  { href: '#how-it-works', label: 'How it works' },
-  { href: '#features', label: 'Features' },
-  { href: '#industries', label: 'Industries' },
-  { href: '#faq', label: 'FAQ' },
+/** Sections of the home page (other pages link to them on the home page). */
+const SECTIONS = [
+  { id: 'how-it-works', label: 'How it works' },
+  { id: 'features', label: 'Features' },
+  { id: 'industries', label: 'Industries' },
+  { id: 'faq', label: 'FAQ' },
 ];
 
 /** A visitor who is signed in to the dashboard sees "Open dashboard" instead of "Log in". */
@@ -26,7 +27,11 @@ function useSignedIn(): boolean {
   return signedIn;
 }
 
-export function Nav() {
+export function Nav({ home = true, demoMessage }: { home?: boolean; demoMessage?: string }) {
+  const links = SECTIONS.map((section) => ({
+    href: `${home ? '' : '/'}#${section.id}`,
+    label: section.label,
+  }));
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const signedIn = useSignedIn();
@@ -54,12 +59,16 @@ export function Nav() {
         className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6"
         aria-label="Main"
       >
-        <a href="#top" className="shrink-0" aria-label="Back to top">
+        <a
+          href={home ? '#top' : '/'}
+          className="shrink-0"
+          aria-label={home ? 'Back to top' : 'Home'}
+        >
           <Logo />
         </a>
 
         <div className="hidden items-center gap-1 md:flex">
-          {LINKS.map((link) => (
+          {links.map((link) => (
             <a
               key={link.href}
               href={link.href}
@@ -78,7 +87,7 @@ export function Nav() {
             {account.label}
           </a>
           <a
-            href={demoHref()}
+            href={demoHref(demoMessage)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
@@ -110,7 +119,7 @@ export function Nav() {
             className="overflow-hidden border-t border-line/80 md:hidden"
           >
             <div className="flex flex-col gap-1 px-4 py-4">
-              {LINKS.map((link) => (
+              {links.map((link) => (
                 <a
                   key={link.href}
                   href={link.href}
@@ -128,7 +137,7 @@ export function Nav() {
                   {account.label}
                 </a>
                 <a
-                  href={demoHref()}
+                  href={demoHref(demoMessage)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center justify-center gap-2 rounded-full bg-wa-deep px-4 py-3 text-sm font-semibold text-white"

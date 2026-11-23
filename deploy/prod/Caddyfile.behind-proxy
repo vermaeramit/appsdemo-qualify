@@ -42,6 +42,12 @@
 	# The home page has one address (D-102): /site/ and /site/index.html redirect to /.
 	@siteHome path /site/ /site/index.html
 	redir @siteHome / 308
+	# One address per page (D-104): "/travel/" redirects to "/travel", keeping the query.
+	@trailingSlash {
+		path_regexp trailingSlash ^(/.+)/$
+		not path /api/* /site/*
+	}
+	redir @trailingSlash {re.trailingSlash.1}{?query} 308
 	handle /site/* {
 		root * /srv
 		@siteAssets path /site/assets/*
@@ -64,9 +70,11 @@
 		file_server
 	}
 
-	# Dashboard files (Vite build). Hashed assets are cached for a year, the rest never.
+	# The website's other pages (D-104: /<page> is the pre-rendered /site/<page>/index.html) and the
+	# dashboard's files. Hashed assets are cached for a year, the rest never.
 	handle {
 		root * /srv
+		try_files /site{path}/index.html {path}
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
 		@other not path /assets/*

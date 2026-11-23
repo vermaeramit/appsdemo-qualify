@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useState } from 'react';
 import { ICONS } from '../components/icons';
@@ -97,7 +97,7 @@ export function Industries() {
               className="grid gap-5 md:grid-cols-[1.1fr_0.9fr]"
             >
               <div className="rounded-3xl border border-line bg-zinc-50/60 p-6">
-                <p className="text-sm font-semibold text-ink">The agent asks</p>
+                <p className="text-sm font-semibold text-ink">The ready-made agent asks</p>
                 <ol className="mt-4 flex flex-col gap-2.5">
                   {industry.questions.map((question, index) => (
                     <motion.li
@@ -114,6 +114,15 @@ export function Industries() {
                     </motion.li>
                   ))}
                 </ol>
+                {industry.page && (
+                  <a
+                    href={industry.page}
+                    className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-700"
+                  >
+                    More about {industry.name.toLowerCase()}
+                    <ArrowRight className="size-4" aria-hidden="true" />
+                  </a>
+                )}
               </div>
               <div className="flex flex-col rounded-3xl bg-gradient-to-br from-indigo-600 to-violet-700 p-6 text-white shadow-[0_30px_60px_-24px_rgb(79_70_229/0.6)]">
                 <p className="text-sm font-semibold text-indigo-100">Your team receives</p>

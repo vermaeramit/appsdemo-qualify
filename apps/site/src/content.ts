@@ -2,6 +2,7 @@
  * The website's words (D-101). Generic on purpose (D-061): industries appear only as examples.
  * Claims stay factual: no invented statistics, customers or reviews.
  */
+import { INDUSTRY_PAGES, industryPage } from './industries';
 
 export type ChatEvent =
   | { kind: 'lead'; text: string; note?: string }
@@ -16,102 +17,10 @@ export interface DemoChat {
   events: ChatEvent[];
 }
 
-/** The hero phone plays these in turn. */
-export const DEMO_CHATS: DemoChat[] = [
-  {
-    industry: 'Real estate',
-    business: 'Green Valley Homes',
-    initials: 'GV',
-    events: [
-      {
-        kind: 'lead',
-        text: "Hi, I'm interested in the 2BHK flats",
-        note: 'From your ad · 2BHK in Whitefield',
-      },
-      {
-        kind: 'ai',
-        text: 'Hi Priya! 👋 Thanks for reaching out to Green Valley Homes. Is it for yourself, or an investment?',
-        buttons: ['For myself', 'Investment'],
-      },
-      { kind: 'tap', text: 'For myself' },
-      {
-        kind: 'ai',
-        text: 'Lovely! When would you like to move in?',
-        buttons: ['Within 3 months', '3–6 months', 'Just exploring'],
-      },
-      { kind: 'tap', text: 'Within 3 months' },
-      { kind: 'ai', text: 'And roughly what budget do you have in mind?' },
-      { kind: 'lead', text: 'Around 85 lakh' },
-      {
-        kind: 'ai',
-        text: 'Perfect, thank you! Our advisor will call you today to plan a site visit 🏡',
-      },
-      { kind: 'score', grade: 'Hot', score: 86, facts: ['For myself', 'Within 3 months', '₹85 L'] },
-    ],
-  },
-  {
-    industry: 'Travel',
-    business: 'Sunrise Holidays',
-    initials: 'SH',
-    events: [
-      {
-        kind: 'lead',
-        text: 'Hi, please share details of the Bali package',
-        note: 'From your form · Bali 5N/6D',
-      },
-      {
-        kind: 'ai',
-        text: 'Hi Rahul! 🌴 Happy to help. When are you planning to travel?',
-        buttons: ['This month', 'In 2–3 months', 'Not decided'],
-      },
-      { kind: 'tap', text: 'In 2–3 months' },
-      { kind: 'ai', text: 'How many people are travelling?' },
-      { kind: 'lead', text: '2 adults' },
-      { kind: 'ai', text: 'Do you both have valid passports?', buttons: ['Yes', 'Applying', 'No'] },
-      { kind: 'tap', text: 'Yes' },
-      {
-        kind: 'ai',
-        text: 'Great! Our travel expert will share the best Bali options with you shortly ✈️',
-      },
-      {
-        kind: 'score',
-        grade: 'Hot',
-        score: 82,
-        facts: ['In 2–3 months', '2 adults', 'Passports ready'],
-      },
-    ],
-  },
-  {
-    industry: 'Education',
-    business: 'Bright Path Institute',
-    initials: 'BP',
-    events: [
-      { kind: 'lead', text: 'MBA course ki fees kitni hai?', note: 'From your website' },
-      {
-        kind: 'ai',
-        text: 'Hi Ananya! 🎓 Fees depend on the batch. Aap kaunsa intake dekh rahi hain?',
-        buttons: ['January', 'July', 'Not sure'],
-      },
-      { kind: 'tap', text: 'July' },
-      {
-        kind: 'ai',
-        text: 'Aapki graduation complete ho gayi hai?',
-        buttons: ['Yes', 'Final year'],
-      },
-      { kind: 'tap', text: 'Final year' },
-      {
-        kind: 'ai',
-        text: 'Thank you! Our counsellor will call you with the fee details and scholarships 📚',
-      },
-      {
-        kind: 'score',
-        grade: 'Warm',
-        score: 64,
-        facts: ['July intake', 'Final year', 'Asked about fees'],
-      },
-    ],
-  },
-];
+/** The hero phone plays these in turn: the industry pages’ chats (D-104). */
+export const DEMO_CHATS: DemoChat[] = (['real-estate', 'travel', 'education'] as const).map(
+  (slug) => industryPage(slug).demo,
+);
 
 export interface Step {
   id: string;
@@ -232,81 +141,25 @@ export interface Industry {
   icon: string;
   questions: string[];
   outcome: { name: string; grade: 'Hot' | 'Warm' | 'Cold'; score: number; summary: string };
+  /** The industry's own page, when it has one. */
+  page?: string;
 }
 
+/** Tabs in the Industries section. Those with a page use its ready-made agent and example. */
 export const INDUSTRIES: Industry[] = [
-  {
-    id: 'real-estate',
-    name: 'Real estate',
-    icon: 'building',
-    questions: [
-      'Buying for yourself or as an investment?',
-      'Which location and configuration?',
-      'When do you plan to buy?',
-      'What budget range?',
-      'Need a home loan?',
-    ],
+  ...INDUSTRY_PAGES.map((page) => ({
+    id: page.slug,
+    name: page.name,
+    icon: page.icon,
+    questions: page.questions.slice(0, 5).map((question) => question.question),
     outcome: {
-      name: 'Priya S.',
-      grade: 'Hot',
-      score: 86,
-      summary: '2BHK, Whitefield, within 3 months, ₹85 L. Wants a site visit this weekend.',
+      name: page.example.name,
+      grade: page.result.grade,
+      score: page.result.score,
+      summary: page.example.summary,
     },
-  },
-  {
-    id: 'travel',
-    name: 'Travel',
-    icon: 'plane',
-    questions: [
-      'Which destination?',
-      'When do you plan to travel?',
-      'How many travellers?',
-      'Budget per person?',
-      'Valid passports?',
-    ],
-    outcome: {
-      name: 'Rahul M.',
-      grade: 'Hot',
-      score: 82,
-      summary: 'Bali for 2 adults in 2–3 months, passports ready, ₹50k per person.',
-    },
-  },
-  {
-    id: 'education',
-    name: 'Education',
-    icon: 'graduation',
-    questions: [
-      'Which course?',
-      'Which intake?',
-      'Highest qualification?',
-      'City?',
-      'Need a scholarship or loan?',
-    ],
-    outcome: {
-      name: 'Ananya K.',
-      grade: 'Warm',
-      score: 64,
-      summary: 'MBA, July intake, final-year student. Asked about fees and scholarships.',
-    },
-  },
-  {
-    id: 'clinics',
-    name: 'Clinics',
-    icon: 'stethoscope',
-    questions: [
-      'Which treatment are you looking for?',
-      'Since when?',
-      'Preferred branch?',
-      'Preferred day and time?',
-      'First visit or follow-up?',
-    ],
-    outcome: {
-      name: 'Vikram R.',
-      grade: 'Hot',
-      score: 79,
-      summary: 'Dental implant consultation, Andheri branch, wants Saturday morning.',
-    },
-  },
+    page: `/${page.slug}`,
+  })),
   {
     id: 'any',
     name: 'Any business',

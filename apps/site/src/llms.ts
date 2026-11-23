@@ -1,5 +1,6 @@
 import { appHref, demoHref, site } from './config';
 import { FAQ, FEATURES, INDUSTRIES, OUTPUTS, SETUP, STEPS } from './content';
+import { INDUSTRY_PAGES } from './industries';
 import { LONG_DESCRIPTION, SECTION_IDS } from './meta';
 
 /**
@@ -25,6 +26,10 @@ export function renderLlmsTxt(): string {
     `- [Features](${section(SECTION_IDS.features)})`,
     `- [Industries](${section(SECTION_IDS.industries)}): ready-made agents and the questions they ask`,
     `- [FAQ](${section(SECTION_IDS.faq)})`,
+    ...INDUSTRY_PAGES.map(
+      (page) =>
+        `- [${page.title}](${absolute(`/${page.slug}`)}): the ready-made ${page.agentNoun} agent's questions, scoring and rules`,
+    ),
     `- [Live demo on WhatsApp](${demoHref()}): chat with ${site.productName}'s own AI agent`,
     `- [Sign up](${absolute(appHref('/signup'))})`,
     '',

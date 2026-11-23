@@ -4,14 +4,21 @@ import { Logo } from '../components/logo';
 import { Reveal, SectionHeading } from '../components/section';
 import { appHref, demoHref, site } from '../config';
 import { FAQ } from '../content';
+import { INDUSTRY_PAGES } from '../industries';
 
-export function Faq() {
+export function Faq({
+  items = FAQ,
+  title = 'Questions, answered',
+}: {
+  items?: readonly { question: string; answer: string }[];
+  title?: string;
+}) {
   return (
     <section id="faq" className="border-t border-line bg-white py-24 md:py-32">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <SectionHeading eyebrow="FAQ" title="Questions, answered" />
+        <SectionHeading eyebrow="FAQ" title={title} />
         <div className="mx-auto mt-12 grid max-w-5xl gap-3 md:grid-cols-2">
-          {FAQ.map((item) => (
+          {items.map((item) => (
             <details
               key={item.question}
               className="faq group rounded-2xl border border-line bg-zinc-50/50 transition-colors open:bg-white open:shadow-sm"
@@ -34,7 +41,7 @@ export function Faq() {
   );
 }
 
-export function FinalCta() {
+export function FinalCta({ demoMessage }: { demoMessage?: string }) {
   return (
     <section className="px-4 py-20 sm:px-6 md:py-28">
       <Reveal>
@@ -52,7 +59,7 @@ export function FinalCta() {
             </p>
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <a
-                href={demoHref()}
+                href={demoHref(demoMessage)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex w-full items-center justify-center gap-2.5 rounded-full bg-wa px-7 py-4 text-base font-semibold text-[oklch(0.2_0.05_160)] shadow-[0_12px_40px_-10px_rgb(37_211_102/0.7)] transition hover:-translate-y-0.5 hover:bg-[#3be07a] sm:w-auto"
@@ -79,11 +86,15 @@ const FOOTER_LINKS = [
   {
     title: 'Product',
     links: [
-      { href: '#how-it-works', label: 'How it works' },
-      { href: '#features', label: 'Features' },
-      { href: '#industries', label: 'Industries' },
-      { href: '#faq', label: 'FAQ' },
+      { href: '/#how-it-works', label: 'How it works' },
+      { href: '/#features', label: 'Features' },
+      { href: '/#industries', label: 'Industries' },
+      { href: '/#faq', label: 'FAQ' },
     ],
+  },
+  {
+    title: 'Industries',
+    links: INDUSTRY_PAGES.map((page) => ({ href: `/${page.slug}`, label: page.name })),
   },
   {
     title: 'Get started',
@@ -98,7 +109,7 @@ const FOOTER_LINKS = [
 export function Footer() {
   return (
     <footer className="border-t border-line">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 sm:grid-cols-2 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div>
           <Logo />
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-ink-soft">
