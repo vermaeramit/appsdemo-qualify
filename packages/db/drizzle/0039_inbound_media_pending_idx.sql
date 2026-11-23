@@ -1,0 +1,1 @@
+CREATE INDEX "inbound_media_tenant_pending_idx" ON "inbound_media" USING btree ("tenant_id","created_at") WHERE "inbound_media"."status" = 'pending';

@@ -21,6 +21,7 @@ export * from './api-keys.ts';
 export * from './client.ts';
 export * from './email-reports.ts';
 export * from './email-settings.ts';
+export * from './inbound-media.ts';
 export * from './lead-delete.ts';
 export * from './lead-export.ts';
 export * from './lead-form-submissions.ts';

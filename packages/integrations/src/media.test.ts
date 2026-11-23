@@ -121,3 +121,39 @@ describe('template media (D-084)', () => {
     });
   });
 });
+
+describe('received media (D-100)', () => {
+  it('asks Meta for the file, then downloads it with the same token', async () => {
+    const calls: Call[] = [];
+    const impl = (async (url: string | URL, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      if (String(url).includes('graph.facebook.com')) {
+        return Response.json({
+          url: 'https://lookaside.example/file',
+          mime_type: 'image/jpeg',
+          file_size: 4,
+        });
+      }
+      return new Response(new Uint8Array([1, 2, 3, 4]), {
+        headers: { 'content-type': 'image/jpeg', 'content-length': '4' },
+      });
+    }) as typeof fetch;
+    const client = new WhatsAppClient({ accessToken: 'token', fetchImpl: impl });
+    const info = await client.getMedia('media-9');
+    expect(calls[0]!.url).toMatch(/\/media-9$/);
+    const file = await client.downloadMedia(info.url, 1024);
+    expect(file).toEqual({ bytes: Buffer.from([1, 2, 3, 4]), mime: 'image/jpeg' });
+    expect((calls[1]!.init?.headers as Record<string, string>).Authorization).toBe('Bearer token');
+  });
+
+  it("doesn't download a file over the limit", async () => {
+    const impl = (async () =>
+      new Response(new Uint8Array(10), {
+        headers: { 'content-length': '5000000' },
+      })) as typeof fetch;
+    const client = new WhatsAppClient({ accessToken: 'token', fetchImpl: impl });
+    expect(await client.downloadMedia('https://lookaside.example/big', 1000)).toEqual({
+      tooLarge: 5000000,
+    });
+  });
+});

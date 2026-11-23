@@ -23,6 +23,7 @@ describe('describeInboundMessage (D-099)', () => {
       label: "A message WhatsApp didn't pass on",
       detail: null,
       metaError: '131051: Message type is currently not supported.',
+      media: null,
     });
   });
 

@@ -1,5 +1,5 @@
 import './load-env.ts';
-import { createDb, pruneActivity } from '@qualify/db';
+import { createDb, expireInboundMedia, pruneActivity, stalePendingInboundMedia } from '@qualify/db';
 import { createWorkerAi } from './ai.ts';
 import { createMailSource } from './mail.ts';
 import { ALLOW_ALL, parseAllowlist, parseMasterKey, WhatsAppClient } from '@qualify/integrations';
@@ -11,10 +11,15 @@ import {
   contactJobSchema,
   FOLLOW_UP_QUEUE,
   type FollowUpJob,
+  INBOUND_MEDIA_RETENTION_DAYS,
   followUpJobSchema,
   LEAD_EVENTS_QUEUE,
   type LeadEventJob,
   leadEventJobSchema,
+  MEDIA_DOWNLOAD_QUEUE,
+  MEDIA_PRUNE_QUEUE,
+  type MediaDownloadJob,
+  mediaDownloadJobSchema,
   metaEventJobSchema,
   QUEUES,
   REPORT_SEND_QUEUE,
@@ -48,6 +53,11 @@ import { LeadBusyError, processRespond } from './agent/respond.ts';
 import { loadWorkerEnv } from './env.ts';
 import { createRedisLock } from './lock.ts';
 import { createLogger } from './logger.ts';
+import {
+  MEDIA_DOWNLOAD_ATTEMPTS,
+  MEDIA_DOWNLOAD_BACKOFF_MS,
+  processMediaDownload,
+} from './media/download.ts';
 import { processMetaEvent } from './meta-events/process-meta-event.ts';
 import {
   processReportSend,
@@ -128,6 +138,8 @@ const deliveryQueue = new Queue<WebhookDeliveryJob>(WEBHOOK_DELIVERY_QUEUE, { co
 const reportSendQueue = new Queue<ReportSendJob>(REPORT_SEND_QUEUE, { connection });
 const reportTickQueue = new Queue(REPORT_TICK_QUEUE, { connection });
 const activityPruneQueue = new Queue(ACTIVITY_PRUNE_QUEUE, { connection });
+const mediaDownloadQueue = new Queue<MediaDownloadJob>(MEDIA_DOWNLOAD_QUEUE, { connection });
+const mediaPruneQueue = new Queue(MEDIA_PRUNE_QUEUE, { connection });
 
 /** One job per report run; the id makes re-queuing a lost run a no-op while it still exists. */
 async function enqueueReportSend(job: ReportSendJob): Promise<void> {
@@ -153,6 +165,26 @@ await activityPruneQueue.upsertJobScheduler(
   { every: 6 * 3_600_000 },
   { name: 'prune', opts: { removeOnComplete: 20, removeOnFail: 20 } },
 );
+
+// Every 6 hours (D-100): files older than INBOUND_MEDIA_RETENTION_DAYS are emptied, and downloads
+// whose job was lost are queued again.
+await mediaPruneQueue.upsertJobScheduler(
+  'media-prune',
+  { every: 6 * 3_600_000 },
+  { name: 'prune', opts: { removeOnComplete: 20, removeOnFail: 20 } },
+);
+
+/** One download per received file; the job id makes a repeated webhook a no-op. */
+async function enqueueMediaDownload(job: MediaDownloadJob): Promise<void> {
+  await mediaDownloadQueue.add('download', job, {
+    jobId: `media:${job.messageId}`,
+    attempts: MEDIA_DOWNLOAD_ATTEMPTS,
+    backoff: { type: 'exponential', delay: MEDIA_DOWNLOAD_BACKOFF_MS },
+    removeOnComplete: true,
+    // Removed either way, so the prune job can queue a lost or crashed download again by its id.
+    removeOnFail: true,
+  });
+}
 
 /** What happened to a lead, for webhooks (fanned out by the lead-events worker). */
 const emitLeadEvent: EmitLeadEvent = async (event) => {
@@ -239,6 +271,7 @@ const metaEventsWorker = new Worker(
       allowlist,
       isProduction,
       enqueueRespond: (respondJob) => enqueueRespond(respondJob),
+      enqueueMediaDownload,
       followUps,
       emitLeadEvent,
       activity,
@@ -394,6 +427,34 @@ const activityPruneWorker = new Worker(
   { connection, concurrency: 1 },
 );
 
+const mediaDownloadWorker = new Worker(
+  MEDIA_DOWNLOAD_QUEUE,
+  async (job) => {
+    const attempts = job.opts.attempts ?? 1;
+    const outcome = await processMediaDownload(
+      mediaDownloadJobSchema.parse(job.data),
+      { isLastAttempt: job.attemptsMade + 1 >= attempts },
+      { db, logger, masterKey, createClient: whatsapp, activity },
+    );
+    if (outcome !== 'stored')
+      logger.info({ messageId: job.data.messageId, outcome }, 'Media download');
+  },
+  { connection, concurrency: 5 },
+);
+
+const mediaPruneWorker = new Worker(
+  MEDIA_PRUNE_QUEUE,
+  async () => {
+    const expired = await expireInboundMedia(db, INBOUND_MEDIA_RETENTION_DAYS);
+    if (expired) logger.info({ expired }, 'Old received files removed');
+    // Meta keeps a received file 30 days; a download still pending after 10 minutes was lost.
+    const stale = await stalePendingInboundMedia(db, { olderThanMinutes: 10, withinDays: 29 });
+    for (const job of stale) await enqueueMediaDownload(job);
+    if (stale.length) logger.warn({ requeued: stale.length }, 'Lost file downloads queued again');
+  },
+  { connection, concurrency: 1 },
+);
+
 /** Jobs about one lead whose crash the team should see in the lead's activity. */
 const LEAD_JOB_FAILURES: Record<string, string> = {
   respond: 'AI reply failed',
@@ -413,6 +474,8 @@ for (const [name, worker] of [
   ['report-tick', reportTickWorker],
   ['report-send', reportSendWorker],
   ['activity-prune', activityPruneWorker],
+  ['media-download', mediaDownloadWorker],
+  ['media-prune', mediaPruneWorker],
 ] as const) {
   worker.on('failed', (job, error) => {
     const busy =
@@ -466,6 +529,8 @@ logger.info(
       REPORT_TICK_QUEUE,
       REPORT_SEND_QUEUE,
       ACTIVITY_PRUNE_QUEUE,
+      MEDIA_DOWNLOAD_QUEUE,
+      MEDIA_PRUNE_QUEUE,
     ],
   },
   'Worker started',
@@ -484,6 +549,8 @@ async function shutdown(signal: string): Promise<void> {
     reportTickWorker.close(),
     reportSendWorker.close(),
     activityPruneWorker.close(),
+    mediaDownloadWorker.close(),
+    mediaPruneWorker.close(),
   ]);
   await Promise.all([
     respondQueue.close(),
@@ -494,6 +561,8 @@ async function shutdown(signal: string): Promise<void> {
     reportSendQueue.close(),
     reportTickQueue.close(),
     activityPruneQueue.close(),
+    mediaDownloadQueue.close(),
+    mediaPruneQueue.close(),
   ]);
   await pool.end();
   connection.disconnect();

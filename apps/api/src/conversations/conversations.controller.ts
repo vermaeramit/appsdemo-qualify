@@ -2,12 +2,14 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Headers,
   HttpCode,
   Inject,
   NotFoundException,
   Param,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -18,6 +20,8 @@ import {
   eq,
   getDefaultPublishedPlaybook,
   getPlaybookVersion,
+  inboundMediaByMessage,
+  inboundMediaFile,
   leads,
   messages,
   playbooks,
@@ -35,6 +39,7 @@ import {
   storedLeadOutcomeSchema,
 } from '@qualify/shared';
 import { deliveryErrorMessage, describeInboundMessage } from '@qualify/core';
+import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { actorName, recordApiActivity } from '../activity/record';
 import { SupportService } from '../admin/support.service';
@@ -42,6 +47,13 @@ import { decodeCursor, encodeCursor } from '../common/cursor';
 import { parseQuery } from '../common/zod-body';
 import { CurrentWorkspace, type WorkspaceContext, WorkspaceGuard } from '../auth/workspace.guard';
 import { DB } from '../tokens';
+import {
+  contentDisposition,
+  isInlineMime,
+  parseRange,
+  safeDownloadMime,
+  withFile,
+} from './inbound-files';
 
 const leadIdSchema = z.uuid();
 const listQuerySchema = z.object({
@@ -176,10 +188,15 @@ export class ConversationsController {
             .where(eq(playbooks.id, playbook.playbookId))
             .limit(1)
         : [];
-      return { lead, rows, playbook, agentName: agent?.name ?? null };
+      // Files the lead sent (D-100): their download state, without the bytes.
+      const files = await inboundMediaByMessage(
+        tx,
+        rows.filter((row) => row.direction === 'inbound' && row.body === null).map((row) => row.id),
+      );
+      return { lead, rows, playbook, agentName: agent?.name ?? null, files };
     });
     if (!result) throw new NotFoundException('Conversation not found');
-    const { lead, rows, playbook, agentName } = result;
+    const { lead, rows, playbook, agentName, files } = result;
     // A support view records each conversation it opens (D-092).
     if (workspace.support && !before) await this.support.noteConversationView(workspace, lead.id);
     const page = rows.slice(0, THREAD_PAGE);
@@ -217,13 +234,59 @@ export class ConversationsController {
         errorMessage: row.status === 'failed' ? deliveryErrorMessage(row.error) : null,
         display:
           row.direction === 'inbound' && row.body === null
-            ? describeInboundMessage(row.type, row.payload)
+            ? withFile(describeInboundMessage(row.type, row.payload), lead.id, row.id, files)
             : null,
         createdAt: row.createdAt.toISOString(),
       })),
       olderCursor:
         rows.length > THREAD_PAGE && oldest ? encodeCursor(oldest.createdAtText, oldest.id) : null,
     });
+  }
+
+  /**
+   * A file the lead sent (D-100), for the conversation to show or download. Only types a browser
+   * plays safely open inline; anything else downloads. Never sniffed, never run as a page.
+   */
+  @Get(':leadId/media/:messageId')
+  async file(
+    @CurrentWorkspace() workspace: WorkspaceContext,
+    @Param('leadId') leadIdParam: string,
+    @Param('messageId') messageIdParam: string,
+    @Query('download') download: string | undefined,
+    @Headers('range') rangeHeader: string | undefined,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const leadId = parseLeadId(leadIdParam);
+    const messageId = z.uuid().safeParse(messageIdParam);
+    if (!messageId.success) throw new BadRequestException('Invalid file id');
+    const file = await withTenant(this.handle.db, workspace.tenantId, (tx) =>
+      inboundMediaFile(tx, leadId, messageId.data),
+    );
+    if (!file) throw new NotFoundException('File not found');
+    const inline = download === undefined && isInlineMime(file.mime);
+    const size = file.bytes.length;
+    reply
+      .header('content-type', inline ? file.mime : safeDownloadMime(file.mime))
+      .header('content-disposition', contentDisposition(inline, file.fileName, file.mime))
+      .header('accept-ranges', 'bytes')
+      .header('x-content-type-options', 'nosniff')
+      .header('content-security-policy', "default-src 'none'; sandbox")
+      .header('cache-control', 'private, max-age=3600');
+    // Players read a voice note or video in parts (its length, seeking): answer with that part.
+    const range = parseRange(rangeHeader, size);
+    if (range === 'unsatisfiable') {
+      await reply.code(416).header('content-range', `bytes */${size}`).send();
+      return;
+    }
+    if (range) {
+      await reply
+        .code(206)
+        .header('content-range', `bytes ${range.start}-${range.end}/${size}`)
+        .header('content-length', String(range.end - range.start + 1))
+        .send(file.bytes.subarray(range.start, range.end + 1));
+      return;
+    }
+    await reply.header('content-length', String(size)).send(file.bytes);
   }
 
   /** A human takes over: the AI stops replying to this lead. */

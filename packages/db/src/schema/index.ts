@@ -11,3 +11,4 @@ export * from './activity.ts';
 export * from './support.ts';
 export * from './ai.ts';
 export * from './email-settings.ts';
+export * from './inbound-media.ts';

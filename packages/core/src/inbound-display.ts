@@ -82,6 +82,7 @@ export function describeInboundMessage(type: string, payload: unknown): InboundD
         label: "A message WhatsApp didn't pass on",
         detail: kind && kind !== 'unknown' ? `Type: ${kind}` : null,
         metaError: code !== null || reason ? [code, reason].filter(Boolean).join(': ') : null,
+        media: null,
       };
     }
     case 'request_welcome':
@@ -98,7 +99,7 @@ function display(
   label: string,
   detail: string | null,
 ): InboundDisplay {
-  return { kind, label, detail, metaError: null };
+  return { kind, label, detail, metaError: null, media: null };
 }
 
 function record(value: unknown): Record<string, unknown> {

@@ -447,6 +447,49 @@ export class WhatsAppClient {
     return json.id;
   }
 
+  /**
+   * A file a customer sent (D-100): its download URL (valid for a few minutes), type and size.
+   * Meta keeps received files for 30 days.
+   */
+  async getMedia(
+    mediaId: string,
+  ): Promise<{ url: string; mime_type: string; file_size?: number; sha256?: string }> {
+    return this.request('GET', `/${encodeURIComponent(mediaId)}`);
+  }
+
+  /**
+   * Downloads a received file from the URL getMedia returned (same access token). Files over
+   * `maxBytes` aren't downloaded: their size comes back instead.
+   */
+  async downloadMedia(
+    url: string,
+    maxBytes: number,
+  ): Promise<{ bytes: Buffer; mime: string } | { tooLarge: number }> {
+    const response = await this.fetchImpl(url, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
+    if (!response.ok) {
+      throw new MetaApiError(
+        response.status,
+        `Media download failed with ${response.status}`,
+        undefined,
+        null,
+      );
+    }
+    const declared = Number(response.headers.get('content-length') ?? '');
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      await response.body?.cancel();
+      return { tooLarge: declared };
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > maxBytes) return { tooLarge: bytes.length };
+    return {
+      bytes,
+      mime:
+        response.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream',
+    };
+  }
+
   /** An image, video or document with the text as its caption (inside the 24 h window). */
   async sendMedia(params: {
     phoneNumberId: string;

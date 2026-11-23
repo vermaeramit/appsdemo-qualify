@@ -1,7 +1,7 @@
 import { customType, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { tenants } from './platform.ts';
 
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+export const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType: () => 'bytea',
 });
 

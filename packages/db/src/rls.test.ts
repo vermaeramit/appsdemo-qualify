@@ -25,6 +25,14 @@ import {
 } from './activity.ts';
 import { saveWhatsAppConnection } from './whatsapp-connect.ts';
 import {
+  expireInboundMedia,
+  inboundMediaByMessage,
+  inboundMediaFile,
+  queueInboundMedia,
+  stalePendingInboundMedia,
+  storeInboundMedia,
+} from './inbound-media.ts';
+import {
   aiPlatformSpendThisMonth,
   aiPriceTable,
   getAiSettings,
@@ -46,6 +54,7 @@ import type { PlaybookConfig } from '@qualify/shared';
 import {
   activityLog,
   aiSettings,
+  inboundMedia,
   aiUsage,
   apiKeys,
   auditLogs,
@@ -977,5 +986,116 @@ describe('AI provider per workspace (connected as qualify_app, D-094)', () => {
     await withTenant(app.db, 'org_a', (tx) => tx.delete(leads).where(eq(leads.id, lead)));
     const rows = await withTenant(app.db, 'org_a', (tx) => tx.select().from(aiUsage));
     expect(rows.some((row) => row.costUsd === 0.01 && row.leadId === null)).toBe(true);
+  });
+});
+
+describe('Files leads send (connected as qualify_app, D-100)', () => {
+  async function leadWithMessage(tenantId: string, phone: string) {
+    return withTenant(app.db, tenantId, async (tx) => {
+      const [lead] = await tx
+        .insert(leads)
+        .values({ tenantId, phoneE164: phone, name: 'Media', source: 'api' })
+        .returning({ id: leads.id });
+      const [message] = await tx
+        .insert(messages)
+        .values({
+          tenantId,
+          leadId: lead!.id,
+          phoneNumberId: 'pn_a',
+          direction: 'inbound',
+          sender: 'lead',
+          type: 'image',
+          status: 'received',
+          payload: { type: 'image', image: { id: 'wa-media-1' } },
+        })
+        .returning({ id: messages.id });
+      return { leadId: lead!.id, messageId: message!.id };
+    });
+  }
+
+  it('queues, stores and serves a file in its own workspace only', async () => {
+    const { leadId, messageId } = await leadWithMessage('org_a', '+919811100201');
+    const queued = await withTenant(app.db, 'org_a', (tx) =>
+      queueInboundMedia(tx, { tenantId: 'org_a', leadId, messageId, waMediaId: 'wa-media-1' }),
+    );
+    expect(queued).toBe(true);
+    // Once per message (a Meta retry doesn't queue it again).
+    expect(
+      await withTenant(app.db, 'org_a', (tx) =>
+        queueInboundMedia(tx, { tenantId: 'org_a', leadId, messageId, waMediaId: 'wa-media-1' }),
+      ),
+    ).toBe(false);
+    await storeInboundMedia(app.db, 'org_a', messageId, {
+      bytes: Buffer.from('jpeg'),
+      mime: 'image/jpeg',
+    });
+    const states = await withTenant(app.db, 'org_a', (tx) =>
+      inboundMediaByMessage(tx, [messageId]),
+    );
+    expect(states.get(messageId)).toMatchObject({ status: 'stored', mime: 'image/jpeg', size: 4 });
+    const file = await withTenant(app.db, 'org_a', (tx) => inboundMediaFile(tx, leadId, messageId));
+    expect(file?.bytes.toString()).toBe('jpeg');
+    // Another workspace sees nothing, and can't forge a row for this one.
+    expect(
+      await withTenant(app.db, 'org_b', (tx) => inboundMediaFile(tx, leadId, messageId)),
+    ).toBeNull();
+    expect(await app.db.select().from(inboundMedia)).toEqual([]);
+    const spoof = withTenant(app.db, 'org_b', (tx) =>
+      tx.insert(inboundMedia).values({ tenantId: 'org_a', leadId, messageId, waMediaId: 'x' }),
+    );
+    await expect(spoof).rejects.toSatisfy((error) => /row-level security/.test(errorText(error)));
+  });
+
+  it('empties files past the retention days, keeping the row as expired', async () => {
+    const old = await leadWithMessage('org_a', '+919811100202');
+    const recent = await leadWithMessage('org_a', '+919811100203');
+    for (const item of [old, recent]) {
+      await withTenant(app.db, 'org_a', (tx) =>
+        queueInboundMedia(tx, { tenantId: 'org_a', ...item, waMediaId: 'w' }),
+      );
+      await storeInboundMedia(app.db, 'org_a', item.messageId, {
+        bytes: Buffer.from('x'),
+        mime: 'image/jpeg',
+      });
+    }
+    await withTenant(app.db, 'org_a', (tx) =>
+      tx
+        .update(inboundMedia)
+        .set({ createdAt: new Date(Date.now() - 100 * 86_400_000) })
+        .where(eq(inboundMedia.messageId, old.messageId)),
+    );
+    expect(await expireInboundMedia(app.db, 90)).toBe(1);
+    const states = await withTenant(app.db, 'org_a', (tx) =>
+      inboundMediaByMessage(tx, [old.messageId, recent.messageId]),
+    );
+    expect(states.get(old.messageId)?.status).toBe('expired');
+    expect(states.get(recent.messageId)?.status).toBe('stored');
+    expect(
+      await withTenant(app.db, 'org_a', (tx) => inboundMediaFile(tx, old.leadId, old.messageId)),
+    ).toBeNull();
+  });
+
+  it('finds downloads that never ran, while Meta still has the file', async () => {
+    const lost = await leadWithMessage('org_b', '+919811100204');
+    const fresh = await leadWithMessage('org_b', '+919811100205');
+    const tooOld = await leadWithMessage('org_b', '+919811100206');
+    const ages = new Map([
+      [lost.messageId, 20 * 60_000],
+      [fresh.messageId, 60_000],
+      [tooOld.messageId, 31 * 86_400_000],
+    ]);
+    for (const item of [lost, fresh, tooOld]) {
+      await withTenant(app.db, 'org_b', async (tx) => {
+        await queueInboundMedia(tx, { tenantId: 'org_b', ...item, waMediaId: 'w' });
+        await tx
+          .update(inboundMedia)
+          .set({ createdAt: new Date(Date.now() - ages.get(item.messageId)!) })
+          .where(eq(inboundMedia.messageId, item.messageId));
+      });
+    }
+    const stale = await stalePendingInboundMedia(app.db, { olderThanMinutes: 10, withinDays: 30 });
+    expect(stale.filter((row) => row.tenantId === 'org_b')).toEqual([
+      { tenantId: 'org_b', messageId: lost.messageId },
+    ]);
   });
 });

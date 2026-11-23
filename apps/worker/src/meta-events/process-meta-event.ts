@@ -8,6 +8,7 @@ import {
   isNull,
   leads,
   messages,
+  queueInboundMedia,
   resolvePlaybookForAttribution,
   resolveTenantByPhoneNumberId,
   sql,
@@ -25,7 +26,12 @@ import {
   type WaStatus,
   type WaValue,
 } from '@qualify/integrations';
-import type { LeadAttribution, RespondJob } from '@qualify/shared';
+import {
+  INBOUND_MEDIA_TYPES,
+  type LeadAttribution,
+  type MediaDownloadJob,
+  type RespondJob,
+} from '@qualify/shared';
 import { DEV_SWITCH_REASON, quote, type RecordActivity, sendErrorDetail } from '../activity.ts';
 import type { FollowUpScheduler } from '../agent/follow-up.ts';
 import { handleLeadgen, type LeadFormDeps } from './lead-forms.ts';
@@ -48,6 +54,8 @@ export interface ProcessorDeps {
   emitLeadEvent?: EmitLeadEvent;
   /** Activity log (D-091). */
   activity?: RecordActivity;
+  /** Downloads a file the lead sent (D-100). */
+  enqueueMediaDownload?: (job: MediaDownloadJob) => Promise<void>;
 }
 
 const STATUS_RANK: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3 };
@@ -85,6 +93,16 @@ export function ctwaAttribution(
 const IGNORED_TYPES = new Set(['reaction']);
 /** Stored for the record, but they don't warrant an AI reply (e.g. "customer changed number"). */
 const NO_REPLY_TYPES = new Set(['system', 'unsupported', 'request_welcome']);
+
+/** The WhatsApp media id (and file name) of a message that carries a file (D-100). */
+function mediaIdOf(message: WaInboundMessage): { id: string; fileName: string | null } | null {
+  if (!(INBOUND_MEDIA_TYPES as readonly string[]).includes(message.type)) return null;
+  const part = (message as Record<string, unknown>)[message.type];
+  if (!part || typeof part !== 'object') return null;
+  const { id, filename } = part as { id?: unknown; filename?: unknown };
+  if (typeof id !== 'string' || !id) return null;
+  return { id, fileName: typeof filename === 'string' ? filename.slice(0, 200) : null };
+}
 
 /** The log line for an incoming message: its text, or what it was (a photo, D-099). */
 function receivedEntry(
@@ -248,8 +266,36 @@ async function handleInboundMessage(
       .onConflictDoNothing({ target: messages.waMessageId })
       .returning({ id: messages.id });
 
-    return { leadId: lead!.id, isNew: inserted.length > 0, leadCreated: lead!.created };
+    // A photo, voice note, video, document or sticker: queued for download (D-100).
+    const mediaId = inserted[0] ? mediaIdOf(message) : null;
+    if (inserted[0] && mediaId) {
+      await queueInboundMedia(tx, {
+        tenantId,
+        leadId: lead!.id,
+        messageId: inserted[0].id,
+        waMediaId: mediaId.id,
+        fileName: mediaId.fileName,
+      });
+    }
+
+    return {
+      leadId: lead!.id,
+      isNew: inserted.length > 0,
+      leadCreated: lead!.created,
+      mediaMessageId: mediaId ? (inserted[0]?.id ?? null) : null,
+    };
   });
+  if (stored.mediaMessageId) {
+    // A failure here must not stop the reply; the media-prune job queues a lost download again.
+    await deps
+      .enqueueMediaDownload?.({ tenantId, messageId: stored.mediaMessageId })
+      .catch((error: unknown) =>
+        deps.logger.warn(
+          { tenantId, messageId: stored.mediaMessageId, err: error },
+          'Could not queue the file download; it will be retried later',
+        ),
+      );
+  }
   if (stored.leadCreated) {
     await deps.emitLeadEvent?.({ tenantId, leadId: stored.leadId, type: 'lead.created' });
   }

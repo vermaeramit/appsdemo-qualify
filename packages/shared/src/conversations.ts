@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { inboundMediaSchema } from './media.js';
 import { leadAttributionSchema, leadGradeSchema, leadScoreDetailsSchema } from './lead.js';
 import { storedLeadOutcomeSchema } from './leads-api.js';
 
@@ -58,6 +59,8 @@ export const inboundDisplaySchema = z.object({
   detail: z.string().nullable(),
   /** Unsupported messages: Meta's error, e.g. "131051: Message type is currently not supported." */
   metaError: z.string().nullable(),
+  /** The file itself, when the message carried one (D-100). */
+  media: inboundMediaSchema.nullable(),
 });
 export type InboundDisplay = z.infer<typeof inboundDisplaySchema>;
 

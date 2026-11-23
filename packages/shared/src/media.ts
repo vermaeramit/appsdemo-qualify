@@ -32,3 +32,41 @@ export const templateHeaderMediaSchema = z.object({
   fileName: z.string().min(1).max(200).optional(),
 });
 export type TemplateHeaderMedia = z.infer<typeof templateHeaderMediaSchema>;
+
+/**
+ * Files leads send on WhatsApp (D-100): downloaded from Meta when they arrive (Meta's links
+ * expire within minutes and Meta keeps files 30 days), kept INBOUND_MEDIA_RETENTION_DAYS, shown
+ * in the conversation. Bigger files aren't kept.
+ */
+export const INBOUND_MEDIA_RETENTION_DAYS = 90;
+export const INBOUND_MEDIA_MAX_BYTES = 16 * 1024 * 1024;
+export const MEDIA_DOWNLOAD_QUEUE = 'media-download';
+export const MEDIA_PRUNE_QUEUE = 'media-prune';
+/** The WhatsApp message types that carry a file. */
+export const INBOUND_MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker'] as const;
+
+export const mediaDownloadJobSchema = z.object({
+  tenantId: z.string().min(1),
+  messageId: z.uuid(),
+});
+export type MediaDownloadJob = z.infer<typeof mediaDownloadJobSchema>;
+
+export const inboundMediaStatusSchema = z.enum([
+  'pending',
+  'stored',
+  'too_large',
+  'failed',
+  'expired',
+]);
+export type InboundMediaStatus = z.infer<typeof inboundMediaStatusSchema>;
+
+/** A received file as the conversation shows it. */
+export const inboundMediaSchema = z.object({
+  status: inboundMediaStatusSchema,
+  /** Where the dashboard loads it from (stored files only). */
+  url: z.string().nullable(),
+  mime: z.string().nullable(),
+  size: z.number().int().nullable(),
+  fileName: z.string().nullable(),
+});
+export type InboundMedia = z.infer<typeof inboundMediaSchema>;
