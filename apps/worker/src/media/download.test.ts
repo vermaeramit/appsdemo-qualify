@@ -15,7 +15,12 @@ import {
   TENANT,
   type TestDb,
 } from '../test/test-db.ts';
-import { type MediaClient, type MediaDownloadDeps, processMediaDownload } from './download.ts';
+import {
+  type MediaClient,
+  type MediaDownloadDeps,
+  mediaDownloadJobId,
+  processMediaDownload,
+} from './download.ts';
 
 const masterKey = randomBytes(32);
 let testDb: TestDb;
@@ -112,6 +117,12 @@ beforeEach(() => {
 });
 
 describe('received files (D-100)', () => {
+  it('names each download job with an id BullMQ accepts (no ":")', () => {
+    const id = mediaDownloadJobId('923260aa-61f0-4a33-8777-a6d7620e475b');
+    expect(id).toBe('media-923260aa-61f0-4a33-8777-a6d7620e475b');
+    expect(id).not.toContain(':');
+  });
+
   it('queues a photo once, downloads it and keeps it for the conversation', async () => {
     const eventId = await receiveFile('wamid.photo.1', 'image', {
       id: 'MEDIA_PHOTO_1',

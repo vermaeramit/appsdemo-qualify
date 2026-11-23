@@ -56,6 +56,7 @@ import { createLogger } from './logger.ts';
 import {
   MEDIA_DOWNLOAD_ATTEMPTS,
   MEDIA_DOWNLOAD_BACKOFF_MS,
+  mediaDownloadJobId,
   processMediaDownload,
 } from './media/download.ts';
 import { processMetaEvent } from './meta-events/process-meta-event.ts';
@@ -173,11 +174,13 @@ await mediaPruneQueue.upsertJobScheduler(
   { every: 6 * 3_600_000 },
   { name: 'prune', opts: { removeOnComplete: 20, removeOnFail: 20 } },
 );
+// …and once at start, so a download lost before a restart or deploy doesn't wait 6 hours.
+await mediaPruneQueue.add('prune', {}, { removeOnComplete: 20, removeOnFail: 20 });
 
 /** One download per received file; the job id makes a repeated webhook a no-op. */
 async function enqueueMediaDownload(job: MediaDownloadJob): Promise<void> {
   await mediaDownloadQueue.add('download', job, {
-    jobId: `media:${job.messageId}`,
+    jobId: mediaDownloadJobId(job.messageId),
     attempts: MEDIA_DOWNLOAD_ATTEMPTS,
     backoff: { type: 'exponential', delay: MEDIA_DOWNLOAD_BACKOFF_MS },
     removeOnComplete: true,

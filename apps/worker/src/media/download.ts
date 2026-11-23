@@ -17,6 +17,11 @@ import type { Logger } from '../logger.ts';
 export const MEDIA_DOWNLOAD_ATTEMPTS = 5;
 export const MEDIA_DOWNLOAD_BACKOFF_MS = 10_000;
 
+/** One download job per received file. BullMQ refuses custom ids with ":", hence the dash. */
+export function mediaDownloadJobId(messageId: string): string {
+  return `media-${messageId}`;
+}
+
 /** The part of the WhatsApp client that fetches a received file. */
 export interface MediaClient {
   getMedia(mediaId: string): Promise<{ url: string; mime_type: string; file_size?: number }>;
