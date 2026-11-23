@@ -3,16 +3,10 @@ import { renderToString } from 'react-dom/server';
 import { App } from './App';
 import { site } from './config';
 import { FAQ } from './content';
+import { DESCRIPTION, LONG_DESCRIPTION, TITLE } from './meta';
 
+export { renderLlmsTxt } from './llms';
 export const siteUrl = site.url;
-
-const TITLE = `${site.productName} — AI lead qualification on WhatsApp`;
-// Search results show about 155 characters, so the meta description stays under that.
-const DESCRIPTION =
-  'An AI agent on your own WhatsApp number replies to every Meta ad and form lead in seconds, asks your questions and scores each lead Hot, Warm or Cold.';
-// The structured data has room for the full sentence.
-const LONG_DESCRIPTION =
-  'An AI agent on your own WhatsApp number talks to every new lead from Meta ads, lead forms and your website in seconds, asks your questions, scores each lead Hot, Warm or Cold, and sends your team only the ones worth calling.';
 
 function escape(text: string): string {
   return text
@@ -53,14 +47,30 @@ export function renderHead(): string {
       `<meta property="og:image:alt" content="${escape(TITLE)}" />`,
     );
   }
+  // The company behind the product (D-103), with its logo and public profiles. Needs the public
+  // address (absolute URLs) and VITE_SITE_COMPANY_NAME.
+  const organization =
+    site.url && site.companyName
+      ? {
+          '@type': 'Organization',
+          '@id': `${site.url}/#organization`,
+          name: site.companyName,
+          url: `${site.url}/`,
+          logo: `${site.url}/site/logo.png`,
+          ...(site.socialLinks.length ? { sameAs: site.socialLinks } : {}),
+        }
+      : null;
+  const publisher = organization ? { publisher: { '@id': organization['@id'] } } : {};
   const structured = {
     '@context': 'https://schema.org',
     '@graph': [
+      ...(organization ? [organization] : []),
       // Lets search engines show the product name as the site name in results.
       {
         '@type': 'WebSite',
         name: site.productName,
         ...(site.url ? { url: `${site.url}/` } : {}),
+        ...publisher,
       },
       {
         '@type': 'SoftwareApplication',
@@ -68,7 +78,8 @@ export function renderHead(): string {
         applicationCategory: 'BusinessApplication',
         operatingSystem: 'Web',
         description: LONG_DESCRIPTION,
-        ...(site.url ? { url: `${site.url}/` } : {}),
+        ...(site.url ? { url: `${site.url}/`, image: `${site.url}/site/og.png` } : {}),
+        ...publisher,
       },
       {
         '@type': 'FAQPage',
@@ -81,7 +92,7 @@ export function renderHead(): string {
     ],
   };
   tags.push(
-    `<script type="application/ld+json">${JSON.stringify(structured).replace(/</g, '\u003c')}</script>`,
+    `<script type="application/ld+json">${JSON.stringify(structured).replace(/</g, '\\u003c')}</script>`,
   );
   return tags.join('\n    ');
 }

@@ -9,6 +9,10 @@ interface ImportMetaEnv {
   readonly VITE_SITE_PRODUCT_NAME?: string;
   /** Where the dashboard lives. Empty in production (same domain); http://localhost:5173 in dev. */
   readonly VITE_SITE_APP_URL?: string;
+  /** The company behind the product, e.g. AppsDemo (Organization data for search engines). */
+  readonly VITE_SITE_COMPANY_NAME?: string;
+  /** The company's public profile URLs, comma-separated (Organization data). */
+  readonly VITE_SITE_SOCIAL_LINKS?: string;
 }
 
 /** The build's year, for the footer (see vite.config.ts). */

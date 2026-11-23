@@ -9,6 +9,19 @@
 	}
 }
 
+# Security headers on every response, the 404 page included (an error response starts with fresh
+# headers, so handle_errors imports them again).
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+}
+
 :80 {
 	# Live updates are a Server-Sent Events stream (D-079): never buffer or compress it.
 	@compressible not path /api/live
@@ -35,31 +48,43 @@
 		header @siteAssets Cache-Control "public, max-age=31536000, immutable"
 		file_server
 	}
-	@siteMeta path /robots.txt /sitemap.xml
+	@siteMeta path /robots.txt /sitemap.xml /llms.txt
 	handle @siteMeta {
 		root * /srv/site
 		file_server
 	}
 
-	# Dashboard (Vite build). Hashed assets are cached for a year; index.html never.
+	# Dashboard pages (D-103): only the app's own routes get its HTML with status 200. Keep this list
+	# in step with apps/web/src/routes (apps/web/src/caddy-routes.test.ts checks it).
+	@appPages path_regexp (?i)^/(dashboard|login|signup|onboarding|admin|agent|api-docs|conversations|costs|integrations|leads|logs|meta-leads|settings|templates)(/.*)?$
+	handle @appPages {
+		root * /srv
+		rewrite * /index.html
+		header Cache-Control "no-cache"
+		file_server
+	}
+
+	# Dashboard files (Vite build). Hashed assets are cached for a year, the rest never.
 	handle {
 		root * /srv
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
-		@html not path /assets/*
-		header @html Cache-Control "no-cache"
-		try_files {path} /index.html
+		@other not path /assets/*
+		header @other Cache-Control "no-cache"
 		file_server
 	}
 
-	header {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
-		-Server
+	# Neither a page nor a file: a real 404 for search engines, with the dashboard's HTML (noindex),
+	# so a visitor sees "Page not found".
+	handle_errors 404 {
+		import security_headers
+		root * /srv
+		rewrite * /index.html
+		header Cache-Control "no-cache"
+		file_server
 	}
+
+	import security_headers
 
 	log {
 		output stdout

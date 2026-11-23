@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 const root = path.resolve(import.meta.dirname, '..');
 const dist = path.join(root, 'dist');
 const ssrDir = path.join(root, 'dist-ssr');
-const { render, renderHead, siteUrl } = await import(
+const { render, renderHead, renderLlmsTxt, siteUrl } = await import(
   pathToFileURL(path.join(ssrDir, 'entry-server.js')).href
 );
 
@@ -18,6 +18,8 @@ if (!template.includes('<!--app-->') || !template.includes('<!--head-->')) {
 }
 const html = template.replace('<!--head-->', renderHead()).replace('<!--app-->', render());
 fs.writeFileSync(templatePath, html);
+// The same content as plain Markdown for AI assistants (llmstxt.org, D-103).
+fs.writeFileSync(path.join(dist, 'llms.txt'), renderLlmsTxt());
 
 // A sitemap needs the public address; without VITE_SITE_URL (local builds) it is left out.
 if (siteUrl) {

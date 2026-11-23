@@ -93,7 +93,7 @@ port (D-093):
   removes them and only Qualify goes offline.
 - Without a registry token, build the images locally (the web image with the website's
   settings: `--build-arg VITE_SITE_URL=https://<APP_DOMAIN> --build-arg VITE_SITE_WHATSAPP_NUMBER=<digits>`,
-  D-101) and load them over SSH:
+  D-101; optionally `VITE_SITE_COMPANY_NAME` and `VITE_SITE_SOCIAL_LINKS` for search engines, D-103) and load them over SSH:
   `docker save qualify/api:<tag> qualify/worker:<tag> qualify/web:<tag> | gzip | ssh <server> 'gunzip | sudo docker load'`
   (`IMAGE_PREFIX=qualify`, `IMAGE_TAG=<tag>`; skip `docker compose pull`).
 

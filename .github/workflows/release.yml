@@ -69,6 +69,8 @@ jobs:
             VITE_SITE_URL=${{ vars.SITE_URL }}
             VITE_SITE_WHATSAPP_NUMBER=${{ vars.SITE_WHATSAPP_NUMBER }}
             VITE_SITE_PRODUCT_NAME=${{ vars.SITE_PRODUCT_NAME }}
+            VITE_SITE_COMPANY_NAME=${{ vars.SITE_COMPANY_NAME }}
+            VITE_SITE_SOCIAL_LINKS=${{ vars.SITE_SOCIAL_LINKS }}
 
   deploy:
     name: Deploy over SSH

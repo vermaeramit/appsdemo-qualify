@@ -16,6 +16,13 @@ export const site = {
   url: trimSlash(env.VITE_SITE_URL),
   appUrl: trimSlash(env.VITE_SITE_APP_URL),
   whatsappNumber: (env.VITE_SITE_WHATSAPP_NUMBER ?? '').replace(/\D/g, ''),
+  /** The company behind the product, for search engines (D-103). Empty: no Organization data. */
+  companyName: env.VITE_SITE_COMPANY_NAME?.trim() ?? '',
+  /** The company's public profiles (LinkedIn, Facebook, YouTube…), comma-separated https URLs. */
+  socialLinks: (env.VITE_SITE_SOCIAL_LINKS ?? '')
+    .split(',')
+    .map((link) => link.trim())
+    .filter((link) => link.startsWith('https://')),
 };
 
 /** The first message a visitor sends from the site, so the sales agent knows where they came from. */
