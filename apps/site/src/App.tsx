@@ -18,7 +18,7 @@ export function App({ page = 'home' }: { page?: PageId }) {
   return (
     <MotionConfig reducedMotion="user">
       {isIndustry(page) ? <IndustryPageLayout slug={page} /> : <HomePage />}
-      <Footer />
+      <Footer demoMessage={isIndustry(page) ? industryPage(page).demoMessage : undefined} />
     </MotionConfig>
   );
 }

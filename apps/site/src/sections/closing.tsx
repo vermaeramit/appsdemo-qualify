@@ -82,7 +82,7 @@ export function FinalCta({ demoMessage }: { demoMessage?: string }) {
   );
 }
 
-const FOOTER_LINKS = [
+const footerLinks = (demoMessage?: string) => [
   {
     title: 'Product',
     links: [
@@ -99,14 +99,14 @@ const FOOTER_LINKS = [
   {
     title: 'Get started',
     links: [
-      { href: demoHref(), label: 'Live demo on WhatsApp', external: true },
+      { href: demoHref(demoMessage), label: 'Live demo on WhatsApp', external: true },
       { href: appHref('/signup'), label: 'Create an account' },
       { href: appHref('/login'), label: 'Log in' },
     ],
   },
 ];
 
-export function Footer() {
+export function Footer({ demoMessage }: { demoMessage?: string }) {
   return (
     <footer className="border-t border-line">
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 sm:grid-cols-2 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
@@ -117,7 +117,7 @@ export function Footer() {
             the right person.
           </p>
         </div>
-        {FOOTER_LINKS.map((group) => (
+        {footerLinks(demoMessage).map((group) => (
           <div key={group.title}>
             <p className="text-sm font-semibold text-ink">{group.title}</p>
             <ul className="mt-4 flex flex-col gap-2.5">
