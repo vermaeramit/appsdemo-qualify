@@ -24,7 +24,7 @@ test('email reports: create, send now, delivered with the Excel, edit, pause, de
   await expect(page).toHaveURL(/\/onboarding/);
   await page.getByLabel('Workspace name').fill(`E2E Reports ${unique}`);
   await page.getByRole('button', { name: 'Create workspace' }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 
   // One lead today, so "Send now" (today so far) has something to report.
   await page.goto('/leads');

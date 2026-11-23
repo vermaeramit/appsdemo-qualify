@@ -29,7 +29,7 @@ test('webhooks: add, signed test event, lead.created on a new lead, delivery log
     await expect(page).toHaveURL(/\/onboarding/);
     await page.getByLabel('Workspace name').fill(`E2E Hooks ${unique}`);
     await page.getByRole('button', { name: 'Create workspace' }).click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
 
     await page.getByRole('link', { name: 'Integrations' }).click();
     await expect(page.getByText('No webhooks yet')).toBeVisible();

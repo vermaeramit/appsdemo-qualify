@@ -28,7 +28,7 @@ export async function afterWorkspaceSwitch(queryClient: QueryClient): Promise<vo
 /** Only allow same-site relative paths as post-login redirects (prevents open redirects). */
 export function safeRedirect(target: string | undefined): string {
   if (!target || !target.startsWith('/') || target.startsWith('//') || target.startsWith('/\\')) {
-    return '/';
+    return '/dashboard';
   }
   return target;
 }

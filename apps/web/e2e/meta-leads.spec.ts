@@ -11,7 +11,7 @@ test('Meta leads page: empty state, period presets and custom dates', async ({ p
   await expect(page).toHaveURL(/\/onboarding/);
   await page.getByLabel('Workspace name').fill(`E2E Meta ${unique}`);
   await page.getByRole('button', { name: 'Create workspace' }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 
   await page.getByRole('link', { name: 'Meta leads' }).click();
   await expect(page.getByRole('heading', { name: 'Meta leads' })).toBeVisible();

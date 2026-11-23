@@ -1,0 +1,122 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/geist';
+
+/*
+ * Website tokens (D-101). Brand indigo is the dashboard's primary (Tailwind indigo-600); the
+ * chat colours follow WhatsApp so the animated conversations read as real ones.
+ */
+@theme {
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink: oklch(0.17 0.012 277);
+  --color-ink-soft: oklch(0.44 0.015 277);
+  --color-ink-faint: oklch(0.58 0.012 277);
+  --color-paper: oklch(0.99 0.003 277);
+  --color-line: oklch(0.92 0.008 277);
+
+  --color-wa: #25d366;
+  --color-wa-deep: #008069;
+  --color-wa-dark: #075e54;
+  --color-wa-chat: #efeae2;
+  --color-wa-out: #d9fdd3;
+  --color-wa-link: #027eb5;
+
+  --color-hot: oklch(0.62 0.22 27);
+  --color-warm: oklch(0.72 0.16 65);
+  --color-cold: oklch(0.62 0.13 240);
+
+  --animate-marquee: marquee 38s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-pulse-ring: pulse-ring 2.4s ease-out infinite;
+
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(0.8);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(2.2);
+      opacity: 0;
+    }
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Faint grid behind the hero and the dark band. */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, oklch(0.5 0.05 277 / 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, oklch(0.5 0.05 277 / 0.07) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+.bg-grid-dark {
+  background-image:
+    linear-gradient(to right, oklch(1 0 0 / 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, oklch(1 0 0 / 0.06) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* WhatsApp's chat wallpaper, as a light dotted texture. */
+.bg-wa-wallpaper {
+  background-color: var(--color-wa-chat);
+  background-image: radial-gradient(oklch(0.55 0.03 80 / 0.12) 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+
+.text-gradient {
+  background: linear-gradient(100deg, #4f46e5 10%, #7c3aed 45%, #16a34a 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Native <details> FAQ: hide the default marker, rotate our icon when open. */
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+.faq summary {
+  list-style: none;
+}
+.faq[open] .faq-icon {
+  transform: rotate(45deg);
+}

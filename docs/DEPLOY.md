@@ -91,7 +91,9 @@ port (D-093):
   Put the same two changes in the other product's own repository (its compose: the caddy service
   joins the external `qualify-edge` network; its Caddyfile: the block above), or its next deploy
   removes them and only Qualify goes offline.
-- Without a registry token, build the images locally and load them over SSH:
+- Without a registry token, build the images locally (the web image with the website's
+  settings: `--build-arg VITE_SITE_URL=https://<APP_DOMAIN> --build-arg VITE_SITE_WHATSAPP_NUMBER=<digits>`,
+  D-101) and load them over SSH:
   `docker save qualify/api:<tag> qualify/worker:<tag> qualify/web:<tag> | gzip | ssh <server> 'gunzip | sudo docker load'`
   (`IMAGE_PREFIX=qualify`, `IMAGE_TAG=<tag>`; skip `docker compose pull`).
 
@@ -116,7 +118,9 @@ port (D-093):
    `docker compose run --rm worker node dist/scripts/connect-dev-number.js <workspace-slug>` and
    `docker compose run --rm worker node dist/scripts/connect-dev-page.js <workspace-slug> <page-id>`.
 4. AI agent page: install the right template, review questions, publish; submit the opening and
-   follow-up templates to Meta and activate them once approved.
+   follow-up templates to Meta and activate them once approved. An agent prepared as JSON (or
+   exported from another environment) can be installed with
+   `docker compose exec -T worker node dist/scripts/import-agent.js <workspace-slug> - --name="<name>" [--default] < agent.json`.
 
 Production always messages every lead (`DEV_ALLOWED_NUMBERS` only applies in development).
 
@@ -129,7 +133,10 @@ docker compose pull && docker compose run --rm migrate && docker compose up -d
 ```
 
 Or run the Release workflow with **deploy** ticked (secrets `DEPLOY_HOST`, `DEPLOY_USER`,
-`DEPLOY_SSH_KEY` in a `production` environment). Rollback = set the previous tag and `up -d`.
+`DEPLOY_SSH_KEY` in a `production` environment; repository variables `SITE_URL`,
+`SITE_WHATSAPP_NUMBER`, `SITE_PRODUCT_NAME` for the website, D-101).
+The Caddyfile is mounted from the server (`deploy/prod/Caddyfile*`): copy the new one there when
+it changes (D-101 added the website routes) before `up -d`. Rollback = set the previous tag and `up -d`.
 Migrations only add (no destructive changes without a decision entry), so an older image runs on
 a newer schema.
 

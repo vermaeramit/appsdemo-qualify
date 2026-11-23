@@ -9,6 +9,7 @@ import tseslint from 'typescript-eslint';
 export default defineConfig([
   globalIgnores([
     '**/dist/**',
+    '**/dist-ssr/**',
     '**/coverage/**',
     '**/node_modules/**',
     // Vendored shadcn/ui components: owned by us, but kept in upstream style.
@@ -21,12 +22,18 @@ export default defineConfig([
   tseslint.configs.recommended,
 
   {
-    files: ['apps/api/**/*.ts', 'apps/worker/**/*.ts', 'packages/**/*.ts', '*.js'],
+    files: [
+      'apps/api/**/*.ts',
+      'apps/worker/**/*.ts',
+      'packages/**/*.ts',
+      'apps/site/scripts/**',
+      '*.js',
+    ],
     languageOptions: { globals: globals.node },
   },
 
   {
-    files: ['apps/web/**/*.{ts,tsx}'],
+    files: ['apps/web/**/*.{ts,tsx}', 'apps/site/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
     extends: [reactHooks.configs.flat.recommended, reactRefresh.configs.vite],
   },

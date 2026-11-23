@@ -64,6 +64,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.prefix }}/web:${{ steps.meta.outputs.tag }},${{ steps.meta.outputs.prefix }}/web:latest
           cache-from: type=gha
+          # The marketing website (D-101) reads its settings at build time (repository variables).
+          build-args: |
+            VITE_SITE_URL=${{ vars.SITE_URL }}
+            VITE_SITE_WHATSAPP_NUMBER=${{ vars.SITE_WHATSAPP_NUMBER }}
+            VITE_SITE_PRODUCT_NAME=${{ vars.SITE_PRODUCT_NAME }}
 
   deploy:
     name: Deploy over SSH

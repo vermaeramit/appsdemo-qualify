@@ -44,7 +44,7 @@ const navItemClass =
   'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors';
 
 const navLinks = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/leads', label: 'Leads', icon: Users, exact: false },
   { to: '/conversations', label: 'Conversations', icon: MessagesSquare, exact: false },
   { to: '/meta-leads', label: 'Meta leads', icon: FileInput, exact: false },

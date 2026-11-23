@@ -64,7 +64,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
           <CommandGroup heading="Go to">
-            <CommandItem onSelect={() => run(() => navigate({ to: '/' }))}>
+            <CommandItem onSelect={() => run(() => navigate({ to: '/dashboard' }))}>
               <LayoutDashboard />
               Dashboard
             </CommandItem>

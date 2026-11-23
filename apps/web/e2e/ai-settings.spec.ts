@@ -12,7 +12,7 @@ test('AI settings: a new workspace starts with the AI off and asks for a key', a
   await expect(page).toHaveURL(/\/onboarding/);
   await page.getByLabel('Workspace name').fill(`E2E AI ${unique}`);
   await page.getByRole('button', { name: 'Create workspace' }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 
   await page.getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByText('AI off', { exact: true })).toBeVisible();

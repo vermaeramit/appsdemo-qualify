@@ -14,7 +14,7 @@ test('activity log: conversation Activity panel and the Logs page with filters',
   await expect(page).toHaveURL(/\/onboarding/);
   await page.getByLabel('Workspace name').fill(`E2E Logs ${unique}`);
   await page.getByRole('button', { name: 'Create workspace' }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 
   // A lead added from the dashboard.
   await page.getByRole('link', { name: 'Conversations', exact: true }).click();

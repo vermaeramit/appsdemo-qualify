@@ -8,10 +8,10 @@ describe('safeRedirect', () => {
   });
 
   it('blocks external and protocol-relative targets', () => {
-    expect(safeRedirect('https://evil.example')).toBe('/');
-    expect(safeRedirect('//evil.example')).toBe('/');
-    expect(safeRedirect('/\\evil.example')).toBe('/');
-    expect(safeRedirect(undefined)).toBe('/');
+    expect(safeRedirect('https://evil.example')).toBe('/dashboard');
+    expect(safeRedirect('//evil.example')).toBe('/dashboard');
+    expect(safeRedirect('/\\evil.example')).toBe('/dashboard');
+    expect(safeRedirect(undefined)).toBe('/dashboard');
   });
 });
 

@@ -12,6 +12,7 @@
     "test": "vitest run --passWithNoTests",
     "connect-dev-number": "node --env-file-if-exists=../../.env src/scripts/connect-dev-number.ts",
     "set-dev-webhook": "node --env-file-if-exists=../../.env src/scripts/set-dev-webhook.ts",
+    "import-agent": "node src/scripts/import-agent.ts",
     "install-playbook": "node src/scripts/install-playbook.ts",
     "eval": "node src/evals/run-eval.ts",
     "create-api-key": "node src/scripts/create-api-key.ts",

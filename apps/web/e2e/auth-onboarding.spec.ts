@@ -8,7 +8,7 @@ test('a new user can sign up, create a workspace and sign back in', async ({ pag
   const workspace = `E2E Travels ${unique}`;
 
   // Signed-out visitors are sent to the login page.
-  await page.goto('/');
+  await page.goto('/dashboard');
   await expect(page).toHaveURL(/\/login/);
 
   // Client-side validation shows friendly errors.
@@ -28,7 +28,7 @@ test('a new user can sign up, create a workspace and sign back in', async ({ pag
   await page.getByRole('button', { name: 'Create workspace' }).click();
 
   // Dashboard shows the user and the workspace.
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole('heading', { name: /, E2E$/ })).toBeVisible();
   await expect(page.getByText(workspace).first()).toBeVisible();
   await expect(page.getByText('API online')).toBeVisible();
@@ -72,6 +72,6 @@ test('a new user can sign up, create a workspace and sign back in', async ({ pag
   // Correct password signs back in, straight to the dashboard.
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText(workspace).first()).toBeVisible();
 });

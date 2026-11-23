@@ -23,7 +23,7 @@ export function WorkspacePicker({ workspaces }: { workspaces: WorkspaceSummary[]
       return;
     }
     queryClient.removeQueries({ queryKey: meQueryOptions.queryKey });
-    await navigate({ to: '/' });
+    await navigate({ to: '/dashboard' });
   };
 
   return (

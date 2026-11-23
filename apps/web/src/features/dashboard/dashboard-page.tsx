@@ -78,7 +78,7 @@ export function DashboardPage({ period }: { period: DashboardPeriod }) {
               type="button"
               role="radio"
               aria-checked={period === option.value}
-              onClick={() => void navigate({ to: '/', search: { period: option.value } })}
+              onClick={() => void navigate({ to: '/dashboard', search: { period: option.value } })}
               className={cn(
                 'relative rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 period === option.value

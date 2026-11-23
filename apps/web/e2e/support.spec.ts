@@ -15,7 +15,7 @@ async function signUp(page: Page, name: string, email: string, workspace: string
   await expect(page).toHaveURL(/\/onboarding/);
   await page.getByLabel('Workspace name').fill(workspace);
   await page.getByRole('button', { name: 'Create workspace' }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 }
 
 /** Signs the admin in, or creates the account (with a workspace of its own) the first time. */
@@ -66,7 +66,7 @@ test('support access: read-only visit to a client workspace, recorded on both si
   await expect(dialog.getByText('Write why you need access')).toBeVisible();
   await dialog.getByLabel('Reason').fill('E2E: the client asked why a lead got no reply');
   await dialog.getByRole('button', { name: 'Open read-only' }).click();
-  await expect(admin).toHaveURL(/\/$/);
+  await expect(admin).toHaveURL(/\/dashboard$/);
   await expect(admin.getByText(`Support view of ${clientName}`)).toBeVisible();
   await expect(admin.getByText('Support view (read-only)')).toBeVisible();
 

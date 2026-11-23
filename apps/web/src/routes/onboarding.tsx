@@ -10,7 +10,7 @@ export const Route = createFileRoute('/onboarding')({
   beforeLoad: async ({ context }) => {
     const me = await context.queryClient.ensureQueryData(meQueryOptions);
     if (!me) throw redirect({ to: '/login' });
-    if (me.activeWorkspace) throw redirect({ to: '/' });
+    if (me.activeWorkspace) throw redirect({ to: '/dashboard' });
   },
   component: OnboardingPage,
 });

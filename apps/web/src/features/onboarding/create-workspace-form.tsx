@@ -53,7 +53,7 @@ export function CreateWorkspaceForm() {
     }
     toast.success(`${name} is ready`);
     queryClient.removeQueries({ queryKey: meQueryOptions.queryKey });
-    await navigate({ to: '/' });
+    await navigate({ to: '/dashboard' });
   });
 
   return (

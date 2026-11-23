@@ -61,7 +61,7 @@ export function OpenSupportDialog({ workspace }: { workspace: { id: string; name
         openedSchema,
       );
       await afterWorkspaceSwitch(queryClient);
-      await navigate({ to: '/' });
+      await navigate({ to: '/dashboard' });
     } catch (error) {
       toast.error(errorMessage(error, `Could not open ${workspace.name}.`));
     }

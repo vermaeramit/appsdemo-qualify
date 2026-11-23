@@ -12,7 +12,7 @@ async function signUpWithWorkspace(page: Page, unique: string): Promise<void> {
   await page.getByLabel('What does your business do?').click();
   await page.getByRole('option', { name: 'Real estate' }).click();
   await page.getByRole('button', { name: 'Create workspace' }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 }
 
 // M4: configure the agent from the dashboard (questions with options and plain questions),

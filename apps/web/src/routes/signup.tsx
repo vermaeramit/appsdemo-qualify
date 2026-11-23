@@ -6,7 +6,7 @@ import { meQueryOptions } from '@/lib/session';
 export const Route = createFileRoute('/signup')({
   beforeLoad: async ({ context }) => {
     const me = await context.queryClient.ensureQueryData(meQueryOptions);
-    if (me) throw redirect({ to: '/' });
+    if (me) throw redirect({ to: '/dashboard' });
   },
   component: SignupPage,
 });

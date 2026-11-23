@@ -21,7 +21,7 @@ function NotFound() {
           The page you are looking for doesn&apos;t exist.
         </p>
         <Button asChild variant="outline">
-          <Link to="/">Back to dashboard</Link>
+          <Link to="/dashboard">Back to dashboard</Link>
         </Button>
       </div>
     </div>

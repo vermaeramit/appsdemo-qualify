@@ -12,7 +12,7 @@ test('agents: choose the default agent, and add a lead for a specific agent', as
   await expect(page).toHaveURL(/\/onboarding/);
   await page.getByLabel('Workspace name').fill(`E2E Agents ${unique}`);
   await page.getByRole('button', { name: 'Create workspace' }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 
   // A second agent.
   await page.getByRole('link', { name: 'AI agents' }).click();

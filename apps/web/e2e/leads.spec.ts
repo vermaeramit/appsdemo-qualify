@@ -13,7 +13,7 @@ test('leads list: search, grade and status filters, sort, Excel export', async (
   await expect(page).toHaveURL(/\/onboarding/);
   await page.getByLabel('Workspace name').fill(`E2E Leads ${unique}`);
   await page.getByRole('button', { name: 'Create workspace' }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 
   await page.getByRole('link', { name: 'Leads', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Leads' })).toBeVisible();

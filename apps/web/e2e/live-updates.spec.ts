@@ -12,7 +12,7 @@ test('live updates: a lead added in another tab shows up at once', async ({ page
   await expect(page).toHaveURL(/\/onboarding/);
   await page.getByLabel('Workspace name').fill(`E2E Live ${unique}`);
   await page.getByRole('button', { name: 'Create workspace' }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 
   // Wait for the live stream to be open before changing anything.
   const streaming = page.waitForResponse((response) => response.url().endsWith('/api/live'));
