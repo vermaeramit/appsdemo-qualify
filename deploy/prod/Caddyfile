@@ -23,6 +23,9 @@
 		header Cache-Control "no-cache"
 		file_server
 	}
+	# The home page has one address (D-102): /site/ and /site/index.html redirect to /.
+	@siteHome path /site/ /site/index.html
+	redir @siteHome / 308
 	handle /site/* {
 		root * /srv
 		@siteAssets path /site/assets/*

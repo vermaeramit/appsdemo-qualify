@@ -21,9 +21,11 @@ fs.writeFileSync(templatePath, html);
 
 // A sitemap needs the public address; without VITE_SITE_URL (local builds) it is left out.
 if (siteUrl) {
+  // lastmod = build date, so search engines know when the page changed.
+  const lastmod = new Date().toISOString().slice(0, 10);
   fs.writeFileSync(
     path.join(dist, 'sitemap.xml'),
-    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${siteUrl}/</loc></url>\n</urlset>\n`,
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${siteUrl}/</loc><lastmod>${lastmod}</lastmod></url>\n</urlset>\n`,
   );
   fs.appendFileSync(path.join(dist, 'robots.txt'), `Sitemap: ${siteUrl}/sitemap.xml\n`);
 }
