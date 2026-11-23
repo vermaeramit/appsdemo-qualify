@@ -1,3 +1,4 @@
+import { describeInboundMessage } from '@qualify/core';
 import {
   and,
   auditLogs,
@@ -84,6 +85,36 @@ export function ctwaAttribution(
 const IGNORED_TYPES = new Set(['reaction']);
 /** Stored for the record, but they don't warrant an AI reply (e.g. "customer changed number"). */
 const NO_REPLY_TYPES = new Set(['system', 'unsupported', 'request_welcome']);
+
+/** The log line for an incoming message: its text, or what it was (a photo, D-099). */
+function receivedEntry(
+  text: string | null,
+  message: { type: string; id: string },
+): { level: 'info' | 'warn'; message: string; detail: Record<string, string> } {
+  if (text) {
+    return {
+      level: 'info',
+      message: `Message from the lead: ${quote(text)}`,
+      detail: { Type: message.type, 'WhatsApp message id': message.id },
+    };
+  }
+  const display = describeInboundMessage(message.type, message);
+  return {
+    level: display.kind === 'unsupported' ? 'warn' : 'info',
+    message: `Message from the lead: ${display.label}${display.detail ? ` (${quote(display.detail)})` : ''}`,
+    detail: {
+      Type: message.type,
+      ...(display.metaError ? { 'Meta error': display.metaError } : {}),
+      ...(display.kind === 'unsupported'
+        ? {
+            'Why this happens':
+              'WhatsApp passes only some message types to the API. View-once photos or videos, polls, events and messages from chats with disappearing messages arrive like this.',
+          }
+        : {}),
+      'WhatsApp message id': message.id,
+    },
+  };
+}
 
 /**
  * Processes one stored Meta webhook delivery. Safe to run more than once for the same event:
@@ -249,10 +280,7 @@ async function handleInboundMessage(
       ...base,
       source: 'whatsapp',
       kind: 'whatsapp.received',
-      message: text
-        ? `Message from the lead: ${quote(text)}`
-        : `Message from the lead (${message.type})`,
-      detail: { Type: message.type, 'WhatsApp message id': message.id },
+      ...receivedEntry(text, message),
     },
   ]);
   if (NO_REPLY_TYPES.has(message.type)) {

@@ -34,7 +34,7 @@ import {
   pageLimitSchema,
   storedLeadOutcomeSchema,
 } from '@qualify/shared';
-import { deliveryErrorMessage } from '@qualify/core';
+import { deliveryErrorMessage, describeInboundMessage } from '@qualify/core';
 import { z } from 'zod';
 import { actorName, recordApiActivity } from '../activity/record';
 import { SupportService } from '../admin/support.service';
@@ -88,14 +88,21 @@ export class ConversationsController {
             last_message_at: string | null;
             activity: string;
             last_message: string | null;
+            last_direction: string | null;
+            last_type: string | null;
+            last_payload: unknown;
             message_count: number;
           }>(sql`
           select l.id as lead_id, l.phone_e164 as phone, l.name,
                  l.last_message_at::text as last_message_at, ${activity}::text as activity,
-                 (select m.body from messages m where m.lead_id = l.id
-                  order by m.created_at desc limit 1) as last_message,
+                 last.body as last_message, last.direction as last_direction,
+                 last.type as last_type, last.payload as last_payload,
                  (select count(*)::int from messages m where m.lead_id = l.id) as message_count
           from leads l
+          left join lateral (
+            select m.body, m.direction, m.type, m.payload from messages m
+            where m.lead_id = l.id order by m.created_at desc limit 1
+          ) last on true
           where ${cursor ? sql`(${activity}, l.id) < (${cursor.sortKey}::timestamptz, ${cursor.id}::uuid)` : sql`true`}
           order by ${activity} desc, l.id desc
           limit ${input.limit + 1}`)
@@ -109,7 +116,12 @@ export class ConversationsController {
         phone: row.phone,
         name: row.name,
         lastMessageAt: row.last_message_at ? new Date(row.last_message_at).toISOString() : null,
-        lastMessage: row.last_message,
+        // A photo, voice message… shows what it was (D-099).
+        lastMessage:
+          row.last_message ??
+          (row.last_direction === 'inbound' && row.last_type
+            ? describeInboundMessage(row.last_type, row.last_payload).label
+            : null),
         messageCount: row.message_count,
       })),
       nextCursor:
@@ -137,6 +149,7 @@ export class ConversationsController {
           sender: messages.sender,
           type: messages.type,
           body: messages.body,
+          payload: messages.payload,
           status: messages.status,
           error: messages.error,
           createdAt: messages.createdAt,
@@ -202,6 +215,10 @@ export class ConversationsController {
         body: row.body,
         status: row.status,
         errorMessage: row.status === 'failed' ? deliveryErrorMessage(row.error) : null,
+        display:
+          row.direction === 'inbound' && row.body === null
+            ? describeInboundMessage(row.type, row.payload)
+            : null,
         createdAt: row.createdAt.toISOString(),
       })),
       olderCursor:

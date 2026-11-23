@@ -255,6 +255,42 @@ describe('processMetaEvent', () => {
     expect(enqueueRespond).not.toHaveBeenCalled();
   });
 
+  it('logs what an unsupported message was, with Meta’s error, and stays silent (D-099)', async () => {
+    const payload = inboundPayload(ALLOWED, 'wamid.unsupported.1', 'unused');
+    const value = payload.entry[0]!.changes[0]!.value as { messages: Record<string, unknown>[] };
+    value.messages = [
+      {
+        id: 'wamid.unsupported.1',
+        from: ALLOWED,
+        timestamp: '1763400200',
+        type: 'unsupported',
+        errors: [
+          {
+            code: 131051,
+            title: 'Message type unknown',
+            message: 'Message type unknown',
+            error_data: { details: 'Message type is currently not supported.' },
+          },
+        ],
+        unsupported: { type: 'unknown', raw_type: 'unknown' },
+      },
+    ];
+    await processMetaEvent(await storeEvent(payload), deps());
+    expect(enqueueRespond).not.toHaveBeenCalled();
+    const stored = (await tenantMessages()).find((m) => m.waMessageId === 'wamid.unsupported.1');
+    expect(stored).toMatchObject({ type: 'unsupported', body: null });
+    const received = (await activityOf(testDb.app.db, stored!.leadId)).filter(
+      (entry) => entry.kind === 'whatsapp.received',
+    );
+    expect(received.at(-1)).toMatchObject({
+      level: 'warn',
+      message: "Message from the lead: A message WhatsApp didn't pass on",
+      detail: expect.objectContaining({
+        'Meta error': '131051: Message type is currently not supported.',
+      }),
+    });
+  });
+
   it('ignores webhooks for phone numbers that belong to no tenant', async () => {
     const before = (await tenantMessages()).length;
     await processMetaEvent(

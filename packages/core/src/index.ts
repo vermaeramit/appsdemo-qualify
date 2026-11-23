@@ -15,3 +15,4 @@ export * from './turn.ts';
 export * from './report-email.ts';
 export * from './prefill.ts';
 export * from './delivery-error.ts';
+export * from './inbound-display.ts';

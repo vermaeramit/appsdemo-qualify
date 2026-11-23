@@ -23,6 +23,7 @@ import { canAct, canManage } from '@/lib/workspace';
 import { LeadActivityButton } from '@/features/activity/lead-activity';
 import { MetaSilentBanner } from '@/features/activity/meta-health';
 import { DeleteLeadButton } from './delete-lead';
+import { InboundContent } from './inbound-content';
 import { LeadPanel } from './lead-panel';
 import { LeadStatusBadge } from './lead-status';
 
@@ -191,9 +192,13 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
                   : 'Automated'}
           </div>
         )}
-        <p className="break-words whitespace-pre-wrap">
-          {message.body ?? <span className="italic opacity-75">[{message.type} message]</span>}
-        </p>
+        {message.body !== null ? (
+          <p className="break-words whitespace-pre-wrap">{message.body}</p>
+        ) : message.display ? (
+          <InboundContent display={message.display} />
+        ) : (
+          <p className="italic opacity-75">[{message.type} message]</p>
+        )}
         <div
           className={cn(
             'mt-1 flex items-center justify-end gap-1 text-[0.65rem]',

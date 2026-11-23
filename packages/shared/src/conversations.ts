@@ -30,6 +30,37 @@ export const conversationListSchema = z.object({
 });
 export type ConversationList = z.infer<typeof conversationListSchema>;
 
+/**
+ * What an incoming non-text message was (D-099), read from the stored WhatsApp payload: a photo,
+ * a voice message, a location… or a message WhatsApp didn't pass on (with Meta's error).
+ */
+export const inboundDisplayKindSchema = z.enum([
+  'image',
+  'video',
+  'voice',
+  'audio',
+  'document',
+  'sticker',
+  'location',
+  'contacts',
+  'reaction',
+  'order',
+  'unsupported',
+  'other',
+]);
+export type InboundDisplayKind = z.infer<typeof inboundDisplayKindSchema>;
+
+export const inboundDisplaySchema = z.object({
+  kind: inboundDisplayKindSchema,
+  /** "Photo", "Voice message", "Document: brochure.pdf"… */
+  label: z.string(),
+  /** Caption, address, phone number, file details… */
+  detail: z.string().nullable(),
+  /** Unsupported messages: Meta's error, e.g. "131051: Message type is currently not supported." */
+  metaError: z.string().nullable(),
+});
+export type InboundDisplay = z.infer<typeof inboundDisplaySchema>;
+
 export const conversationMessageSchema = z.object({
   id: z.uuid(),
   direction: messageDirectionSchema,
@@ -39,6 +70,8 @@ export const conversationMessageSchema = z.object({
   status: messageStatusSchema,
   /** Why a failed message was not delivered (shown under the bubble). */
   errorMessage: z.string().nullable(),
+  /** Incoming non-text messages: what it was (D-099); null for text. */
+  display: inboundDisplaySchema.nullable(),
   createdAt: z.iso.datetime(),
 });
 export type ConversationMessage = z.infer<typeof conversationMessageSchema>;
